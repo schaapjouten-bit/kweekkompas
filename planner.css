@@ -1,0 +1,191 @@
+/* KweekKompas Sowing Planner Styles */
+
+.sowing-month-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  margin-bottom: 60px;
+}
+
+@media (max-width: 900px) {
+  .sowing-month-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+}
+
+@media (max-width: 500px) {
+  .sowing-month-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.month-card {
+  background: var(--surface-block);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-content);
+  padding: 24px;
+  cursor: pointer;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  min-height: 150px;
+  user-select: none;
+}
+
+.month-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  border-color: var(--primary-color);
+  box-shadow: 0 15px 35px rgba(0,0,0,0.12);
+  z-index: 10;
+  background: var(--bg-color);
+}
+
+.month-card.current {
+  border: 2px solid var(--primary-color);
+  background: rgba(76, 175, 80, 0.04);
+  box-shadow: 0 0 25px rgba(76, 175, 80, 0.1);
+}
+
+.month-icon {
+  font-size: 28px;
+  margin-bottom: 12px;
+  opacity: 0.8;
+  transition: transform 0.3s ease;
+}
+
+.month-card:hover .month-icon {
+  transform: scale(1.2) rotate(-5deg);
+}
+
+.month-name {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+
+.month-indicator-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary-color);
+  background: rgba(76, 175, 80, 0.1);
+  padding: 4px 10px;
+  border-radius: 12px;
+  width: fit-content;
+  border: 1px solid rgba(76, 175, 80, 0.1);
+}
+
+[data-theme="dark"] .month-indicator-badge {
+  background: rgba(76, 175, 80, 0.15);
+  border-color: rgba(76, 175, 80, 0.2);
+  color: #8ce9a7;
+}
+
+.month-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: auto;
+  opacity: 0.6;
+}
+
+.month-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: var(--primary-color);
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 12px;
+  text-transform: none;
+  letter-spacing: 0.8px;
+  box-shadow: 0 4px 10px rgba(76, 175, 80, 0.3);
+}
+
+[data-theme="dark"] .month-card {
+  background: #1e1e1e;
+}
+
+[data-theme="dark"] .month-card:hover {
+  background: #242424;
+}
+
+/* --- SEEDS MONTH CONTEXT BANNER (Polished Filter State) --- */
+.seeds-month-context {
+  background: rgba(76, 175, 80, 0.08);
+  border: none;
+  border-radius: 12px;
+  padding: 6px 16px;
+  margin: 0 auto 24px auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: fit-content;
+  gap: 20px;
+}
+
+[data-theme="dark"] .seeds-month-context {
+  background: rgba(76, 175, 80, 0.12);
+}
+
+.context-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-icon {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.context-text {
+  font-size: 13px;
+  color: var(--text-main);
+  letter-spacing: -0.1px;
+}
+
+.context-text strong {
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+.context-reset-btn {
+  background: rgba(0,0,0,0.05);
+  border: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.context-reset-btn:hover {
+  background: var(--primary-color);
+  color: white;
+  transform: scale(1.1);
+}
+
+[data-theme="dark"] .context-reset-btn {
+  background: rgba(255,255,255,0.1);
+}
+
+.context-reset-btn span {
+  line-height: 1;
+}

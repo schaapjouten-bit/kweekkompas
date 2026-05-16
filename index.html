@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KweekKompas 🌱 - Jouw Moestuin Planner</title>
+  <link rel="stylesheet" href="styles.css" charset="utf-8">
+  <link rel="stylesheet" href="calendar.css?v=3.2" charset="utf-8">
+  <link rel="stylesheet" href="planner.css?v=3.2" charset="utf-8">
+  <link rel="stylesheet" href="onboarding.css?v=3.2" charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- MOBILE BOTTOM NAVIGATION -->
+  <nav class="mobile-bottom-nav">
+    <button class="mobile-nav-item" data-view="home" id="m-btn-home">
+      <span class="mobile-nav-icon">🌱</span>
+      <span class="mobile-nav-label">Tuin</span>
+    </button>
+    <button class="mobile-nav-item" data-view="list" id="m-btn-list">
+      <span class="mobile-nav-icon">📦</span>
+      <span class="mobile-nav-label">Zaden</span>
+    </button>
+    <button class="mobile-nav-item" data-view="sowing-grid" id="m-btn-planner">
+      <span class="mobile-nav-icon">📅</span>
+      <span class="mobile-nav-label">Planner</span>
+    </button>
+    <button class="mobile-nav-item" data-view="calendar" id="m-btn-calendar">
+      <span class="mobile-nav-icon">🗓️</span>
+      <span class="mobile-nav-label">Kalender</span>
+    </button>
+    <button class="mobile-nav-item" data-view="wishlist" id="m-btn-wishlist">
+      <span class="mobile-nav-icon">✨</span>
+      <span class="mobile-nav-label">Wishlist</span>
+    </button>
+  </nav>
+
+  <div class="app-container">
+    <!-- SETTINGS PANEL SYSTEM -->
+    <div id="settings-overlay" class="settings-overlay hidden" onclick="toggleSettingsPanel_REPAIR_V131()"></div>
+    <div id="settings-panel" class="settings-panel"></div>
+  
+    <header class="header">
+      <div class="header-top">
+        <div class="logo-container">
+          <div class="logo-icon">🌱</div>
+          <div class="header-title-group">
+            <h1>KweekKompas</h1>
+            <span class="subtitle">Altijd weten wat je wanneer zaait</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="btn-gear" class="btn-icon-round" title="Instellingen" aria-label="Open instellingen" onclick="toggleSettingsPanel_REPAIR_V131()">⚙️</button>
+        </div>
+      </div>
+      <div class="nav-buttons main-nav">
+        <button id="btn-home">🌱 Mijn Tuin</button>
+        <button id="btn-list">📦 Zaden</button>
+        <button id="btn-sowing-grid">📅 Zaai-planner</button>
+        <button id="btn-calendar">📅 Kalender</button>
+        <button id="btn-wishlist">+ Wishlist</button>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <!-- DASHBOARD / HOME VIEW -->
+      <section id="view-home" class="view">
+        <div class="dashboard-header">
+          <h2 id="home-title" style="display:flex; align-items:center;">
+             <span>Mijn Tuin - 2026</span>
+          </h2>
+        </div>
+
+        <div class="dashboard-grid-layout">
+          <div class="dashboard-left">
+            <!-- AI ASSISTANT PANEL -->
+            <div class="dashboard-section" style="margin-bottom: 24px;">
+              <div class="section-header">
+                <h3>⚡ Tuinassistent</h3>
+              </div>
+              <div class="ai-assistant-panel" style="background: var(--surface-block); padding: 16px; border-radius: var(--radius-content); border: 1px solid var(--border-color); box-shadow: var(--shadow);">
+                <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                  <input type="text" id="ai-question-input" placeholder="Vraag iets over je tuin..." style="flex: 1; border-radius: var(--radius-main); padding: 10px 16px; font-size: 14px; border: 1px solid var(--border-color); outline: none; background: var(--bg-color); color: var(--text-main);">
+                  <button id="btn-ask-ai" class="btn-primary" style="width: auto; padding: 0 20px; border-radius: var(--radius-main); font-size: 13px; height: 40px;">Vraag AI</button>
+                </div>
+                <div class="quick-tips-ai" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+                   <button class="filter-chip" style="font-size: 11px;" onclick="window._quickAskAI('Wat moet ik nu doen?')">⚡ Nu doen?</button>
+                   <button class="filter-chip" style="font-size: 11px;" onclick="window._quickAskAI('Waar ben ik te laat?')">⚠️ Te laat?</button>
+                   <button class="filter-chip" style="font-size: 11px;" onclick="window._quickAskAI('Wat kan ik nu zaaien?')">🌱 Zaaitips?</button>
+                </div>
+                <div id="ai-assistant-output" style="display: none; border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;"></div>
+              </div>
+            </div>
+
+            <!-- 2. NU DOEN (Action List) -->
+            <div class="dashboard-section">
+              <div class="section-header">
+                <h3 id="nu-doen-title">⚡ Nu doen</h3>
+                <div id="daily-progress-hint" class="daily-progress-hint" style="font-size: 11px; font-weight: 600; color: var(--text-muted); opacity: 0.8; margin-top: 2px;"></div>
+              </div>
+              <div id="dashboard-nu-doen" class="action-list">
+                <!-- Dynamisch via JS (Rood > Groen > Geel) -->
+              </div>
+            </div>
+          </div>
+
+          <div class="dashboard-grid-layout-right">
+            <!-- 3. MIJN PLANTEN (Mini-cards grouped) -->
+            <div class="dashboard-section">
+              <div class="section-header">
+                <h3>🌱 Mijn planten</h3>
+              </div>
+              <div id="dashboard-mijn-planten-grouped" class="status-groups-container">
+                <!-- Dynamisch via JS (Gezaaid, Groeit, Geoogst) -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CALENDAR VIEW -->
+      <section id="view-calendar" class="view hidden">
+        <div class="calendar-container">
+          <header class="calendar-header">
+            <button id="cal-prev" class="cal-nav-btn" title="Vorige maand" aria-label="Vorige maand">❮</button>
+            <div class="calendar-title-group" style="display:flex; align-items:center; gap:12px;">
+              <h2 id="cal-month-title">Maand Jaar</h2>
+              <button id="btn-cal-sow-tips" class="cal-tips-badge" style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:15px; padding:4px 10px; font-size:11px; cursor:pointer; font-weight:700;">🌱 tips</button>
+            </div>
+            <button id="cal-next" class="cal-nav-btn" title="Volgende maand" aria-label="Volgende maand">❯</button>
+          </header>
+
+          <div class="calendar-grid-wrapper">
+            <div class="calendar-grid-header">
+              <span>Ma</span><span>Di</span><span>Wo</span><span>Do</span><span>Vr</span><span>Za</span><span>Zo</span>
+            </div>
+            <div id="calendar-grid" class="calendar-grid">
+              <!-- Dynamisch via JS -->
+            </div>
+          </div>
+
+          <div id="day-details" class="day-details-panel hidden">
+            <div class="day-panel-card">
+              <div class="day-panel-header">
+                <h3 id="selected-date-label">📅 Datum</h3>
+                <button id="btn-close-details" class="close-panel-btn" aria-label="Sluit details">×</button>
+              </div>
+              
+              <div id="reminder-list" class="reminder-list">
+                <!-- Herinneringen komen hier -->
+              </div>
+              
+              <div id="reminder-context-line" style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px; margin-left: 4px;"></div>
+              
+              <div class="day-input-area">
+                <div class="input-wrapper">
+                  <input type="text" id="new-reminder-input" placeholder="Typ je reminder...">
+                  <button id="btn-add-reminder" class="btn-add-inline">Toevoegen</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <button id="btn-add-event-fab" class="fab-btn" title="Nieuwe herinnering" aria-label="Nieuwe herinnering">+</button>
+      </section>
+
+      <!-- ZAAI-PLANNER GRID VIEW -->
+      <section id="view-sowing-grid" class="view hidden">
+        <div class="sowing-planner-header" style="text-align:center; margin-bottom:32px;">
+          <h2 style="font-size:28px; margin-bottom:8px;">Jaaroverzicht Zaaien 📅</h2>
+          <p style="color:var(--text-muted);">Plan je hele jaar vooruit. Wat moet nu, wat komt eraan?</p>
+        </div>
+        <div id="sowing-month-grid" class="sowing-month-grid">
+           <!-- Dynamisch via JS (12 maanden) -->
+        </div>
+
+      </section>
+
+      <!-- WISHLIST VIEW -->
+      <section id="view-wishlist" class="view hidden">
+        <div class="wishlist-container-main" style="max-width: 600px; margin: 0 auto; padding-bottom: 40px;">
+          <div class="wishlist-header" style="margin-bottom: 30px; text-align: center;">
+            <h2 style="font-size: 24px; margin-bottom: 8px;">Mijn Wishlist +</h2>
+            <p style="color: var(--text-muted); font-size: 14px;">Snelle invoer: Wat heb je nog nodig?</p>
+          </div>
+
+          <!-- Wishlist Filters (New 7.2) -->
+          <div class="wishlist-filters" style="display: flex; gap: 8px; margin-bottom: 24px; justify-content: center;">
+            <button class="filter-chip active" data-wish-filter="all">Alles</button>
+            <button class="filter-chip" data-wish-filter="seed">Zaden</button>
+            <button class="filter-chip" data-wish-filter="item">Spullen</button>
+          </div>
+
+          <!-- Quick Add Input (Visible when NOT empty) -->
+          <div id="wishlist-fast-add" class="wishlist-fast-add-container">
+            <input type="text" id="wishlist-quick-input" placeholder="Zaad of item toevoegen… (bijv. sla, schep)">
+            <button id="btn-add-wish-quick" class="btn-primary">Toevoegen</button>
+          </div>
+
+          <!-- Empty State (New 7.1) -->
+          <div id="wishlist-empty-state" class="wishlist-empty-state hidden">
+            <p class="empty-text">Bewaar hier zaden of spullen die je later wilt gebruiken</p>
+            <div class="empty-input-group">
+              <input type="text" id="wishlist-empty-input" placeholder="Zaad of item toevoegen… (bijv. sla, schep)">
+              <button id="btn-add-wish-empty" class="btn-primary">Toevoegen</button>
+            </div>
+          </div>
+
+          <div id="wishlist-items" class="wishlist-list-grid" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Dynamisch via JS -->
+          </div>
+        </div>
+      </section>
+      <!-- LIJST VIEW -->
+      <section id="view-list" class="view hidden">
+        <!-- RECENT CAROUSEL -->
+        <div class="carousel-section" id="carousel-section" style="display:none;">
+           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+               <h2 style="font-size:18px;">Nieuwste Aanwinsten</h2>
+           </div>
+           <div class="carousel-container">
+               <div id="carousel-track" class="carousel-track"></div>
+               <div class="carousel-nav-wrapper">
+                   <button id="carousel-prev" class="carousel-nav" aria-label="Vorige">❮</button>
+                   <button id="carousel-next" class="carousel-nav" aria-label="Volgende">❯</button>
+               </div>
+           </div>
+        </div>
+
+        <div class="search-container" style="display: flex; gap: 8px;">
+          <input type="text" id="search-input" placeholder="🔍 Zoek zaden..." autocomplete="off" style="flex: 1;">
+          <button id="btn-scan-notes" class="btn-secondary-sm" title="Scan notities voor planten" style="padding: 0 12px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 16px;">✨</button>
+          <button id="btn-add-zaden-top" class="btn-primary-sm">+ Nieuw</button>
+        </div>
+        <div id="grid-header" class="grid-header"></div>
+        <div class="category-filters" id="category-filters">
+           <button class="filter-chip active" data-filter="Alles">Alle Zaden</button>
+           <button class="filter-chip" data-filter="Gezaaid">Gezaaid 🌱 <span id="sown-count"></span></button>
+           <button class="filter-chip" data-filter="Groente">🥦 Groente</button>
+           <button class="filter-chip" data-filter="Fruit">🍓 Fruit</button>
+           <button class="filter-chip" data-filter="Kruid">🌿 Kruid</button>
+           <button class="filter-chip" data-filter="Bloem">🌻 Bloem</button>
+           <button class="filter-chip" data-filter="Bloembol">🧅 Bloembol</button>
+           <button class="filter-chip" data-filter="Boom">🌳 Boom</button>
+           <button class="filter-chip" data-filter="Struik">🪴 Struik</button>
+           <button class="filter-chip" data-filter="Sierplant">🎋 Sierplant</button>
+        </div>
+        <div id="seeds-context-banner" class="hidden"></div>
+        <div id="seed-grid" class="seed-grid">
+          <!-- Dynamish gegenereerd -->
+        </div>
+      </section>
+
+
+      <!-- TOEVOEGEN VIEW -->
+      <section id="view-add" class="view hidden">
+        <div class="view-header-actions" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 0 4px;">
+          <button type="button" onclick="switchView('list')" class="btn-back">← Terug</button>
+          <button type="button" id="btn-save-top" class="btn-primary" style="width: auto; padding: 10px 20px; font-size: 14px;">✔ Opslaan</button>
+        </div>
+        <form id="seed-form" class="seed-form">
+          <div class="form-section">
+            <h3 class="form-section-header">🏷️ Naam & Basis</h3>
+            <div class="form-group" style="margin-bottom: 20px;">
+              <input type="text" id="naam" required placeholder="Bijv. Tomaat Moneymaker">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                  <button type="button" id="btn-quick-photo-search" class="btn-helper-link" style="margin-top: 6px;">🔍 Zoek foto's op naam</button>
+                  <button type="button" id="btn-auto-fill-info" class="btn-helper-link" style="margin-top: 6px; color: var(--primary-color);">⚡ Vul info aan</button>
+                  <button type="button" id="btn-reset-ai-fields" class="btn-helper-link" style="margin-top: 6px; font-size: 11px; opacity: 0.6;" title="Opnieuw ophalen">🔄 Opnieuw</button>
+                <div id="ai-source-status" class="ai-source-status hidden"></div>
+              </div>
+              <div id="suggestion-banner" class="suggestion-banner hidden">
+                <span>🪄 Voorstel op basis van naam — controleer de gegevens.</span>
+                <button type="button" onclick="this.parentElement.classList.add('hidden')" style="background:none; border:none; color:inherit; cursor:pointer; font-size:16px;">×</button>
+              </div>
+            </div>
+            
+            <div id="form-photo-preview" class="form-photo-preview hidden">
+               <!-- Featured Image Placeholder -->
+            </div>
+            
+            <div id="photo-search-results-section" class="photo-hub" style="margin-top: 10px;">
+              <!-- Photo Hub Controls -->
+              <div id="unified-image-gallery" class="unified-image-gallery">
+                <!-- Combined search results and selected photos -->
+              </div>
+              
+              <div id="photo-load-more" class="hidden" style="text-align: center; margin-top: 15px;">
+                  <button type="button" id="btn-photo-load-more" class="btn-helper-link" style="font-size: 11px; opacity: 0.8;">🔽 Toon meer resultaten</button>
+              </div>
+
+              <div id="dropzone-wide" class="dropzone-wide" style="margin-top: 20px; margin-bottom: 20px; border: 2px dashed var(--border-color); border-radius: var(--radius-content); padding: 20px; text-align: center; cursor: pointer;">
+                <span class="dropzone-text">📁 Upload foto's of sleep ze hierheen</span>
+                <input type="file" id="file-upload" accept="image/*" multiple style="display: none;">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Type</label>
+                <select id="type">
+                  <option value="Groente">Groente</option>
+                  <option value="Fruit">Fruit</option>
+                  <option value="Kruid">Kruid</option>
+                  <option value="Bloem">Bloem</option>
+                  <option value="Bloembol">Bloembol</option>
+                  <option value="Boom">Boom</option>
+                  <option value="Struik">Struik</option>
+                  <option value="Sierplant">Sierplant</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Standplaats</label>
+                <select id="standplaats">
+                  <option value="Zon">Zon</option>
+                  <option value="Halfschaduw">Halfschaduw</option>
+                  <option value="Schaduw">Schaduw</option>
+                  <option value="Kas">Kas</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Waterbehoefte</label>
+                <select id="water">
+                  <option value="Gemiddeld">Gemiddeld</option>
+                  <option value="Laag">Laag</option>
+                  <option value="Hoog">Hoog</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Huidige fase *</label>
+                <select id="status">
+                  <option value="Voorraad">In voorraad</option>
+                  <option value="Gezaaid">Gezaaid</option>
+                  <option value="Groeit">Groeit</option>
+                  <option value="Geoogst">Geoogst</option>
+                  <option value="Wishlist">Op wishlist</option>
+                </select>
+
+              </div>
+              <div class="form-group">
+                <label>Code (optioneel)</label>
+                <input type="text" id="code" placeholder="Bijv. A12, Tray 3">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h3 class="form-section-header">📅 Planning</h3>
+            <div class="form-block-shaded">
+              <div class="form-group">
+                <label>Wanneer zaaien?</label>
+                <div id="zaaitijd-picker" class="month-picker"></div>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>Wanneer oogsten? 🥗</label>
+                <div id="oogsttijd-picker" class="month-picker"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section" style="margin-top: 40px; margin-bottom: 40px;">
+            <button type="button" id="toggle-extra" class="collapsible-toggle-bar">
+              <span class="toggle-text">Notities & kenmerken (optioneel)</span>
+              <span class="toggle-icon-chevron">▸</span>
+            </button>
+            <div id="extra-section" class="collapsed" style="display: none; padding: 24px 8px 0 8px;">
+              <div class="form-group">
+                <h4 class="form-subsection-title">📋 Teeltinformatie</h4>
+                <textarea id="beschrijving" rows="2" placeholder="Plantafstand, hoogte, etc."></textarea>
+              </div>
+              <div class="form-group">
+                <h4 class="form-subsection-title">💬 Eigen Notities</h4>
+                <textarea id="ervaringen" rows="3" placeholder="Tips of bijzonderheden..."></textarea>
+              </div>
+              
+              <div class="form-row" style="margin-top: 15px;">
+                <div class="form-group" style="flex: 1;">
+                   <h4 class="form-subsection-title">⭐ Mijn Score</h4>
+                   <div id="star-rating-picker" class="star-rating-picker"></div>
+                </div>
+              </div>
+
+              <div class="form-row" style="margin-top: 15px; gap: 16px;">
+                <div class="form-group" style="flex: 1;">
+                   <h4 class="form-subsection-title">📅 Jaar aanschaf</h4>
+                   <input type="number" id="purchaseYear" placeholder="2026" min="1900" max="2100">
+                </div>
+                <div class="form-group" style="flex: 2;">
+                   <h4 class="form-subsection-title">🔗 Webshop link</h4>
+                   <input type="url" id="shopLink" placeholder="https://...">
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-top: 15px;">
+                <h4 class="form-subsection-title">🏷️ Kenmerken</h4>
+                <div id="tag-picker" class="tag-picker"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="btn-submit-form">Zaadje Opslaan</button>
+            <button type="button" class="btn-delete-icon hidden" id="btn-form-delete" onclick="deleteCurrentSeed()" title="Verwijder zaadje">🗑️</button>
+          </div>
+        </form>
+      </section>
+      
+      <!-- ONBOARDING VIEW -->
+      <section id="view-onboarding" class="view hidden">
+        <div class="onboarding-container">
+          <div id="onboarding-step-1" class="onboarding-step">
+            <div class="onboarding-icon">🌱</div>
+            <h2>Welkom bij KweekKompas</h2>
+            <p>Laten we je tuin inrichten. In 3 korte vragen helpen we je op weg met je eerste zaden.</p>
+            <button class="btn-primary onboarding-next" data-next="2" style="width: 100%;">Start</button>
+            <button class="btn-text onboarding-skip" style="margin-top:20px; width: 100%;">Overslaan</button>
+          </div>
+
+          <div id="onboarding-step-2" class="onboarding-step hidden">
+            <span class="step-indicator">Stap 1 van 3</span>
+            <h3>Hoeveel zon krijgt je tuin?</h3>
+            <div class="onboarding-options">
+              <button class="onboarding-opt" data-val="Volle zon"><span>☀️</span>Volle zon</button>
+              <button class="onboarding-opt" data-val="Halfschaduw"><span>⛅</span>Halfschaduw</button>
+              <button class="onboarding-opt" data-val="Schaduw"><span>☁️</span>Schaduw</button>
+            </div>
+          </div>
+
+          <div id="onboarding-step-3" class="onboarding-step hidden">
+            <span class="step-indicator">Stap 2 van 3</span>
+            <h3>Wat voor tuin heb je?</h3>
+            <div class="onboarding-options">
+              <button class="onboarding-opt" data-val="Moestuin"><span>🏡</span>Moestuin</button>
+              <button class="onboarding-opt" data-val="Balkon"><span>🪴</span>Balkon</button>
+              <button class="onboarding-opt" data-val="Gemengd"><span>🍀</span>Gemengd</button>
+            </div>
+          </div>
+
+          <div id="onboarding-step-4" class="onboarding-step hidden">
+            <span class="step-indicator">Stap 3 van 3</span>
+            <h3>Wat is je ervaring?</h3>
+            <div class="onboarding-options">
+              <button class="onboarding-opt" data-val="Beginner"><span>🐣</span>Beginner</button>
+              <button class="onboarding-opt" data-val="Gemiddeld"><span>🌿</span>Gemiddeld</button>
+              <button class="onboarding-opt" data-val="Ervaren"><span>👨‍🌾</span>Ervaren</button>
+            </div>
+          </div>
+
+          <div id="onboarding-finish" class="onboarding-step hidden">
+            <div class="onboarding-icon">🌍</div>
+            <h2>Klaar voor de start!</h2>
+            <p>We hebben op basis van jouw keuzes alvast wat makkelijke planten klaargezet in je collectie.</p>
+            <button class="btn-primary" id="btn-onboarding-finish" style="width: 100%;">Bekijk mijn tuin</button>
+          </div>
+        </div>
+      </section>
+      
+
+      <!-- DETAILS VIEW -->
+      <section id="view-detail" class="view hidden">
+        <div class="detail-page-header">
+           <button id="btn-detail-back" class="btn-back">← Overzicht</button>
+           <button id="btn-detail-edit" class="btn-edit-detail">✏️ Bewerk</button>
+        </div>
+        <div id="detail-page-body" class="detail-page-body">
+           <!-- Dynamisch via JS -->
+        </div>
+      </section>
+      
+      
+    </main>
+  </div>
+
+  <!-- LIGHTBOX MODAL -->
+  <div id="lightbox" class="lightbox hidden">
+    <button id="lightbox-close" class="lightbox-btn lightbox-close" aria-label="Sluit foto">&times;</button>
+    <button id="lightbox-prev" class="lightbox-btn lightbox-prev" aria-label="Vorige foto">&#10094;</button>
+    <img id="lightbox-img" class="lightbox-img" src="" alt="Vergrote foto" loading="lazy">
+    <button id="lightbox-next" class="lightbox-btn lightbox-next" aria-label="Volgende foto">&#10095;</button>
+  </div>
+
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- WISHLIST DETAIL MODAL -->
+  <div id="wishlist-detail-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 450px;">
+      <div class="modal-header">
+        <h3>Product Details</h3>
+        <button id="btn-close-wish-modal" class="modal-close-btn" aria-label="Sluit venster">&times;</button>
+      </div>
+      <div class="modal-body wishlist-modal-body" style="padding: 20px 24px 24px 24px !important; display: flex; flex-direction: column; gap: 16px;">
+        
+        <div class="form-row" style="display: flex; gap: 12px; align-items: flex-end;">
+          <div class="form-group" style="flex: 2; margin-bottom: 0;">
+            <label>Naam *</label>
+            <input type="text" id="edit-wish-name" placeholder="Item naam..." class="compact-input">
+          </div>
+          <div class="form-group" style="flex: 1.2; margin-bottom: 0;">
+            <label>Type</label>
+            <select id="edit-wish-type" class="compact-input">
+              <option value="seed">🌱 Zaad</option>
+              <option value="item">📦 Spullen</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Link (webshop of info)</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="edit-wish-link" placeholder="https://..." style="flex: 1;" class="compact-input">
+            <a id="btn-visit-link" href="#" target="_blank" class="btn-secondary" style="padding: 8px 16px; font-size: 13px; text-decoration: none; display: flex; align-items: center; justify-content: center; min-width: 60px;">Open</a>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Afbeelding (plakken, upload of link)</label>
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <input type="text" id="edit-wish-img-url" placeholder="Plak URL..." style="flex: 1;" class="compact-input">
+            <label for="edit-wish-img-file" class="btn-secondary" style="cursor: pointer; padding: 8px 16px; display: flex; align-items: center; justify-content: center;">📷</label>
+            <input type="file" id="edit-wish-img-file" accept="image/*" style="display: none;">
+          </div>
+        </div>
+
+        <div class="form-photo-preview" style="height: 180px; width: 100%; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); display: flex; align-items: center; justify-content: center; overflow: hidden; margin-top: 5px;">
+           <img id="edit-wish-img-preview" src="" style="width: 100%; height: 100%; object-fit: contain; display: none;">
+           <span id="wish-img-placeholder" style="color: var(--text-muted); opacity: 0.5; font-size: 13px;">Preview</span>
+        </div>
+
+        <div class="form-group" style="margin-top: 10px;">
+          <label>Notities</label>
+          <textarea id="edit-wish-note" rows="3" placeholder="Bijv. Maat, winkel, merk..." style="width: 100%; padding: 12px; font-size: 14px;"></textarea>
+        </div>
+
+        <div class="modal-footer-btns" style="display: flex; justify-content: flex-start; margin-top: 24px; align-items: center; padding-top: 20px; border-top: 1px solid var(--border-color);">
+            <button id="btn-wish-delete" class="btn-secondary" style="color: #E53E3E; margin-right: 12px; padding: 10px 18px; display: flex; align-items: center; gap: 8px; font-weight: 700;">
+               <span style="font-size: 14px;">🗑️</span> Verwijder
+            </button>
+            <button id="btn-wish-save" class="btn-primary" style="flex: 1; padding: 12px 28px; font-weight: 700; border-radius: 12px;">Opslaan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI ADVIES MODAL -->
+  <div id="ai-advies-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 id="ai-advies-title">Tuin Advies ⚡</h3>
+        <button onclick="document.getElementById('ai-advies-modal').classList.add('hidden')" class="modal-close-btn" aria-label="Sluit advies">&times;</button>
+      </div>
+      <div class="modal-body" style="padding-top: 12px; padding-bottom: 12px; font-size: 14px; line-height: 1.5; color: var(--text-color); white-space: pre-wrap;" id="ai-advies-content">
+      </div>
+    </div>
+  </div>
+
+  <!-- PLANNER MONTH POPUP -->
+  <div id="planner-month-modal" class="modal-overlay hidden">
+    <div class="planner-modal-content">
+      <div class="planner-modal-header">
+        <span id="planner-month-header-icon" class="planner-header-icon">☀️</span>
+        <div class="planner-header-text">
+          <h2 id="planner-month-title">Maand</h2>
+          <p id="planner-month-subtitle">Sfeertekst...</p>
+        </div>
+        <button onclick="closePlannerModal()" class="planner-modal-close">×</button>
+      </div>
+
+      <div class="planner-modal-body">
+        <section class="planner-section">
+          <div class="planner-section-header">
+            <h3>Te zaaien deze maand</h3>
+            <span id="planner-seeds-count"></span>
+          </div>
+          <div id="planner-seeds-list" class="planner-seeds-list"></div>
+        </section>
+
+        <div class="planner-info-cards">
+          <div class="planner-info-card">
+            <div class="planner-card-content">
+              <h4>Focus van deze maand:</h4>
+              <p id="planner-focus-text"></p>
+            </div>
+            <span id="planner-focus-icon" class="planner-card-icon">☀️</span>
+          </div>
+
+          <div class="planner-info-card alert">
+            <div class="planner-card-content">
+              <h4>Let op:</h4>
+              <p id="planner-alert-text"></p>
+            </div>
+            <span class="planner-card-icon">⚠️</span>
+          </div>
+
+          <div class="planner-info-card tip">
+            <div class="planner-card-content">
+              <h4>Handige tip:</h4>
+              <p id="planner-tip-text"></p>
+            </div>
+            <span class="planner-card-icon">💡</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="planner-modal-footer">
+        <button class="planner-btn-primary" onclick="window.viewAllSeedsFromPlanner()">Bekijk in Zaden</button>
+        <button class="planner-btn-secondary" onclick="closePlannerModal()">Sluiten</button>
+      </div>
+    </div>
+  
+
+
+
+
+  <!-- INFO & SUPPORT MODAL -->
+  <div id="info-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="info-modal-title" class="modal-title">Info & Support</h2>
+        <button onclick="closeInfoModal()" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        
+        <!-- View: Profile Edit -->
+        <div id="info-view-profile" class="info-view hidden">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 24px;">
+              <img class="profile-avatar" src="assets/default-avatar.png" />
+              <p class="subtle" style="margin-bottom: 0;">Pas je tuinprofiel aan voor een optimale ervaring.</p>
+            </div>
+            
+            <div class="form-group-compact">
+              <label>Jouw Naam</label>
+              <input type="text" id="profile-input-name" placeholder="Hoe mogen we je noemen?">
+            </div>
+
+            <div class="form-group-compact">
+              <label>Klimaatzone</label>
+              <select id="profile-input-climate">
+                <option value="Nederland (Zeeklimaat)">Nederland (Zeeklimaat)</option>
+                <option value="België (Zeeklimaat)">België (Zeeklimaat)</option>
+                <option value="Zuid-Europa (Warm)">Zuid-Europa (Warm)</option>
+                <option value="Noord-Europa (Koud)">Noord-Europa (Koud)</option>
+                <option value="Anders">Anders</option>
+              </select>
+            </div>
+
+            <div class="form-group-compact">
+              <label>Type Tuin</label>
+              <select id="profile-input-tuin">
+                <option value="Achtertuin">Achtertuin</option>
+                <option value="Balkon">Balkon</option>
+                <option value="Volkstuin">Volkstuin</option>
+                <option value="Geen">Geen (potten)</option>
+              </select>
+            </div>
+
+            <div class="form-group-compact">
+              <label>Ervaring</label>
+              <select id="profile-input-level">
+                <option value="Beginner">Beginner</option>
+                <option value="Gemiddeld">Gemiddeld</option>
+                <option value="Expert">Expert</option>
+              </select>
+            </div>
+
+            <div class="form-group-compact">
+              <label>Eenheden & Metingen</label>
+              <select id="profile-input-units">
+                <option value="Metric">Metric (cm, °C)</option>
+                <option value="Imperial">Imperial (inch, °F)</option>
+              </select>
+            </div>
+
+            <button class="btn-primary" onclick="saveUserProfile()" style="width: 100%; margin-top: 24px;">Wijzigingen opslaan</button>
+          </div>
+        </div>
+
+        <!-- View: Data & Storage -->
+        <div id="info-view-data" class="info-view hidden">
+          <div class="info-block" style="padding: 0;">
+            <p class="subtle" style="margin-bottom: 20px;">Beheer je gegevens eenvoudig en veilig. Alles blijft op dit apparaat.</p>
+            
+            <div class="settings-card">
+              <div class="card-row">
+                <div class="card-info">
+                  <strong>Backup maken</strong>
+                  <p>Sla al je planten en instellingen op.</p>
+                </div>
+                <button class="btn-secondary" onclick="exportData()">Backup</button>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="card-row">
+                <div class="card-info">
+                  <strong>Herstellen & Import</strong>
+                  <p>Laad een eerdere backup of importeer data.</p>
+                </div>
+                <button class="btn-secondary" onclick="importData()">Import</button>
+              </div>
+            </div>
+
+            <div class="info-box" style="background: rgba(var(--primary-rgb), 0.05); padding: 12px; border-radius: 12px; font-size: 12px; margin: 20px 0; border: 1px solid rgba(var(--primary-rgb), 0.1); color: var(--primary-color);">
+              🔒 Jouw data verlaat dit apparaat nooit. KweekKompas verstuurt niets naar externe servers.
+            </div>
+
+            <div class="danger-zone">
+              <h4>⚠️ Terug naar fabrieksinstellingen</h4>
+              <p>Dit verwijdert permanent alle planten, foto's en instellingen. Dit kan niet ongedaan worden.</p>
+              <button class="btn-danger-subtle" onclick="resetApp()">
+                Alles verwijderen
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- View: About -->
+        <div id="info-view-about" class="info-view hidden">
+          <div class="info-block">
+            <h3 class="info-title">🌱 Over KweekKompas</h3>
+            <p><strong>KweekKompas is jouw persoonlijke moestuin assistent.</strong></p>
+            <p>Van zaaien tot oogsten: je ziet in één oogopslag wat je moet doen en wanneer.</p>
+            <p>Rustig, overzichtelijk en gemaakt om je echt te helpen groeien.</p>
+            <p class="subtle" style="margin-top: 20px;">Gemaakt met passie voor groen. Versie 1.2</p>
+          </div>
+        </div>
+
+        <!-- View: FAQ -->
+        <div id="info-view-faq" class="info-view hidden">
+          <div class="info-block" style="padding: 0;">
+            <h3 style="margin-bottom: 20px;">❓ Veelgestelde vragen</h3>
+            <div class="faq-item" onclick="toggleFAQ(this)">
+              <div class="faq-question">
+                <strong>Hoe werkt de app?</strong>
+                <span class="faq-chevron">❯</span>
+              </div>
+              <p class="faq-answer">Voeg je zaden toe, bekijk wat je wanneer kunt zaaien en volg je taken via de kalender en “Nu doen”.</p>
+            </div>
+            <div class="faq-item" onclick="toggleFAQ(this)">
+              <div class="faq-question">
+                <strong>Worden mijn gegevens opgeslagen?</strong>
+                <span class="faq-chevron">❯</span>
+              </div>
+              <p class="faq-answer">Ja, alles wordt 100% lokaal op jouw eigen apparaat opgeslagen. Wij hebben geen toegang tot je data.</p>
+            </div>
+            <div class="faq-item" onclick="toggleFAQ(this)">
+              <div class="faq-question">
+                <strong>Kan ik mijn data exporteren?</strong>
+                <span class="faq-chevron">❯</span>
+              </div>
+              <p class="faq-answer">Ja, via Instellingen > Data & Opslag kun je op elk moment een backup downloaden als .json bestand.</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="info-view-privacy" class="info-view hidden">
+          <div class="info-block">
+            <h3>🔒 Privacy & Veiligheid</h3>
+            <p><strong>Je gegevens blijven op jouw apparaat.</strong></p>
+            <p>KweekKompas verstuurt niets naar externe servers.</p>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button onclick="closeInfoModal()" class="btn-primary">Begrepen</button>
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- Hidden input for data import -->
+  <input type="file" id="import-file" accept="*/*" style="display:none">
+
+  <!-- NOTE PARSER MODAL -->
+  <div id="note-parser-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3>Zaden herkennen ✨</h3>
+        <button onclick="document.getElementById('note-parser-modal').classList.add('hidden')" class="modal-close-btn" aria-label="Sluit">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 12px;">Plak hier je notities of een lijst met planten. We proberen de zaden te herkennen.</p>
+        <textarea id="note-parser-input" rows="8" placeholder="Bijv: Ik heb nog zaden van de cherry tomaat, wat radijsjes en ook nog wat courgette liggen..." style="width: 100%; margin-bottom: 16px;"></textarea>
+        <button id="btn-run-parser" class="btn-primary" style="margin-bottom: 20px;">Scan Notities</button>
+        
+        <div id="parser-results-section" class="hidden">
+          <h4 style="font-size: 15px; margin-bottom: 10px;">Herkende zaden:</h4>
+          <div id="parser-results-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 4px;">
+            <!-- Dynamisch -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app-v132.js" charset="utf-8"></script>
+
+</body>
+</html>
+

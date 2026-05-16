@@ -1,0 +1,4 @@
+_archive/
+*.zip
+.DS_Store
+scratch/

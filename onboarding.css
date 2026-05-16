@@ -1,0 +1,74 @@
+/* ONBOARDING STYLES */
+#view-onboarding {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-color);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.onboarding-container {
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+  animation: fadeIn 0.4s ease-out;
+}
+
+.onboarding-step {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.onboarding-icon {
+  font-size: 64px;
+  margin-bottom: 8px;
+}
+
+.step-indicator {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--primary-color);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.onboarding-options {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.onboarding-opt {
+  background: var(--surface-block);
+  border: 1px solid var(--border-color);
+  padding: 16px;
+  border-radius: var(--radius-main);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-main);
+  transition: all 0.2s;
+}
+
+.onboarding-opt:hover {
+  border-color: var(--primary-color);
+  background: var(--surface-color);
+  transform: translateY(-2px);
+}
+
+.onboarding-opt span {
+  font-size: 24px;
+}
+
+.onboarding-skip {
+  opacity: 0.6;
+  font-size: 13px;
+  cursor: pointer;
+}

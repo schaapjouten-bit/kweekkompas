@@ -1,0 +1,352 @@
+/* --- KweekKompas Calm & Minimal Calendar v4.4 --- */
+
+.calendar-container {
+  max-width: 650px;
+  margin: 0 auto;
+  padding: 20px;
+  background: var(--surface-color);
+  border-radius: 20px;
+}
+
+/* 1. HEADER & NAVIGATION */
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+#cal-month-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: -0.01em;
+  flex: 1;
+  text-align: center;
+}
+
+.cal-nav-btn {
+  background: var(--bg-alt);
+  border: 1px solid var(--border-color);
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cal-nav-btn:hover {
+  background: var(--surface-color);
+  border-color: var(--text-muted);
+  color: var(--text-main);
+}
+
+/* 2. GRID LAYOUT */
+.calendar-grid-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.calendar-grid-header span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 12px;
+  animation: calFadeIn 0.4s ease-out;
+}
+
+@keyframes calFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 3. DAY CELLS */
+.calendar-day {
+  aspect-ratio: 1/1.1;
+  background: var(--bg-alt); 
+  border-radius: 12px;
+  border: 1px solid transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 8px;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.calendar-day:hover {
+  background: var(--surface-block);
+  border-color: var(--border-color);
+}
+
+.day-num {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+
+.calendar-day.today {
+  background: #6B9080 !important;
+  border: none !important;
+}
+
+.calendar-day.today .day-num {
+  color: white !important;
+}
+
+.calendar-day.selected {
+  box-shadow: 0 0 0 2px var(--primary-color) !important;
+  background: var(--surface-block) !important;
+}
+
+.calendar-day.other-month {
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+/* 4. INDICATORS */
+.calendar-day.has-reminders {
+  background: rgba(107, 144, 128, 0.08);
+}
+
+.day-reminder-line {
+  font-size: 10px;
+  color: var(--primary-color);
+  font-weight: 600;
+  margin-top: 4px;
+  width: 100%;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+}
+
+.day-more-indicator {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-top: 1px;
+}
+
+.cal-pills-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 2px 6px;
+  overflow: hidden;
+}
+
+.cal-reminder-pill {
+  font-size: 9px;
+  font-weight: 600;
+  color: #2D5A27; 
+  background: rgba(107, 144, 128, 0.15); 
+  padding: 2px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cal-pill-more {
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--primary-color);
+  text-align: center;
+  margin-top: 1px;
+}
+
+/* 5. DAY PANEL CARD (REFINED) */
+.day-details-panel {
+  margin-top: 40px; 
+  animation: slideUpIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.day-panel-card {
+  background: var(--surface-block);
+  border-radius: 16px; 
+  padding: 32px; 
+  border: 1px solid var(--border-color);
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.1); 
+}
+
+.day-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+#selected-date-label {
+  font-size: 22px; 
+  font-weight: 800;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  letter-spacing: -0.02em;
+}
+
+.close-panel-btn {
+  background: var(--bg-alt);
+  border: 1px solid var(--border-color);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+/* 6. REMINDER ROWS */
+.reminder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.reminder-row {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--bg-alt);
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.02);
+  transition: all 0.2s;
+}
+
+.reminder-row:hover {
+  border-color: var(--primary-color);
+}
+
+.reminder-row.done {
+  opacity: 0.4;
+}
+
+.reminder-text-col {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+/* DELETE BUTTON (Small Square Icon) */
+.btn-delete-reminder {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.btn-delete-reminder:hover {
+  background: rgba(229, 62, 62, 0.08);
+  color: #E53E3E;
+  border-color: #E53E3E;
+}
+
+/* 7. META/CONTEXT LINE */
+.day-context-line {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  padding-left: 4px;
+}
+
+#btn-change-day {
+  color: var(--primary-color);
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 13px;
+  margin-left: 6px;
+}
+
+#btn-change-day:hover {
+  text-decoration: underline;
+}
+
+/* 8. INPUT AREA (CONNECTED ROW) */
+.day-input-area {
+  margin-top: 32px;
+}
+
+.input-wrapper {
+  display: flex;
+  background: var(--bg-alt);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  padding: 4px;
+  transition: all 0.2s;
+  height: 48px;
+  align-items: center;
+}
+
+.input-wrapper input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 0 16px;
+  font-size: 15px;
+  color: var(--text-main);
+  outline: none;
+  height: 100%;
+}
+
+.btn-add-inline {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 0 20px;
+  height: 40px; 
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+@keyframes slideUpIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+[data-theme="dark"] .calendar-day { background: #1a1b1f; }
+[data-theme="dark"] .has-reminders { background: rgba(56, 142, 60, 0.12); }
+[data-theme="dark"] .day-reminder-line { color: #a7f3d0; }
+[data-theme="dark"] .reminder-row { background: rgba(255, 255, 255, 0.03); }
+[data-theme="dark"] .input-wrapper { background: rgba(255, 255, 255, 0.03); }
