@@ -4447,108 +4447,89 @@ Maand: ${currentMonth}
 
         output.innerHTML = '<div class="ai-loading-text">🪄 De assistent stelt een plan voor...</div>';
         output.style.display = 'block';
-        output.dataset.active = "true"; // Voorkom dat renderHome het verbergt tijdens dit proces
-
+        output.dataset.active = "true";
 
         try {
-            const res = await vraagAI('garden_assistant', userInput, currentMonth);
-            output.innerHTML = '';
-
-            // Basic cleanup of markdown-style artifacts if AI ignores rules
-            const sanitized = res.replace(/[\*#_]/g, '');
-
-            // Split response into lines and filter empty ones
-            const lines = sanitized.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-
-            const commonPlants = [
-                'tomaat', 'prei', 'spinazie', 'paprika', 'courgette', 'komkommer', 'sla', 'wortel', 'ui', 'knoflook', 'aardappel',
-                'boerenkool', 'radijs', 'pompoen', 'aubergine', 'peper', 'meloen', 'basilicum', 'lavendel', 'aardbei', 'framboos',
-                'bes', 'zonnebloem', 'papaver', 'biet', 'snijboon', 'sperzieboon', 'erwt', 'peul', 'maïs', 'kapucijner', 'pastinaak',
-                'schorseneer', 'andijvie', 'veldsla', 'rucola', 'peterselie', 'bieslook', 'rozemarijn', 'tijm', 'munt', 'salie',
-                'dille', 'koriander', 'venkel', 'asperge', 'rabarber', 'artisjok', 'olijf', 'olijfboom', 'kers', 'appel', 'peer'
-            ];
-
-            const allDetectedPlants = [];
-
-            lines.forEach((line, idx) => {
-                const card = document.createElement('div');
-                card.className = 'ai-advies-card';
-                card.style.fontSize = '13px';
-                card.innerText = line;
-
-                const lowerLine = line.toLowerCase();
-                
-                // 1. Strict check against commonPlants list only
-                commonPlants.forEach(plant => {
-                    // Use a word boundary check to prevent matching partial words
-                    const regex = new RegExp(`\\b${plant}\\w*\\b`, 'i'); 
-                    if (regex.test(line) && !allDetectedPlants.includes(plant)) {
-                        allDetectedPlants.push(plant);
+            const activePlants = typeof seeds !== 'undefined' ? seeds.filter(s => s.status === 'Voorraad' || s.status === 'Gezaaid').map(s => s.naam) : [];
+            const response = await fetch('/api/tuinassistent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    question: userInput,
+                    context: {
+                        month: currentMonth,
+                        plants: activePlants
                     }
-                });
-
-                output.appendChild(card);
+                })
             });
 
-            // 8.1c: Suggesties Sectie (Echte AI output)
-            if (allDetectedPlants.length > 0) {
-                const suggestionContainer = document.createElement('div');
-                suggestionContainer.style.marginTop = '16px';
-                suggestionContainer.style.padding = '12px 16px';
-                suggestionContainer.style.borderTop = '1px solid var(--border-color)';
-                suggestionContainer.style.background = 'rgba(0,0,0,0.02)';
-                suggestionContainer.style.borderRadius = '0 0 var(--radius-content) var(--radius-content)';
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `Backend fout (${response.status})`);
+            }
 
-                // Max 5 suggesties, netjes gekapitaliseerd
-                const uniqueSuggestions = [...new Set(allDetectedPlants)]
-                    .map(p => p.charAt(0).toUpperCase() + p.slice(1));
+            const data = await response.json();
+            output.innerHTML = '';
 
-                const renderSuggestions = (all, expanded) => {
-                    const visible = expanded ? all : all.slice(0, 3);
-                    const hasMore = all.length > 3;
+            // Handle standard fallback for bad parsing
+            if (!data || !data.answer) {
+                throw new Error("De tuinassistent gaf geen bruikbaar antwoord. Probeer het nog eens.");
+            }
 
-                    suggestionContainer.innerHTML = `
-                        <div style="font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; margin-top: 5px;">Suggesties vanuit het advies</div>
-                        <div style="display: flex; flex-direction: column; gap: 6px;">
-                            ${visible.map(plant => `
+            // Display Answer
+            const answerCard = document.createElement('div');
+            answerCard.className = 'ai-advies-card';
+            answerCard.style.fontSize = '13px';
+            answerCard.innerText = data.answer;
+            output.appendChild(answerCard);
+
+            // Display Actions
+            if (data.actions && Array.isArray(data.actions) && data.actions.length > 0) {
+                const actionsContainer = document.createElement('div');
+                actionsContainer.style.marginTop = '16px';
+                actionsContainer.style.padding = '12px 16px';
+                actionsContainer.style.borderTop = '1px solid var(--border-color)';
+                actionsContainer.style.background = 'rgba(0,0,0,0.02)';
+                actionsContainer.style.borderRadius = '0 0 var(--radius-content) var(--radius-content)';
+                
+                actionsContainer.innerHTML = `
+                    <div style="font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; margin-top: 5px;">Voorgestelde Acties</div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        ${data.actions.slice(0, 3).map(action => {
+                            let icon = '⚡';
+                            if (action.type === 'sow') icon = '🌱';
+                            else if (action.type === 'harvest') icon = '🥗';
+                            else if (action.type === 'care') icon = '💧';
+                            else if (action.type === 'none') icon = '💡';
+                            
+                            const escapedPlant = action.plantName ? action.plantName.replace(/'/g, "\\'") : '';
+                            const plantArg = action.plantName ? "'" + escapedPlant + "'" : 'null';
+                            
+                            return `
                                 <div class="ai-suggestion-row">
-                                    <span style="font-size: 14px; font-weight: 600;">${plant}</span>
+                                    <span style="font-size: 14px; font-weight: 600;">${action.label}</span>
                                     <div class="ai-actions-group">
-                                        <button class="btn-ai-action ghost" onclick="window._addSuggestionToWishlist('${plant}', this)" title="Op wishlist zetten">
+                                        ${action.plantName ? `<button class="btn-ai-action ghost" onclick="window._addSuggestionToWishlist(${plantArg}, this)" title="Op wishlist">
                                             <span class="icon">+</span> Wishlist
                                         </button>
-                                        <button class="btn-ai-action secondary" onclick="window._addSuggestionToTodo('${plant}', this)" title="Toevoegen aan acties">
-                                            <span class="icon">⚡</span> Nu doen
-                                        </button>
-                                        <button class="btn-ai-action primary" onclick="window._addSuggestionToSeeds('${plant}', this)" title="Direct zaaien">
-                                            <span class="icon">🌱</span> Zaaien
-                                        </button>
+                                        <button class="btn-ai-action secondary" onclick="window._addSuggestionToTodo(${plantArg}, this)" title="Nu doen">
+                                            <span class="icon">${icon}</span> Actie
+                                        </button>` : ''}
                                     </div>
                                 </div>
-                            `).join('')}
-                        </div>
-                        ${hasMore ? `
-                            <button class="btn-footer-toggle ai-toggle-more" style="width: 100%; margin-top: 10px; border-style: dashed;">
-                                ${expanded ? '▴ Minder weergeven' : `▾ Meer weergeven (${all.length - 3} extra)`}
-                            </button>
-                        ` : ''}
-                    `;
-
-                    const toggleBtn = suggestionContainer.querySelector('.ai-toggle-more');
-                    if (toggleBtn) {
-                        toggleBtn.onclick = () => renderSuggestions(all, !expanded);
-                    }
-                };
-
-                renderSuggestions(uniqueSuggestions, false);
-                output.appendChild(suggestionContainer);
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+                output.appendChild(actionsContainer);
             }
+
         } catch (err) {
             console.error("Assistant Error:", err);
             output.innerHTML = `
                 <div class="ai-error-state" style="padding: 16px; border-radius: 8px; background: rgba(229, 62, 62, 0.1); border: 1px solid rgba(229, 62, 62, 0.2); color: #FEB2B2; font-size: 13px;">
                     <span style="display:block; margin-bottom: 4px;">⚠️ <strong>Oeps, de assistent is even in de war.</strong></span>
-                    <span style="font-size: 11px; opacity: 0.8;">Dit kan komen door de verbinding of een limiet bij Google. Probeer het over een minuutje nog eens!</span>
+                    <span style="font-size: 11px; opacity: 0.8;">Dit kan komen door de verbinding of een limiet. Probeer het later nog eens!</span>
                     <div style="font-size: 10px; margin-top: 8px; font-family: monospace; opacity: 0.5;">Fout: ${err.message || 'Onbekend'}</div>
                 </div>
             `;

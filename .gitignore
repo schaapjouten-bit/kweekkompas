@@ -2,3 +2,6 @@ _archive/
 *.zip
 .DS_Store
 scratch/
+
+# Local Netlify folder
+.netlify
