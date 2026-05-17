@@ -1,3 +1,7 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 :root {
   --radius-main: 12px;
   --radius-chip: 16px;
@@ -2046,6 +2050,8 @@ input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--pri
   cursor: pointer;
   transition: all 0.2s;
 }
+
+
 
 .btn-suggest:hover {
   background: var(--surface-block);
@@ -5603,3 +5609,35 @@ input:checked + .slider:before {
   .wish-item-card h3 { font-size: 15px !important; }
 
 } /* EINDE MOBILE MEDIA QUERY */
+
+/* ======================================================== */
+/* LAYOUT & UX IMPROVEMENTS FOR SEED FORM (KweekKompas-CSS-FORM-01) */
+/* ======================================================== */
+
+/* Teeltinformatie textarea size adjustment to open larger for readable AI proposals */
+#beschrijving {
+  min-height: 250px !important;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Align seed form sections and avoid any right-side container overflow */
+.seed-form {
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 12px;
+}
+
+/* Align and clean up wide dropzone upload zone width */
+.dropzone-wide {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.photo-hub, .unified-image-gallery, .month-picker, .form-row, .form-group, .form-section {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}

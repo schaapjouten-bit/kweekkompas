@@ -1175,9 +1175,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const triggerAutoFill = async (force = false) => {
-        const naamRaw = inputNaam.value.trim();
+        const inputNaam = document.getElementById('naam');
+        const naamRaw = inputNaam ? inputNaam.value.trim() : '';
+        
         if (!naamRaw) {
             showToast("Vul eerst een naam in om info aan te vullen! ✍️");
+            if (inputNaam) inputNaam.focus();
             return;
         }
 
@@ -1199,190 +1202,145 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         try {
-            const query = naamRaw.toLowerCase();
-            let foundMatch = null;
-            let matchKey = '';
-            let source = '';
+            const existingFields = {
+                type: document.getElementById('type')?.value || "",
+                standplaats: document.getElementById('standplaats')?.value || "",
+                waterbehoefte: document.getElementById('water')?.value || "",
+                notes: document.getElementById('beschrijving')?.value || ""
+            };
 
-            // 1. Try local mockData first (fast) - Exact or Start match only to prevent "Sla" matching "Augurk"
-            for (let key in mockData) {
-                const k = key.toLowerCase();
-                if (query === k || query.startsWith(k + " ") || k.startsWith(query)) {
-                    foundMatch = { ...mockData[key] };
-                    matchKey = key;
-                    source = 'Eigen data';
-                    break;
+            const response = await fetch('/api/seed-info', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: naamRaw, existingFields })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                console.error(`[DEBUG] Seed-info API Fail: ${response.status}`, errData);
+                throw new Error(errData.error || `API Fout (${response.status})`);
+            }
+            
+            const data = await response.json();
+            let fieldsUpdated = 0;
+
+            // Bestaand starter-icoon / foto mapping op basis van plantnaam
+            const lowerName = naamRaw.toLowerCase();
+            let matchedStarterUrl = null;
+            if (lowerName.includes('tomaat')) matchedStarterUrl = 'assets/starters/tomaat.png';
+            else if (lowerName.includes('basilicum')) matchedStarterUrl = 'assets/starters/basilicum.png';
+            else if (lowerName.includes('courgette')) matchedStarterUrl = 'assets/starters/courgette.png';
+            else if (lowerName.includes('radijs')) matchedStarterUrl = 'assets/starters/radijs.png';
+            else if (lowerName.includes('sla')) matchedStarterUrl = 'assets/starters/sla.png';
+            else if (lowerName.includes('snijbiet')) matchedStarterUrl = 'assets/starters/snijbiet.png';
+
+            if (matchedStarterUrl) {
+                if (!pendingImages.some(img => img.url === matchedStarterUrl)) {
+                    pendingImages.unshift({ url: matchedStarterUrl, id: 'starter-' + Date.now(), caption: 'Starter Foto' });
                 }
+                if (force || !inputNaam.dataset.featuredUrl) {
+                    inputNaam.dataset.featuredUrl = matchedStarterUrl;
+                    fieldsUpdated++;
+                }
+                renderUnifiedGallery();
             }
 
-            // 2. Try localStorage cache (for previous AI results)
-            const cacheKey = 'ai_cache_' + naamRaw.toLowerCase().trim();
-            if (!foundMatch && !force) {
-                const cached = localStorage.getItem(cacheKey);
-                if (cached) {
-                    try {
-                        foundMatch = JSON.parse(cached);
-                        source = 'Gecachte data';
-                        matchKey = naamRaw;
-                    } catch(e) { 
-                        console.warn("Corrupt AI cache rejected");
-                        localStorage.removeItem(cacheKey);
-                    }
-                }
-            }
-
-            // 3. AI Fallback if no match (either mock or cache) or forced refresh
-            if (!foundMatch || force) {
-                if (!foundMatch) matchKey = naamRaw;
-
-                const monthsNames = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"];
-                const currentMonthNamesNames = monthsNames[new Date().getMonth()];
-
-                try {
-                    const aiRes = await vraagAI('fill_seed_info', naamRaw, currentMonthNamesNames);
-                    const jsonStr = aiRes.match(/\{[\s\S]*\}/)?.[0];
-                    if (jsonStr) {
-                        const aiData = JSON.parse(jsonStr);
-                        // Merge with local if it existed but we forced AI
-                        foundMatch = { ...(foundMatch || {}), ...aiData };
-                        source = 'AI-voorstel – controleer even';
-                        // Save to cache for next time
-                        localStorage.setItem(cacheKey, JSON.stringify(foundMatch));
-                    }
-                } catch (aiErr) {
-                    console.error("AI Fallback failed:", aiErr);
-                    if (foundMatch && !source) source = 'Eigen data (AI fout)';
-                }
-            }
-
-            if (foundMatch) {
-                clearAiIndicators();
-                let fieldsUpdated = 0;
-
-                // Help mappings
-                const standplaatsMap = { 'volle zon': 'Zon', 'veel zon': 'Zon', 'zonnig': 'Zon', 'zon': 'Zon', 'half': 'Halfschaduw', 'deels': 'Halfschaduw', 'schaduw': 'Schaduw', 'kas': 'Kas' };
-                const waterMap = { 'weinig': 'Laag', 'laag': 'Laag', 'gemiddeld': 'Gemiddeld', 'normaal': 'Gemiddeld', 'veel': 'Hoog', 'hoog': 'Hoog' };
-                const typeMap = { 'groente': 'Groente', 'fruit': 'Fruit', 'kruid': 'Kruid', 'bloem': 'Bloem', 'bol': 'Bloembol', 'boom': 'Boom', 'struik': 'Struik', 'sier': 'Sierplant' };
-
-                const mapVal = (val, mapping) => {
-                    if (!val) return null;
-                    const lower = val.toString().toLowerCase();
-                    for (const [key, target] of Object.entries(mapping)) {
-                        if (lower.includes(key)) return target;
-                    }
-                    return null;
-                };
-
-                // 1. Type (Dropdown)
-                if (inputType && (force || inputType.dataset.userChanged !== 'true')) {
-                    const matched = mapVal(foundMatch.type, typeMap);
-                    if (matched && (force || inputType.value !== matched)) {
-                        inputType.value = matched;
-                        addAiIndicatorToLabel('type');
-                        fieldsUpdated++;
-                    }
-                }
-
-                // 2. Standplaats (Dropdown)
-                if (inputStandplaats && (force || inputStandplaats.dataset.userChanged !== 'true')) {
-                    const matched = mapVal(foundMatch.standplaats, standplaatsMap);
-                    if (matched && (force || inputStandplaats.value !== matched)) {
-                        inputStandplaats.value = matched;
-                        addAiIndicatorToLabel('standplaats');
-                        fieldsUpdated++;
-                    }
-                }
-
-                // 3. Waterbehoefte (Dropdown)
-                if (inputWater && (force || inputWater.dataset.userChanged !== 'true')) {
-                    const matched = mapVal(foundMatch.waterbehoefte || foundMatch.water, waterMap);
-                    if (matched && (force || inputWater.value !== matched)) {
-                        inputWater.value = matched;
-                        addAiIndicatorToLabel('water');
-                        fieldsUpdated++;
-                    }
-                }
-
-                // 4. Teeltinformatie (Textarea)
-                if (inputBeschrijving && (force || (!inputBeschrijving.value.trim() && inputBeschrijving.dataset.userChanged !== 'true'))) {
-                    // Be more flexible with keys returned by AI - many fallbacks for different AI models
-                    let rawTips = foundMatch.teeltinformatie || foundMatch.teeltinfo || foundMatch.teelt || 
-                                  foundMatch.tips || foundMatch.tip || foundMatch.info || 
-                                  foundMatch.omschrijving || foundMatch.beschrijving || 
-                                  foundMatch.cultivation || foundMatch.planting_info || '';
-                    if (rawTips) {
-                        // Cleanup: remove common labels and excessive whitespace
-                        let cleanTips = rawTips.toString()
-                            .replace(/^(Teeltinformatie|Teeltinfo|Tip|Advies|Omschrijving|Beschrijving):\s*/i, '')
-                            .trim();
-                        
-                        // If it's very long, still truncate to a reasonable 2-3 sentences max to keep it clean
-                        const sentences = cleanTips.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 2);
-                        if (sentences.length > 3) {
-                            cleanTips = sentences.slice(0, 3).join('. ') + '.';
-                        }
-                        
-                        if (force || inputBeschrijving.value !== cleanTips) {
-                            inputBeschrijving.value = cleanTips;
-                            addAiIndicatorToLabel('beschrijving');
+            const safeSetVal = (id, value) => {
+                if (!value || value.toLowerCase() === 'onbekend') return;
+                const el = document.getElementById(id);
+                if (el) {
+                    const isSelect = el.tagName === 'SELECT';
+                    const shouldOverwrite = force || (!isSelect && !el.value) || (isSelect && !el.dataset.userChanged);
+                    if (shouldOverwrite) {
+                        if (isSelect) {
+                            const option = Array.from(el.options).find(o => o.value.toLowerCase() === value.toLowerCase());
+                            if (option) {
+                                el.value = option.value;
+                                addAiIndicatorToLabel(id);
+                                fieldsUpdated++;
+                            }
+                        } else {
+                            el.value = value;
+                            addAiIndicatorToLabel(id);
                             fieldsUpdated++;
                         }
                     }
                 }
+            };
 
-                // 5. Zaaitijd (Picker)
-                const currentZaai = getSelectedMonthsFromPicker('zaaitijd-picker');
-                if (foundMatch.zaaitijd && (force || !currentZaai)) {
-                    setSelectedMonthsInPicker('zaaitijd-picker', foundMatch.zaaitijd);
-                    addAiIndicatorToLabel('zaaitijd-picker');
-                    fieldsUpdated++;
-                }
+            safeSetVal('type', data.type);
+            safeSetVal('standplaats', data.standplaats);
+            safeSetVal('water', data.waterbehoefte);
 
-                // 6. Oogsttijd (Picker)
-                const currentOogst = getSelectedMonthsFromPicker('oogsttijd-picker');
-                if (foundMatch.oogsttijd && (force || !currentOogst)) {
-                    setSelectedMonthsInPicker('oogsttijd-picker', foundMatch.oogsttijd);
-                    addAiIndicatorToLabel('oogsttijd-picker');
-                    fieldsUpdated++;
-                }
-
-                // 7. Tags (Merge instead of replace)
-                if (foundMatch.tags && Array.isArray(foundMatch.tags)) {
-                    const currentTags = Array.from(document.querySelectorAll('.tag-picker-chip.active')).map(c => c.dataset.tag.toLowerCase());
-                    // Split any tags that might contain commas from the AI, then trim and flatten
-                    const newTagsParsed = foundMatch.tags.flatMap(t => t.split(',').map(s => s.trim().toLowerCase())).filter(t => t.length > 0);
-                    const mergedTags = [...new Set([...currentTags, ...newTagsParsed])];
-                    renderTagPicker(mergedTags);
-                }
-
-                setSourceStatus(source, 'success');
-
-                if (banner) {
-                    banner.classList.remove('hidden');
-                    banner.querySelector('span').textContent = `🪄 Voorstel voor "${matchKey}" toegepast.`;
-                }
-                showToast(fieldsUpdated > 0 ? "Info aangevuld! ✨" : "Bestaande velden behouden. ✨");
-            } else {
-                hideBanner();
-                setSourceStatus("Geen voorstel beschikbaar voor deze plant.", 'info');
-                // No toast for no results, just the status line is enough
+            const descEl = document.getElementById('beschrijving');
+            if (descEl && (force || !descEl.value) && data.notes) {
+                let cleanNotes = data.notes;
+                // Strip redundant "📋 Informatie" header and surrounding whitespace/newlines
+                cleanNotes = cleanNotes.replace(/^📋\s*Informatie\s*\n*/i, '');
+                cleanNotes = cleanNotes.replace(/^Informatie\s*\n*/i, '');
+                descEl.value = cleanNotes.trim();
+                addAiIndicatorToLabel('beschrijving');
+                fieldsUpdated++;
             }
+
+            const setMonths = (containerId, months) => {
+                if (!months || months.length === 0) return;
+                const container = document.getElementById(containerId);
+                if (!container) return;
+                
+                const items = container.querySelectorAll('.month-picker-item');
+                const anyChecked = Array.from(items).some(item => item.classList.contains('active'));
+                
+                if (force || !anyChecked) {
+                    const activeIndices = getActiveMonths(months);
+                    items.forEach(item => {
+                        const idx = parseInt(item.dataset.monthIndex);
+                        item.classList.toggle('active', activeIndices.has(idx));
+                    });
+                    addAiIndicatorToLabel(containerId);
+                    fieldsUpdated++;
+                }
+            };
+
+            setMonths('zaaitijd-picker', data.sow_months);
+            setMonths('oogsttijd-picker', data.harvest_months);
+
+            if (data.tags && Array.isArray(data.tags)) {
+                const availableTagNames = Array.from(document.querySelectorAll('.tag-picker-chip')).map(c => c.dataset.tag);
+                const currentTags = Array.from(document.querySelectorAll('.tag-picker-chip.active')).map(c => c.dataset.tag);
+                const validAiTags = data.tags.filter(t => availableTagNames.some(e => e.toLowerCase() === t.toLowerCase())).map(t => availableTagNames.find(e => e.toLowerCase() === t.toLowerCase()));
+                const mergedTags = [...new Set([...currentTags, ...validAiTags])];
+                if (mergedTags.length > currentTags.length || force) {
+                    renderTagPicker(mergedTags);
+                    addAiIndicatorToLabel('tag-picker');
+                    fieldsUpdated++;
+                }
+            }
+
+            if (banner) {
+                banner.classList.remove('hidden');
+                banner.querySelector('span').textContent = `🪄 AI-voorstel geladen — controleer de gegevens.`;
+            }
+            
+            setSourceStatus("AI-voorstel opgehaald", 'success');
+            showToast(fieldsUpdated > 0 ? "Info aangevuld! ✨" : "Bestaande velden behouden. ✨");
+
         } catch (err) {
             console.error("AutoFill Error:", err);
             hideBanner();
-            setSourceStatus("AI tijdelijk niet beschikbaar. Vul handmatig aan.", 'error');
-            showToast("AI tijdelijk niet beschikbaar.");
+            setSourceStatus("AI tijdelijk niet beschikbaar.", 'error');
+            showToast("AI kon dit zaad nu niet aanvullen.");
         } finally {
             if (btn) {
                 btn.disabled = false;
                 btn.classList.remove('btn-loading');
-                btn.innerHTML = force ? "🔄 Opnieuw" : "✨ Vul info aan";
+                btn.innerHTML = force ? "🔄 Opnieuw" : "✨ Vul info aan met AI";
             }
         }
     };
 
     if (btnAutoFill) {
-        btnAutoFill.innerHTML = `Vul info aan ✨`;
+        btnAutoFill.innerHTML = `✨ Vul info aan met AI`;
         btnAutoFill.onclick = () => triggerAutoFill(false);
     }
     if (btnResetAi) {
@@ -2127,9 +2085,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         editingId = seed.id;
         inputNaam.value = seed.naam;
         inputNaam.dataset.featuredUrl = seed.featuredImageUrl || '';
-        if (inputType) inputType.value = seed.type;
-        if (inputStandplaats) inputStandplaats.value = seed.standplaats;
-        if (inputWater) inputWater.value = seed.water;
+        if (inputType) {
+            inputType.value = seed.type;
+            delete inputType.dataset.userChanged;
+        }
+        if (inputStandplaats) {
+            inputStandplaats.value = seed.standplaats;
+            delete inputStandplaats.dataset.userChanged;
+        }
+        if (inputWater) {
+            inputWater.value = seed.water;
+            delete inputWater.dataset.userChanged;
+        }
         if (inputStatus) inputStatus.value = seed.status || 'Voorraad';
         const codeInput = document.getElementById('code');
         if (codeInput) codeInput.value = seed.code || '';
@@ -2305,6 +2272,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         photoSearchResults = [];
         displayedPhotoCount = 15;
         if (inputNaam) delete inputNaam.dataset.featuredUrl;
+        if (inputType) delete inputType.dataset.userChanged;
+        if (inputStandplaats) delete inputStandplaats.dataset.userChanged;
+        if (inputWater) delete inputWater.dataset.userChanged;
         
         // --- NOTE PARSER LOGIC ---
         const btnScanNotes = document.getElementById('btn-scan-notes');
@@ -4436,16 +4406,22 @@ Maand: ${currentMonth}
             'Wat kan ik nu zaaien?': 'Welke planten kan ik nu nog zaaien en waarom?'
         };
         const userInput = questionMap[vraag] || vraag || (input ? input.value.trim() : '');
-        if (!userInput) return;
+        if (!userInput) {
+            output.style.display = 'block';
+            output.innerHTML = '<div style="font-size: 13px; color: var(--text-muted); padding: 8px;">Typ eerst je tuinvraag.</div>';
+            return;
+        }
+
+        if (btn && btn.disabled) return;
 
         if (input && !questionMap[vraag]) input.value = userInput;
         if (btn) {
             btn.disabled = true;
             btn.classList.add('btn-loading');
-            btn.innerText = "Even nadenken...";
+            btn.innerText = "Even denken...";
         }
 
-        output.innerHTML = '<div class="ai-loading-text">🪄 De assistent stelt een plan voor...</div>';
+        output.innerHTML = '<div class="ai-loading-text">🪄 Tuinassistent denkt even...</div>';
         output.style.display = 'block';
         output.dataset.active = "true";
 
@@ -4473,7 +4449,7 @@ Maand: ${currentMonth}
 
             // Handle standard fallback for bad parsing
             if (!data || !data.answer) {
-                throw new Error("De tuinassistent gaf geen bruikbaar antwoord. Probeer het nog eens.");
+                throw new Error("Ongeldig of leeg antwoord.");
             }
 
             // Display Answer
@@ -4525,19 +4501,17 @@ Maand: ${currentMonth}
             }
 
         } catch (err) {
-            console.error("Assistant Error:", err);
+            console.error("Technical Assistant Error:", err);
             output.innerHTML = `
                 <div class="ai-error-state" style="padding: 16px; border-radius: 8px; background: rgba(229, 62, 62, 0.1); border: 1px solid rgba(229, 62, 62, 0.2); color: #FEB2B2; font-size: 13px;">
-                    <span style="display:block; margin-bottom: 4px;">⚠️ <strong>Oeps, de assistent is even in de war.</strong></span>
-                    <span style="font-size: 11px; opacity: 0.8;">Dit kan komen door de verbinding of een limiet. Probeer het later nog eens!</span>
-                    <div style="font-size: 10px; margin-top: 8px; font-family: monospace; opacity: 0.5;">Fout: ${err.message || 'Onbekend'}</div>
+                    Fout: ${err.message}<br><small>Check je terminal of .env instellingen.</small>
                 </div>
             `;
         } finally {
             if (btn) {
                 btn.disabled = false;
                 btn.classList.remove('btn-loading');
-                btn.textContent = "✨ Vraag Advies";
+                btn.textContent = "Vraag AI";
             }
         }
     }

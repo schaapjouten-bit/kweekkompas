@@ -67,8 +67,8 @@ exports.handler = async (event, context) => {
             }
         });
 
-        // Gebruik de stabiele v1beta API en het gemini-1.5-flash-latest model
-        const model = "gemini-1.5-flash-latest";
+        // Gebruik het stabiele gemini-2.5-flash model via de v1beta API
+        const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
         const apiVersion = "v1beta";
         console.log(`DEBUG: Calling Google API ${apiVersion} with model ${model}`);
 

@@ -34,26 +34,37 @@ const fetchJsonUrl = (urlString, options, postData) => {
 const callGemini = async (systemPrompt, userPrompt) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("GEMINI_API_KEY is missing");
-    const model = process.env.GEMINI_MODEL || "gemini-1.5-flash-latest";
     
+    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     
     const postData = JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ parts: [{ text: userPrompt }] }],
-        generationConfig: {
-            temperature: 0.2,
-            responseMimeType: "application/json"
-        }
+        contents: [{ parts: [{ text: systemPrompt + "\n\nVraag: " + userPrompt }] }]
     });
 
-    const options = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
+    const options = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    };
+
+    console.log(`[DEBUG] calling Gemini API with model: ${model}`);
     const { statusCode, data } = await fetchJsonUrl(url, options, postData);
     
-    if (statusCode !== 200) throw new Error(data.error?.message || "Gemini API Error");
-    
+    if (statusCode !== 200) {
+        throw new Error(data.error?.message || `Status ${statusCode}`);
+    }
+
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    return JSON.parse(text);
+    if (!text) throw new Error("No text returned from Gemini API");
+
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        // Als het geen JSON is, probeer de tekst te cleanen
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("Could not parse JSON response: " + text);
+        return JSON.parse(jsonMatch[0]);
+    }
 };
 
 const callOpenAI = async (systemPrompt, userPrompt) => {
