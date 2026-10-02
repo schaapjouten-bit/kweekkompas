@@ -1,0 +1,1176 @@
+{
+  "backupVersion": 1,
+  "seeds": [
+    {
+      "id": "example-plant-01",
+      "naam": "Bunny Tails",
+      "type": "Sierplant",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Mrt, Apr, Mei",
+      "oogsttijd": "",
+      "beschrijving": "ZAAIEN\nDirect zaaien in maart/april voor bloei in juli/augustus of in het najaar in een koude bak zaaien.\nHare's Tail Grass ontkiemt gemakkelijk uit zaad. De plant tolereert niet veel verstoring, dus direct zaaien in het voorjaar of najaar is het beste. Groei in de volle zon en in gewone, goed doorlatende grond.\nZaai direct, 6 mm (¼ inch) diep, 30 cm (12 inch) uit elkaar, in goed gecultiveerde grond die tot een fijne bodem is geharkt. Zaden licht afdekken en vochtig houden. Kieming 10 tot 12 dagen. De temperatuurwisseling (van dag naar nacht) zal de kieming verbeteren.",
+      "tags": [
+        "Direct zaaien",
+        "Vaste plant",
+        "Sierplant"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-0b9b44ce6d0d9001d10c.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-0b9b44ce6d0d9001d10c.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-02",
+      "naam": "Asperges plant",
+      "type": "Sierplant",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "",
+      "oogsttijd": "",
+      "beschrijving": "ZAAIEN\nDirect zaaien in maart/april voor bloei in juli/augustus of in het najaar in een koude bak zaaien.\nHare's Tail Grass ontkiemt gemakkelijk uit zaad. De plant tolereert niet veel verstoring, dus direct zaaien in het voorjaar of najaar is het beste. Groei in de volle zon en in gewone, goed doorlatende grond.\nZaai direct, 6 mm (¼ inch) diep, 30 cm (12 inch) uit elkaar, in goed gecultiveerde grond die tot een fijne bodem is geharkt. Zaden licht afdekken en vochtig houden. Kieming 10 tot 12 dagen. De temperatuurwisseling (van dag naar nacht) zal de kieming verbeteren.",
+      "tags": [
+        "Voorzaaien",
+        "Vaste plant",
+        "Sierplant"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-e2001dc64eace3738195.png"
+        },
+        {
+          "url": "assets/example-garden/photo-6625f74de0df4557603b.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-6625f74de0df4557603b.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-03",
+      "naam": "Lavendel",
+      "type": "Struik",
+      "standplaats": "Zon",
+      "water": "Laag",
+      "zaaitijd": "Mrt, Apr",
+      "oogsttijd": "Jul, Aug, Sep",
+      "beschrijving": "Zaaien\nBinnen: feb – apr\nBuiten: apr – jun\nKiemtijd: 2–4 weken\nKiemtemperatuur: ± 18–20°C\n⚠️ Tip: zaden licht aandrukken, niet bedekken (lichtkiemer)\n\nUitplanten\nMei – jun (na vorst)\nPlantafstand: 30–40 cm\n\nerzorging\nSnoei 2x per jaar:\nvoorjaar (maart/april)\nna bloei (zomer)\nNiet snoeien in oud hout\nEventueel licht bemesten (maar hoeft bijna niet)",
+      "tags": [
+        "Vaste plant",
+        "Winterhard",
+        "Sierplant",
+        "Bijvriendelijk"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-54060286b14e8e112f5c.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-54060286b14e8e112f5c.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-04",
+      "naam": "Witte ui",
+      "type": "Groente",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Feb, Mrt, Apr, Jun, Jul",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien:\nBuiten zaaien: februari - april\nSeizoen: jaarlijks\nOogstseizoen: juni - juli\nOmgeving: volle zon\nKiemtijd: 4-14 dagen\nDiepte: 1/2 inch (1 cm)\nPlantafstand: 4 in (10 cm)\nWatergift: gemiddeld, goed doorlatend",
+      "tags": [
+        "Voorzaaien",
+        "Direct zaaien",
+        "Eenjarig",
+        "Eetbaar"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-a578a8bc2db8b77136df.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-a578a8bc2db8b77136df.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-05",
+      "naam": "Komkommer MM",
+      "type": "Groente",
+      "standplaats": "Kas",
+      "water": "Hoog",
+      "zaaitijd": "Apr, Mei",
+      "oogsttijd": "Jul, Aug, Sep",
+      "beschrijving": "ZAAIEN:\nZaaien: maanden Binnen: januari-april Buiten: mei-juni\nSeizoen: jaarlijks\nHoogte: 8 inch\nOogstseizoen: 60 tot 68 dagen tot rijpheid\nOmgeving: volle zon,\nBodemtype: krijt, zand, leem\nKiemtijd: 7-10 dagen\nTemperatuur: 61 °C\nZaden water geven: alleen de grond nat maken\nPlanten water geven: eenmaal per week water geven\nDiepte: 10 mm diep in de grond drukken\nPlantafstand: 90 cm uit elkaar\nIdeaal voor: moestuinen broeikas",
+      "tags": [
+        "Voorzaaien",
+        "Klimplant",
+        "Snelle groeier",
+        "Eenjarig",
+        "Eetbaar"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-f07501699cb4f7d71887.png"
+        },
+        {
+          "url": "assets/example-garden/photo-7e98f98a8c8e6dd269c6.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-f07501699cb4f7d71887.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-06",
+      "naam": "Komkommer KoS",
+      "type": "Groente",
+      "standplaats": "Kas",
+      "water": "Hoog",
+      "zaaitijd": "Apr, Mei",
+      "oogsttijd": "Jul, Aug, Sep",
+      "beschrijving": "ZAAIEN:\nZaaien: maanden. Binnen: februari-mei\nSeizoen: jaarlijks\nHoogte: 12-48 inch\nOogstseizoen: juli-september\nOmgeving: volle zon\nGrondsoort: zand, leem\nKiemtijd: 5-8 dagen\nTemperatuur: 65-75F\nZaden water geven: alleen de grond nat maken\nPlanten water geven: eenmaal per week water geven\nDiepte: - ½ inch diep in de grond drukken\nPlantafstand: 6-12 inch uit elkaar\nIdeaal voor: moestuinen broeikas",
+      "tags": [
+        "Voorzaaien",
+        "Klimplant",
+        "Snelle groeier",
+        "Eenjarig",
+        "Eetbaar"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-8903b169ad91e36d289a.png"
+        },
+        {
+          "url": "assets/example-garden/photo-eaad635ed350d718b08c.png"
+        },
+        {
+          "url": "assets/example-garden/photo-a723add0c5a3b7352f52.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-8903b169ad91e36d289a.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-07",
+      "naam": "California Poppy",
+      "type": "Bloem",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Apr, Mei, Jun",
+      "oogsttijd": "",
+      "beschrijving": "ZAAIEN:\nZaaien: april - mei; September\nSeizoen: eenjarig (vaste plant in warmere streken)\nHoogte: 10 inch (25 cm)\nBloeiseizoen: april - augustus\nBloeikleur: appelbloesem\nOmgeving: volle zon\nDiepte: 1/8 inch (0,3 cm)\nVocht: houd de grond licht vochtig, maar niet nat\nPlantafstand: 8 inch (20 cm)",
+      "tags": [
+        "Direct zaaien",
+        "Eenjarig",
+        "Bijvriendelijk"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-d57f580e473b66663dc9.png"
+        },
+        {
+          "url": "assets/example-garden/photo-410df5af94819e42a20e.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-d57f580e473b66663dc9.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-08",
+      "naam": "Snijbiet OG",
+      "type": "Groente",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Feb, Mrt, Apr",
+      "oogsttijd": "",
+      "beschrijving": "Zaai- en kweektips\n● Direct zaaien op de plek waar de planten zullen groeien: verplanten is minimaal.\n● Dun zaailingen vroeg uit om opeenhoping te voorkomen en een sterke groei te stimuleren.\n● Oogst regelmatig de buitenste bladeren voor een lange, continue aanvoer.\n● Geef tijdens droge periodes regelmatig water om de bladeren zacht te houden.\n● Voor de beste kleur en smaak om de paar weken licht bemesten met een uitgebalanceerde meststof.\n● Verdraagt lichte vorst: in milde gebieden kunnen planten overwinteren voor een vroege voorjaarsbloei.",
+      "tags": [
+        "Direct zaaien",
+        "Eenjarig",
+        "Eetbaar",
+        "Makkelijk"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-2d5272cac240fc9f6661.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-2d5272cac240fc9f6661.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-09",
+      "naam": "Oost-Indische kers FF",
+      "type": "Groente",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Apr, Mei",
+      "oogsttijd": "",
+      "beschrijving": "ZAAIEN:\nSeizoen: jaarlijks\nHoogte: 40 cm (15 inch)\nBloeiseizoen: midden zomer tot herfst\nBloeikleur: rood (middelgroen blad)\nOmgeving: volle zon\nBodemtype: goed gedraineerd, pH 6,1-7,8\nKiemtemperatuur: 20 °C (68 °F)\nDiepte: 1,5 cm (1/2 inch)\nVocht: zaden vochtig houden tot ze ontkiemen\nPlantafstand: 15 - 20 cm (6 - 8 inch)\n\nHet wordt aanbevolen om de zaden in het voorjaar direct buiten te zaaien. De zaailingen worden niet altijd goed in de tuin geplant als ze binnenshuis worden gestart. Voordat je het bloemzaad zaait, laat je de zaden een nacht in warm water weken. Plant de volgende dag de zaden 1,5 cm (1/2 inch) diep in een gebied met minimaal 6 uur directe zon per dag.",
+      "tags": [
+        "Direct zaaien",
+        "Eenjarig",
+        "Eetbaar",
+        "Bijvriendelijk"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-4683b7a0510bb8267a8a.png"
+        },
+        {
+          "url": "assets/example-garden/photo-ecb5f7cabeb86a55c0a2.png"
+        },
+        {
+          "url": "assets/example-garden/photo-898fc2d59bdc822fe0ef.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-4683b7a0510bb8267a8a.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-10",
+      "naam": "Petuni Red Chief",
+      "type": "Sierplant",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Apr, Mei",
+      "oogsttijd": "",
+      "beschrijving": "ZAAIEN\nZaaien\nZaaien: februari - april\nSeizoen: jaarlijks\nHoogte: 16 inch / 40 cm\nBloeiseizoen: zomer\nOmgeving: volle zon\nBodemtype: goed gedraineerd, pH 5,6 tot 6,6.\nTemperatuur: 22C / 75F\nDiepte: in de grond drukken\nPlantafstand: 12 inch / 30 cm\nVerplant de zaailingen vijf of zes weken na het zaaien van de zaden in potten van 3 inch en laat ze verder groeien bij koelere temperaturen en veel licht. Hard jonge planten 10-14 dagen af voordat ze na de laatste nachtvorst buiten worden geplant.",
+      "tags": [
+        "Voorzaaien",
+        "Eenjarig",
+        "Sierplant"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-40cc4ac1d108dc654552.png"
+        },
+        {
+          "url": "assets/example-garden/photo-25e7f18f47c74482a4cc.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-40cc4ac1d108dc654552.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-11",
+      "naam": "Oost-Indische kers DGH",
+      "type": "Groente",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "",
+      "oogsttijd": "",
+      "beschrijving": "ZAAIEN\nSeizoen: jaarlijks\nHoogte: 60 inch (150 cm)\nBloeiseizoen: midden zomer tot herfst\nBloeikleur: gemengd\nOmgeving: volle zon\nBodemtype: goed gedraineerd, pH 6,1-7,8\nKiemtemperatuur: 20 °C (68 °F)\nDiepte: 1,5 cm (1/2 inch)\nVocht: zaden vochtig houden tot ze ontkiemen\nPlantafstand: 6 - 8 inch (15 - 20 cm)",
+      "tags": [
+        "Direct zaaien",
+        "Klimplant",
+        "Eenjarig",
+        "Eetbaar",
+        "Sierplant"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-2f74330d2e7db5509b93.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-2f74330d2e7db5509b93.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-12",
+      "naam": "SF 'Vanilla ice'",
+      "type": "Bloem",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Apr, Mei, Jun",
+      "oogsttijd": "",
+      "beschrijving": "Seizoen: jaarlijks\nZaaien: april - juni\nHoogte: 55 inch (140 cm)\nBloeitijd: juli - oktober\nOmgeving: volle zon\nWater: gemiddeld\nDiepte: 1/2 inch (1 cm)\nIdeaal voor: moestuinen, wilde tuinen, potten en containers, snijbloemen\nZaaien op een diepte van 1 cm, bij 20-25 °C. Als het groot genoeg is om te hanteren, uitdunnen tot een onderlinge afstand van 45 cm (18 inch).",
+      "tags": [
+        "Voorzaaien",
+        "Direct zaaien",
+        "Eenjarig",
+        "Sierplant",
+        "Potten",
+        "Bijvriendelijk"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-5640c1e367af8d5bbb55.png"
+        },
+        {
+          "url": "assets/example-garden/photo-206ebad29713c9f8e70c.png"
+        },
+        {
+          "url": "assets/example-garden/photo-39d93b91bd7d1a9de496.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-5640c1e367af8d5bbb55.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-13",
+      "naam": "Welshe ui",
+      "type": "Groente",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "",
+      "oogsttijd": "",
+      "beschrijving": "Zaaiinstructie.\nGroeien op elke goede vruchtbare grond, op voorwaarde dat deze goed gedraineerd is. Ruim 13 mm (0,5 inch) diep zaaien in zaaimachines met een tussenafstand van 15 cm (6 inch). Verdunnen is niet nodig. Elke maand oogsten",
+      "tags": [
+        "Voorzaaien",
+        "Direct zaaien",
+        "Eenjarig",
+        "Eetbaar"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-5fe8ca08f194dc935ec3.png"
+        },
+        {
+          "url": "assets/example-garden/photo-d98b03a9077e6ff5a881.png"
+        },
+        {
+          "url": "assets/example-garden/photo-8dabd3134be9329f4708.png"
+        },
+        {
+          "url": "assets/example-garden/photo-81f1ac121fc3fd066640.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-5fe8ca08f194dc935ec3.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-14",
+      "naam": "Komkommer TI",
+      "type": "Groente",
+      "standplaats": "Kas",
+      "water": "Hoog",
+      "zaaitijd": "Apr, Mei",
+      "oogsttijd": "Jul, Aug, Sep",
+      "beschrijving": "KOMKOMMER \"TELEGRAPH IMPROVED\" - 20 zaden (Cucumis sativus) - lang tot 16 inch\n\nZAAIEN:\n\nBinnen zaaien: februari - mei\nOogst: juli - oktober\nZon: volle zon\nWater: gemiddeld\nDiepte: 1/4 inch (0,5 cm)\nPlantafstand: 8 - 40 inch / 20 - 90 cm",
+      "tags": [
+        "Voorzaaien",
+        "Klimplant",
+        "Snelle groeier",
+        "Eenjarig",
+        "Eetbaar",
+        "Gevoelig voor vorst"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-685ca549f3189967018a.png"
+        },
+        {
+          "url": "assets/example-garden/photo-ceda3bdc46266fe1c740.png"
+        },
+        {
+          "url": "assets/example-garden/photo-317b717f04b6ad499dee.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-685ca549f3189967018a.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-15",
+      "naam": "Giant Sequoia  Redwood",
+      "type": "Boom",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: jaarrond (binnen)\nKiemduur: 14 – 35 dagen\nKiemtemperatuur: ± 18 – 22°C\n\nZaaimethode:\nStratificeer de zaden eerst 10 – 14 dagen in de koelkast (± 5°C).\nLaat daarna 12 – 24 uur weken in lauwwarm water.\nZaai op vochtige grond en druk licht aan (niet afdekken, lichtkiemer).\n\nStandplaats: licht tot halfschaduw\nGrond: voedzaam en vochtig, goed doorlatend\n\nWater:\nGrond licht vochtig houden, niet laten uitdrogen en geen natte voeten.\n\nLuchtvochtigheid:\nLicht vochtig houden en regelmatig ventileren tegen schimmel.\n\nUitplanten:\nPas na enkele jaren buiten uitplanten en beschermen tegen vorst.\n\nSeizoen: vaste plant (boom)",
+      "tags": [
+        "Voorzaaien",
+        "Vaste plant",
+        "Sierplant",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-3f0a460e77b880ae1bdc.png"
+        },
+        {
+          "url": "assets/example-garden/photo-b40bd02d02b685593517.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-b40bd02d02b685593517.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-16",
+      "naam": "Japanse rode esdoorn",
+      "type": "Boom",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: jaarrond (binnen)\nKiemduur: 15 – 20 dagen (na stratificatie)\nKiemtemperatuur: 22 – 25°C\n\nZaaimethode:\nStratificeer de zaden 6 – 8 weken in de koelkast (licht vochtig houden).\nZaai daarna ± 1 cm diep in luchtige grond (zand + potgrond).\n\nStandplaats: zon tot halfschaduw\nGrond: licht zuur tot neutraal, humusrijk en goed doorlatend\n\nWater:\nGrond licht vochtig houden, niet laten uitdrogen.\n\nLuchtvochtigheid:\nNiet te hoog tijdens kieming.\n\nUitplanten:\nLater uitplanten op beschutte plek.\n\nSeizoen: vaste plant (boom)",
+      "tags": [
+        "Voorzaaien",
+        "Vaste plant",
+        "Sierplant",
+        "Potten",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-f965f882886107bcdc79.png"
+        },
+        {
+          "url": "assets/example-garden/photo-f7c1e4f027415255021a.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-f7c1e4f027415255021a.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-17",
+      "naam": "Japanese Cedar - Cryptomeria japonica",
+      "type": "Boom",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: jaarrond (binnen)\nKiemduur: 14 – 28 dagen\nKiemtemperatuur: ± 18 – 22°C\n\nZaaimethode:\nStratificeer de zaden eerst 3 – 4 weken in de koelkast (licht vochtig houden).\nLaat daarna 12 – 24 uur weken in lauwwarm water.\nZaai op vochtige grond en bedek licht.\n\nStandplaats: zon tot halfschaduw\nGrond: normale, goed doorlatende tuingrond\n\nWater:\nGrond licht vochtig houden, niet laten uitdrogen en geen natte grond.\n\nLuchtvochtigheid:\nHoog houden tijdens kieming (afdekken of mini kas).\n\nUitplanten:\nLater uitplanten of geschikt houden in pot/bak.\n\nSeizoen: vaste plant (boom)",
+      "tags": [
+        "Voorzaaien",
+        "Vaste plant",
+        "Potten",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-e95bb550a61f9a879628.png"
+        },
+        {
+          "url": "assets/example-garden/photo-209d4033f0c99c6fed30.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-209d4033f0c99c6fed30.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-18",
+      "naam": "Paarse zonnehoed - Ruby Star",
+      "type": "Sierplant",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Feb, Mrt, Apr, Mei, Jun, Jul",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: februari – juli\nKiemduur: 20 – 30 dagen\nKiemtemperatuur: 18 – 22°C\n\nZaaimethode:\nZaai op de oppervlakte en druk licht aan (niet afdekken).\nHoud de grond vochtig tot kieming.\n\nUitplanten:\nNa afharden buiten uitplanten in goed doorlatende grond.\n\nStandplaats: volle zon\nGrond: goed doorlatend\n\nWater:\nGemiddeld, kan goed tegen drogere omstandigheden als hij eenmaal staat.\n\nPlantafstand: ± 40 – 60 cm\nHoogte: ± 60 – 90 cm\n\nBloei: augustus – september\nSeizoen: vaste plant",
+      "tags": [
+        "Voorzaaien",
+        "Vaste plant",
+        "Sierplant",
+        "Bijvriendelijk",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-4efa4fcdb572de0951ae.png"
+        },
+        {
+          "url": "assets/example-garden/photo-8558d91796fa24572abb.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-8558d91796fa24572abb.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-19",
+      "naam": "Eryngium alpinum Sea holy blue",
+      "type": "Groente",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: jaarrond (binnen)\nKiemduur: 6 – 10 weken\nKiemtemperatuur: wisselend (warm → koud → warm)\n\nZaaimethode:\nZaai op vochtige grond en houd 2 – 4 weken warm.\nPlaats daarna 4 – 6 weken in de koelkast (stratificatie).\nZet vervolgens weer warm → kieming volgt.\n\nStandplaats: volle zon\nGrond: droog, arm en goed doorlatend\n\nWater:\nWeinig water nodig, kan goed tegen droogte.\n\nPlantafstand: ± 30 – 40 cm\nHoogte: ± 60 – 100 cm\n\nBloei: zomer\nSeizoen: vaste plant",
+      "tags": [
+        "Voorzaaien",
+        "Vaste plant",
+        "Sierplant",
+        "Droogbloem",
+        "Bijvriendelijk",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-9a774770fd988269bf60.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-9a774770fd988269bf60.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-20",
+      "naam": "Gypsophila",
+      "type": "Sierplant",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Mrt, Apr",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: maart – april\nKiemduur: 10 – 20 dagen\nKiemtemperatuur: ± 18 – 20°C\n\nZaaimethode:\nZaai dun op vochtige grond en bedek licht.\nHoud de grond vochtig tot kieming.\n\nStandplaats: volle zon tot halfschaduw\nGrond: licht, droog en goed doorlatend (mag arm zijn)\n\nWater:\nWeinig tot gemiddeld, kan goed tegen droogte.\n\nPlantafstand: ± 20 – 30 cm\nHoogte: ± 40 – 60 cm\n\nBloei: juli – oktober\nSeizoen: eenjarig of vaste plant (afhankelijk van soort)",
+      "tags": [
+        "Voorzaaien",
+        "Sierplant",
+        "Snijbloem",
+        "Droogbloem"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-64210cf15786fb32e80e.png"
+        },
+        {
+          "url": "assets/example-garden/photo-3e3904e17b8723dd2e8d.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-64210cf15786fb32e80e.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-21",
+      "naam": "Aquilegia mix",
+      "type": "Sierplant",
+      "standplaats": "Zon",
+      "water": "Weinig",
+      "zaaitijd": "Mrt, Apr",
+      "oogsttijd": "Jul, Aug",
+      "beschrijving": "Zaaien: maart – april\nKiemduur: 14 – 28 dagen\nKiemtemperatuur: ± 18 – 20°C\n\nZaaimethode:\nZaai licht op vochtige grond en bedek dun.\nHoud de grond vochtig tot kieming.\n\nStandplaats: halfschaduw tot schaduw\nGrond: humusrijk en goed doorlatend\n\nWater:\nWeinig tot gemiddeld, niet laten uitdrogen.\n\nPlantafstand: ± 25 – 30 cm\nHoogte: ± 50 – 80 cm\n\nBloei: mei – juli\nSeizoen: vaste plant",
+      "tags": [
+        "Voorzaaien",
+        "Vaste plant",
+        "Sierplant",
+        "Bijvriendelijk",
+        "Makkelijk",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-7fb60f1e30d363c01ec4.png"
+        },
+        {
+          "url": "assets/example-garden/photo-36ac0343188f256d1bc6.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-7fb60f1e30d363c01ec4.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-22",
+      "naam": "Gladiolus Bolero Mix - Gladiool",
+      "type": "Bloembol",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Mrt, Apr, Mei",
+      "oogsttijd": "",
+      "beschrijving": "Planten: maart – mei\nPlantdiepte: ± 10 cm\nPlantafstand: 10 – 15 cm\n\nStandplaats: zon tot halfschaduw\nGrond: goed doorlatend en voedzaam\n\nWater:\nRegelmatig water geven, vooral bij droogte.\nGeen natte grond.\n\nHoogte: ± 60 – 100 cm\n\nBloei: juli – september\nSeizoen: vaste plant (bloembol)\n\nOnderhoud:\nEventueel ondersteunen bij wind.\nNa bloei loof laten afsterven voor voeding bol.",
+      "tags": [
+        "Vaste plant",
+        "Sierplant",
+        "Snijbloem",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-a4b88a081db1825e1064.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-a4b88a081db1825e1064.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-23",
+      "naam": "Reuze bamboe",
+      "type": "Sierplant",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Feb, Mrt",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: binnen (voorjaar aanbevolen)\nKiemduur: 10 – 20 dagen\nKiemtemperatuur: ± 25°C\n\nZaaimethode:\nLaat zaden ± 24 uur weken in lauwwarm water (max. 40°C).\nZaai op vochtig substraat en druk licht aan.\nHeel dun afdekken (lichtkiemer).\n\nStandplaats: licht en warm\nGrond: luchtig en vochtig (zaaigrond of kokos)\n\nWater:\nGrond constant licht vochtig houden.\nNiet laten uitdrogen, maar ook geen natte grond.\n\nLuchtvochtigheid:\nHoog houden (regelmatig licht sprayen).\n\nSeizoen: meerjarig",
+      "tags": [
+        "Voorzaaien",
+        "Snelle groeier",
+        "Vaste plant",
+        "Sierplant",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-e508faa43723b8cc87fd.png"
+        },
+        {
+          "url": "assets/example-garden/photo-aa976955be580940642c.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-aa976955be580940642c.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-24",
+      "naam": "Komkommer Cezar",
+      "type": "Groente",
+      "standplaats": "Kas",
+      "water": "Veel",
+      "zaaitijd": "Apr, Mei",
+      "oogsttijd": "Jul, Aug, Sep",
+      "beschrijving": "Zaaien: april – mei\nKiemduur: 7 – 10 dagen\nKiemtemperatuur: 20 – 25°C\n\nZaaimethode:\nZaai binnen voor of direct in kas.\nZaai ± 2 cm diep in voedzame grond.\n\nStandplaats: kas / volle zon\nGrond: humusrijk, voedzaam en goed doorlatend\n\nWater:\nVeel water nodig, dagelijks bij droogte.\nLauw water bij de voet (niet op blad).\n\nPlantafstand: ± 50 – 70 cm\nHoogte: klimplant\n\nOogst: juli – september\nSeizoen: eenjarig\n\nOnderhoud:\nZijscheuten verwijderen voor betere opbrengst.",
+      "tags": [
+        "Voorzaaien",
+        "Klimplant",
+        "Snelle groeier",
+        "Eenjarig",
+        "Eetbaar"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-7a890339fa23f36c213f.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-7a890339fa23f36c213f.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-25",
+      "naam": "Courgette star F1",
+      "type": "Groente",
+      "standplaats": "Zon",
+      "water": "Veel",
+      "zaaitijd": "Apr, Mei",
+      "oogsttijd": "Jul, Aug, Sep, Okt",
+      "beschrijving": "Zaaien: april – mei\nKiemduur: 7 – 10 dagen\nKiemtemperatuur: 18 – 22°C\n\nZaaimethode:\nZaai direct buiten of binnen voorzaaien.\nZaai ± 2 – 3 cm diep in voedzame grond.\n\nStandplaats: volle zon\nGrond: zeer voedzaam en goed doorlatend\n\nWater:\nVeel water nodig, dagelijks bij droogte.\nOp de grond gieten (niet op blad i.v.m. meeldauw).\n\nPlantafstand: ± 80 – 100 cm\nHoogte: ± 50 – 80 cm (breed groeiend)\n\nOogst: juli – oktober\nSeizoen: eenjarig\n\nOnderhoud:\nVeel ruimte geven en regelmatig oogsten.",
+      "tags": [
+        "Voorzaaien",
+        "Snelle groeier",
+        "Eenjarig",
+        "Eetbaar",
+        "Bijvriendelijk"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-a8eb343f98afdbd5a280.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-a8eb343f98afdbd5a280.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-26",
+      "naam": "Aubergine Bianca stumata di rosa",
+      "type": "Groente",
+      "standplaats": "Kas",
+      "water": "Gemiddeld",
+      "zaaitijd": "Feb, Mrt",
+      "oogsttijd": "Aug, Sep, Okt",
+      "beschrijving": "Zaaien: januari – april (binnen)\nKiemduur: 10 – 20 dagen\nKiemtemperatuur: 22 – 25°C\n\nZaaimethode:\nZaai binnen in een bakje en bedek licht.\nNa opkomst verspenen in voedzame grond.\n\nStandplaats: kas / volle zon\nGrond: voedzaam en goed doorlatend\n\nWater:\nRegelmatig water geven, op de grond (niet op blad).\nNiet laten uitdrogen en geen natte voeten.\n\nPlantafstand: ± 40 – 60 cm\nHoogte: ± 60 – 100 cm\n\nOogst: augustus – oktober\nSeizoen: eenjarig\n\nOnderhoud:\nTop de plant bij 4 – 5 vruchten voor betere opbrengst.",
+      "tags": [
+        "Voorzaaien",
+        "Eenjarig",
+        "Eetbaar",
+        "Potten",
+        "Gevoelig voor vorst"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-fb41102ca223406a7c49.png"
+        },
+        {
+          "url": "assets/example-garden/photo-1eec71a4bb5b7238fabe.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-fb41102ca223406a7c49.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-27",
+      "naam": "Boerenkool Dwarf Green Curled",
+      "type": "Groente",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Mei, Jun",
+      "oogsttijd": "Jan, Feb, Nov, Dec",
+      "beschrijving": "Zaaien: mei – juni\nKiemduur: 7 – 14 dagen\nKiemtemperatuur: ± 15 – 20°C\n\nZaaimethode:\nZaai ± 1 cm diep in de grond.\nNa opkomst uitplanten.\n\nStandplaats: volle zon\nGrond: goed bemest en voedzaam\n\nWater:\nGemiddeld, niet laten uitdrogen.\n\nPlantafstand: ± 50 – 60 cm\nHoogte: ± 50 cm\n\nOogst: oktober – februari\nSeizoen: tweejarig (meestal als eenjarig geteeld)\n\nOnderhoud:\nBeschermen tegen koolwitjes (netten).",
+      "tags": [
+        "Voorzaaien",
+        "Winterhard",
+        "Eetbaar",
+        "Makkelijk"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-e2f87044d4768ef4c6c9.png"
+        },
+        {
+          "url": "assets/example-garden/photo-83b1353e0d682662d907.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-e2f87044d4768ef4c6c9.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-28",
+      "naam": "Rode chilipeper",
+      "type": "Groente",
+      "standplaats": "Kas",
+      "water": "Weinig",
+      "zaaitijd": "Jan, Feb, Mrt",
+      "oogsttijd": "Aug, Sep, Okt",
+      "beschrijving": "💡 Tips: PeZaaien: januari – maart (binnen/kas)\nKiemduur: 14 – 28 dagen\nKiemtemperatuur: 20 – 25°C\n\nZaaimethode:\nZaai in een bakje en bedek licht.\nWarm houden → kiemt traag.\nHoud licht vochtig, niet te nat.\n\nStandplaats: kas / volle zon\nGrond: voedzaam en goed doorlatend\n\nWater:\nLicht laten opdrogen tussen gietbeurten.\nIets droger houden kan de pittigheid verhogen.\n\nPlantafstand: ± 30 – 40 cm\nHoogte: ± 60 – 100 cm\n\nOogst: augustus – oktober\nSeizoen: eenjarigpertjes kiemen traag en heet! Vinden het vaak fijner iets droger te staan in goed doorlatende grond. Dat bevordert bovendien de pittigheid.",
+      "tags": [
+        "Voorzaaien",
+        "Eenjarig",
+        "Eetbaar",
+        "Potten",
+        "Gevoelig voor vorst"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-fb0fe7dd38217d98ad0d.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-fb0fe7dd38217d98ad0d.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-29",
+      "naam": "Alma-paprika",
+      "type": "Groente",
+      "standplaats": "Kas",
+      "water": "Gemiddeld",
+      "zaaitijd": "Feb, Mrt",
+      "oogsttijd": "Jul, Aug, Sep, Okt",
+      "beschrijving": "Zaaien: februari – maart (binnen/kas)\nKiemduur: 10 – 20 dagen\nKiemtemperatuur: 20 – 25°C\n\nZaaimethode:\nZaai in een bakje en bedek licht.\nWarm houden en grond licht vochtig houden.\n\nStandplaats: kas / volle zon\nGrond: voedzaam en goed doorlatend\n\nWater:\nRegelmatig water geven, niet laten uitdrogen.\nGeen natte voeten.\n\nPlantafstand: ± 40 – 50 cm\nHoogte: ± 40 – 70 cm\n\nOogst: juli – oktober\nSeizoen: eenjarig\n\nOnderhoud:\nRegelmatig voeding geven vanaf bloei.",
+      "tags": [
+        "Voorzaaien",
+        "Eenjarig",
+        "Eetbaar",
+        "Potten",
+        "Gevoelig voor vorst"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-7ba4aa43878873180916.png"
+        },
+        {
+          "url": "assets/example-garden/photo-7770816556df587850f5.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-7770816556df587850f5.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-30",
+      "naam": "Papaver commutatum Lady Bird",
+      "type": "Bloem",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Mrt, Apr, Mei, Aug, Sep",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: maart – mei / augustus – september\nKiemduur: 21 – 28 dagen\nKiemtemperatuur: 12 – 15°C\n\nZaaimethode:\nZaai direct buiten.\nDruk de zaden licht in de grond (niet afdekken) en houd vochtig tot kieming.\n\nStandplaats: volle zon\nGrond: los en goed doorlatend (pH 6,1 – 7,3)\n\nWater:\nTijdens kieming vochtig houden, daarna weinig nodig.\n\nPlantafstand: ± 30 cm\nHoogte: ± 30 – 40 cm\n\nBloei: zomer\nSeizoen: eenjarig",
+      "tags": [],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-79fa2ef9e2618be6d172.png"
+        },
+        {
+          "url": "assets/example-garden/photo-21e16044b3831b30ea95.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-79fa2ef9e2618be6d172.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-31",
+      "naam": "Agastache mexicana Reuze Hyssop",
+      "type": "Sierplant",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Jan, Feb, Mrt, Apr",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: januari – april\nKiemduur: 14 – 21 dagen\nKiemtemperatuur: ± 20°C\n\nZaaimethode:\nZaai ± 0,5 cm diep en houd de grond vochtig tot kieming.\n\nStandplaats: zon tot halfschaduw\nGrond: goed doorlatend (klei, zand, leem of kalkrijk)\n\nWater:\nTijdens kieming vochtig houden.\nDaarna ± 1x per week water.\n\nPlantafstand: 45 – 60 cm\nHoogte: ± 65 – 80 cm\n\nBloei: juni – oktober\nSeizoen: eenjarig\n\nIdeaal voor:\nBorders, potten en bakken",
+      "tags": [
+        "Voorzaaien",
+        "Eenjarig",
+        "Kruidenplant",
+        "Potten",
+        "Bijvriendelijk",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-b0975b30c2e721c9b943.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-b0975b30c2e721c9b943.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-32",
+      "naam": "Ipomoea tricolor",
+      "type": "Sierplant",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Mrt, Apr, Mei",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: maart – april (binnen) / vanaf mei (buiten)\nKiemduur: 7 – 14 dagen\nKiemtemperatuur: 18 – 20°C\n\nZaaimethode:\nLaat zaden 24 uur weken in lauwwarm water.\nZaai ± 1 cm diep en houd de grond vochtig.\n\nStandplaats: volle zon\nGrond: voedzaam en goed doorlatend\n\nWater:\nRegelmatig water geven, niet te nat.\n\nPlantafstand: ± 30 cm\nHoogte: klimplant\n\nBloei: zomer – vroege herfst\nSeizoen: eenjarig\n\nOndersteuning:\nHeeft een rek, hek of gaas nodig om te klimmen.",
+      "tags": [
+        "Voorzaaien",
+        "Klimplant",
+        "Eenjarig",
+        "Sierplant",
+        "Bijvriendelijk",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-b64f67c13369232bbde9.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-b64f67c13369232bbde9.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-33",
+      "naam": "Salvia splendens",
+      "type": "Sierplant",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Feb, Mrt, Apr",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: februari – april (binnen) / vanaf mei (buiten)\nKiemduur: 10 – 15 dagen\nKiemtemperatuur: 18 – 20°C\n\nZaaimethode:\nZaai in een bakje of direct buiten (na vorst).\nBedek licht (± 0,5 cm) en houd vochtig.\n\nStandplaats: zon tot halfschaduw\nGrond: voedzaam en goed doorlatend\n\nWater:\nRegelmatig water geven, grond licht laten opdrogen tussen gietbeurten.\n\nPlantafstand: 20 – 25 cm\nHoogte: ± 25 – 50 cm\n\nBloei: juni tot eerste vorst\nSeizoen: eenjarig\n\nOnderhoud:\nUitgebloeide bloemen verwijderen voor langere bloei.\nEventueel licht bemesten.",
+      "tags": [
+        "Voorzaaien",
+        "Eenjarig",
+        "Sierplant",
+        "Potten",
+        "Bijvriendelijk",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-fca4e5de0eb8d43a047e.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-fca4e5de0eb8d43a047e.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-34",
+      "naam": "Dandy Stripes",
+      "type": "Sierplant",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Mrt, Apr, Mei",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: maart – mei\nKiemduur: 7 – 14 dagen\nKiemtemperatuur: 18 – 22°C\n\nZaaimethode:\nZaai dun in een bakje of direct buiten (na vorst).\nBedek licht met aarde en houd vochtig.\n\nStandplaats: volle zon\nGrond: goed doorlatend, mag ook wat armer\n\nWater:\nRegelmatig water geven, niet te nat.\n\nPlantafstand: 20 – 30 cm\nHoogte: ± 20 – 30 cm\n\nBloei: zomer tot eerste vorst\nSeizoen: eenjarig\n\nOnderhoud:\nVerwijder uitgebloeide bloemen voor langere bloei.",
+      "tags": [
+        "Voorzaaien",
+        "Eenjarig",
+        "Sierplant",
+        "Potten",
+        "Insectwerend",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-d8292215f72be36ba70b.png"
+        },
+        {
+          "url": "assets/example-garden/photo-f3c0c6b65465bbc7d2b2.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-d8292215f72be36ba70b.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-35",
+      "naam": "Watermeloen Sugar baby",
+      "type": "Fruit",
+      "standplaats": "Kas",
+      "water": "Gemiddeld",
+      "zaaitijd": "Apr, Mei",
+      "oogsttijd": "Aug, Sep",
+      "beschrijving": "Zaaien: april – mei (binnen/kas)\nKiemduur: 7 – 14 dagen\nKiemtemperatuur: 22 – 28°C\n\nZaaimethode:\nZaai binnen of in kas.\nZaai ± 2 – 3 cm diep in voedzame grond.\n\nStandplaats: kas / volle zon\nGrond: voedzaam en goed doorlatend\n\nWater:\nRegelmatig water geven, niet laten uitdrogen.\nGeen natte grond.\n\nPlantafstand: ± 80 – 100 cm\nHoogte: kruipend\n\nOogst: augustus – september\nSeizoen: eenjarig\n\nOnderhoud:\nZijscheuten met vruchten toppen na 1 blad voor betere groei.",
+      "tags": [
+        "Voorzaaien",
+        "Klimplant",
+        "Snelle groeier",
+        "Eetbaar",
+        "Gevoelig voor vorst"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-400bf4b98358eaa40bdf.png"
+        },
+        {
+          "url": "assets/example-garden/photo-7e57d90934464ff00611.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-400bf4b98358eaa40bdf.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-36",
+      "naam": "Reuze Aardbeien",
+      "type": "Fruit",
+      "standplaats": "Zon",
+      "water": "Veel",
+      "zaaitijd": "Jul, Aug",
+      "oogsttijd": "Mei, Jun, Jul",
+      "beschrijving": "Zaaien: juli – augustus (of jaarrond binnen)\nKiemduur: 21 – 42 dagen\nKiemtemperatuur: ± 18 – 22°C\n\nZaaimethode:\nZaai op vochtige grond en druk licht aan (lichtkiemer).\nNiet afdekken of heel dun.\nHoud de grond vochtig, niet nat.\n\nStandplaats: volle zon\nGrond: vruchtbaar en goed doorlatend\n\nWater:\nVeel water nodig, grond licht vochtig houden.\n\nPlantafstand: ± 30 – 40 cm\nHoogte: ± 20 – 30 cm\n\nOogst: mei – juli\nSeizoen: vaste plant\n\nOnderhoud:\nRegelmatig verjongen/vermeerderen voor beste opbrengst.",
+      "tags": [
+        "Vaste plant",
+        "Eetbaar",
+        "Potten",
+        "Bijvriendelijk",
+        "Makkelijk"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-5b74ef11dfe434ca7d04.png"
+        },
+        {
+          "url": "assets/example-garden/photo-ed4225767e112ecde96c.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-ed4225767e112ecde96c.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-37",
+      "naam": "Pomponette Roze - Bellis perennis",
+      "type": "Sierplant",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Mei, Jun",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: mei – juni (binnen) / zomer – vroege herfst (buiten)\nKiemduur: 10 – 21 dagen\nKiemtemperatuur: 15 – 20°C\n\nZaaimethode:\nZaai op vochtige grond en bedek heel licht.\nNiet donker zetten → licht bevordert kieming.\nHoud vochtig, maar niet nat.\n\nUitplanten:\nNa afharden uitplanten met ± 15 cm afstand.\n\nStandplaats: zon tot halfschaduw\nGrond: voedzaam en goed doorlatend\n\nWater:\nGrond licht vochtig houden, niet drassig.\n\nPlantafstand: ± 15 cm\nHoogte: ± 15 – 20 cm\n\nBloei: late winter – late lente\nSeizoen: tweejarig",
+      "tags": [
+        "Voorzaaien",
+        "Tweejarig",
+        "Sierplant",
+        "Potten",
+        "Bijvriendelijk",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-355491e2445d6349ea3e.png"
+        },
+        {
+          "url": "assets/example-garden/photo-3d2196916e8b48f5f28c.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-355491e2445d6349ea3e.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-38",
+      "naam": "Salie",
+      "type": "Kruid",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Mrt, Apr, Mei, Jun",
+      "oogsttijd": "Mei, Jun, Jul, Aug, Sep, Okt",
+      "beschrijving": "Zaaien: maart – juni\nKiemduur: 14 – 21 dagen\nKiemtemperatuur: ± 18 – 22°C\n\nZaaimethode:\nZaai ± 0,5 – 1 cm diep en houd de grond licht vochtig.\nBinnen voorzaaien geeft beste resultaat.\n\nStandplaats: volle zon\nGrond: goed doorlatend, liefst wat droger en kalkrijk\n\nWater:\nMatig water geven, kan goed tegen droogte.\n\nPlantafstand: ± 30 – 40 cm\nHoogte: ± 40 – 70 cm\n\nOogst: mei – oktober\nSeizoen: vaste plant\n\nOnderhoud:\nLicht snoeien voor compacte groei.",
+      "tags": [
+        "Voorzaaien",
+        "Vaste plant",
+        "Eetbaar",
+        "Kruidenplant",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-26c24aab9ac8507b9513.png"
+        },
+        {
+          "url": "assets/example-garden/photo-af02bc1a142a418ec490.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-26c24aab9ac8507b9513.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-39",
+      "naam": "Basilicum Paarse",
+      "type": "Kruid",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Mrt, Apr, Mei",
+      "oogsttijd": "Jun, Jul, Aug, Sep",
+      "beschrijving": "Zaaien: maart – mei\nKiemduur: ± 10 dagen\nKiemtemperatuur: ± 20 – 25°C\n\nZaaimethode:\nZaai ± 0,5 cm diep en houd de grond vochtig.\nBinnen of in kas zaaien geeft beste resultaat.\n\nStandplaats: volle zon\nGrond: voedzaam en goed doorlatend\n\nWater:\nRegelmatig water geven, liefst via schotel.\nNiet laten uitdrogen.\n\nPlantafstand: ± 20 – 25 cm\nHoogte: ± 20 – 50 cm\n\nOogst: juni – september\nSeizoen: eenjarig\n\nOnderhoud:\nTopjes regelmatig knijpen voor vollere groei.",
+      "tags": [
+        "Voorzaaien",
+        "Eetbaar",
+        "Kruidenplant",
+        "Potten",
+        "Gevoelig voor vorst"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-562735b76051c50d02e5.png"
+        },
+        {
+          "url": "assets/example-garden/photo-b30c909dc7184f031359.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-562735b76051c50d02e5.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-40",
+      "naam": "Tijm - English Winter",
+      "type": "Kruid",
+      "standplaats": "Zon",
+      "water": "Weinig",
+      "zaaitijd": "Mrt, Apr, Mei",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: maart – mei\nKiemduur: 14 – 28 dagen\nKiemtemperatuur: ± 18 – 22°C\n\nZaaimethode:\nZaai oppervlakkig en druk licht aan (lichtkiemer).\nHoud de grond licht vochtig tot kieming.\n\nStandplaats: volle zon\nGrond: droog, arm en goed doorlatend (zand/rotsachtig)\n\nWater:\nWeinig water nodig, kan goed tegen droogte.\n\nPlantafstand: ± 25 – 30 cm\nHoogte: ± 15 – 30 cm\n\nOogst: jaarrond (beste smaak in zomer)\nSeizoen: vaste plant\n\nOnderhoud:\nLicht snoeien om compact te houden.",
+      "tags": [
+        "Vaste plant",
+        "Eetbaar",
+        "Kruidenplant",
+        "Bijvriendelijk",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-963f761e679e8f43f94e.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-963f761e679e8f43f94e.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-41",
+      "naam": "Dille Compatto",
+      "type": "Kruid",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "Apr, Mei, Jun, Jul",
+      "oogsttijd": "Jun, Jul, Aug, Sep, Okt",
+      "beschrijving": "Zaaien: april – juli\nKiemduur: 10 – 14 dagen\nKiemtemperatuur: ± 18 – 22°C\n\nZaaimethode:\nZaai direct buiten op de plek van bestemming.\nBedek licht en houd de grond vochtig.\n\nStandplaats: volle zon\nGrond: licht en goed doorlatend\n\nWater:\nRegelmatig water geven, niet laten uitdrogen.\n\nPlantafstand: ± 20 – 30 cm\nHoogte: ± 40 – 50 cm\n\nOogst: juni – oktober\nSeizoen: eenjarig\n\nOnderhoud:\nNiet graag verplanten → direct zaaien.",
+      "tags": [
+        "Direct zaaien",
+        "Snelle groeier",
+        "Eetbaar",
+        "Bijvriendelijk",
+        "Niet verplanten"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-3f5fa543b99be68347f5.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-3f5fa543b99be68347f5.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-42",
+      "naam": "Citroenboom",
+      "type": "Fruit",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: jaarrond (binnen)\nKiemduur: 14 – 30 dagen\nKiemtemperatuur: ± 20 – 25°C\n\nZaaimethode:\nLaat zaden 24 – 48 uur weken in lauwwarm water.\nZaai ± 1 cm diep en houd de grond vochtig (niet nat).\n\nStandplaats: volle zon (na kieming)\nGrond: luchtig en goed doorlatend (citrusgrond)\n\nWater:\nRegelmatig water geven, pas als bovenlaag droog is.\nAf en toe besproeien.\n\nLuchtvochtigheid:\nHoudt van een warme, vochtige omgeving.\n\nUitplanten:\nNa ± 1 jaar overzetten in grotere pot.\n\nSeizoen: vaste plant (boom)",
+      "tags": [
+        "Voorzaaien",
+        "Eetbaar",
+        "Potten",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-9132cc6932243e47df7d.png"
+        },
+        {
+          "url": "assets/example-garden/photo-bdc23001ab35598a6b65.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-9132cc6932243e47df7d.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-43",
+      "naam": "Frambozen Rubus idaeus",
+      "type": "Fruit",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "",
+      "oogsttijd": "",
+      "beschrijving": "Zaaien: jaarrond (binnen)\nKiemduur: 4 – 6 weken (kan veel langer duren)\nKiemtemperatuur: ± 18 – 20°C\n\nZaaimethode:\nStratificeer de zaden eerst 3 – 4 weken in de koelkast.\nZaai daarna licht op vochtige grond en bedek dun (lichtkiemer).\nHoud de grond vochtig en ventileer regelmatig.\n\nStandplaats: zon tot halfschaduw\nGrond: humusrijk, licht zuur en goed doorlatend\n\nWater:\nGrond licht vochtig houden, niet laten uitdrogen.\n\nUitplanten:\nNa opkweken afharden en buiten uitplanten.\n\nSeizoen: vaste plant (struik)",
+      "tags": [
+        "Voorzaaien",
+        "Vaste plant",
+        "Eetbaar",
+        "Weinig onderhoud"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-6d807f71db1844586ddb.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-6d807f71db1844586ddb.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-44",
+      "naam": "Paprika Kurtovszka Kápia",
+      "type": "Groente",
+      "standplaats": "Kas",
+      "water": "Gemiddeld",
+      "zaaitijd": "Feb, Mrt",
+      "oogsttijd": "Jul, Aug, Sep, Okt",
+      "beschrijving": "Zaaien: februari – maart (binnen/kas)\nKiemduur: 10 – 20 dagen\nKiemtemperatuur: 20 – 25°C\n\nZaaimethode:\nZaai in een bakje en bedek licht.\nWarm houden en grond licht vochtig houden.\n\nStandplaats: kas / volle zon\nGrond: voedzaam en goed doorlatend\n\nWater:\nRegelmatig water geven, niet laten uitdrogen.\nGeen natte voeten.\n\nPlantafstand: ± 40 – 50 cm\nHoogte: ± 60 – 80 cm\n\nOogst: juli – oktober\nSeizoen: eenjarig\n\nOnderhoud:\nRegelmatig voeding geven vanaf bloei.",
+      "tags": [
+        "Voorzaaien",
+        "Eenjarig",
+        "Eetbaar",
+        "Potten",
+        "Gevoelig voor vorst"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-45215cf2bc39a4d1dcd3.png"
+        },
+        {
+          "url": "assets/example-garden/photo-8d29fd4771857b3cded0.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-45215cf2bc39a4d1dcd3.png",
+      "status": "Voorraad"
+    },
+    {
+      "id": "example-plant-45",
+      "naam": "Sweet Million Cherrytomaat",
+      "type": "Groente",
+      "standplaats": "Kas",
+      "water": "Veel",
+      "zaaitijd": "Mrt, Apr",
+      "oogsttijd": "Jul, Aug, Sep, Okt",
+      "beschrijving": "Zaaien: maart – april (binnen/kas)\nKiemduur: 7 – 14 dagen\nKiemtemperatuur: 20 – 25°C\n\nZaaimethode:\nZaai in een bakje en bedek licht.\nNa opkomst verspenen in voedzame grond.\n\nStandplaats: kas / volle zon\nGrond: voedzaam en goed doorlatend\n\nWater:\nVeel water nodig, regelmatig geven.\nNiet op het blad gieten.\n\nPlantafstand: ± 50 – 60 cm\nHoogte: ± 150 – 200 cm\n\nOogst: juli – oktober\nSeizoen: eenjarig\n\nOnderhoud:\nWekelijks dieven (okselscheuten verwijderen).\nRegelmatig voeding geven.",
+      "tags": [
+        "Voorzaaien",
+        "Snelle groeier",
+        "Eenjarig",
+        "Eetbaar",
+        "Potten"
+      ],
+      "images": [
+        {
+          "url": "assets/example-garden/photo-4cdb7106ddefe854822b.webp"
+        },
+        {
+          "url": "assets/example-garden/photo-fc92386ff383e4c4b9dc.webp"
+        },
+        {
+          "url": "assets/example-garden/photo-a350c5ecb70e5e17ce6e.png"
+        }
+      ],
+      "featuredImageUrl": "assets/example-garden/photo-fc92386ff383e4c4b9dc.webp",
+      "status": "Voorraad"
+    }
+  ]
+}

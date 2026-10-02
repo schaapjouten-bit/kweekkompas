@@ -1,0 +1,10 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '..');
+const target = path.join(root, 'dist');
+if (path.dirname(target) !== root || path.basename(target) !== 'dist') throw new Error('Ongeldige buildmap.');
+fs.rmSync(target, { recursive: true, force: true });
+fs.mkdirSync(target, { recursive: true });
+for (const name of ['index.html', 'app-v132.js', 'services.js', 'services.css', 'styles.css', 'calendar.css', 'onboarding.css', 'planner.css', 'wishlist.css']) fs.copyFileSync(path.join(root, name), path.join(target, name));
+fs.cpSync(path.join(root, 'assets'), path.join(target, 'assets'), { recursive: true });
+console.log('Statische app gebouwd in dist; backendcode en .env zijn niet opgenomen.');

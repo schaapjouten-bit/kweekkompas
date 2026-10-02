@@ -3,15 +3,351 @@ console.log("🚀 KWEEKKOMPAS REPAIR ENGINE STARTING...");
 
 let isSettingsOpen = false;
 
-// Global State
-window.userProfile = JSON.parse(localStorage.getItem('moestuin_user_profile')) || JSON.parse(localStorage.getItem('userProfile')) || {
+// --- SHARED APP-SHELL THEME ---
+// Theme values are intentionally small and explicit so legacy preferences can
+// be migrated without touching profile, seed, or backup data.
+const APP_THEME_VALUES = new Set(['light', 'dark', 'playful']);
+
+function normalizeAppTheme(value) {
+    return APP_THEME_VALUES.has(value) ? value : 'light';
+}
+
+function getStoredAppTheme() {
+    try {
+        return normalizeAppTheme(localStorage.getItem('theme'));
+    } catch (error) {
+        return 'light';
+    }
+}
+
+function applyAppTheme(value) {
+    const theme = normalizeAppTheme(value);
+    if (typeof document !== 'undefined' && document.documentElement) {
+        document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.style.colorScheme = theme === 'dark' ? 'dark' : 'light';
+    }
+    return theme;
+}
+
+function saveAppTheme(value) {
+    const theme = applyAppTheme(value);
+    try {
+        localStorage.setItem('theme', theme);
+    } catch (error) {
+        // Rendering still works when local storage is temporarily unavailable.
+    }
+    return theme;
+}
+
+// --- SAFE LOCAL STORAGE ---
+// Canonical profile storage is `userProfile`; `moestuin_user_profile` is kept
+// as a synchronized compatibility mirror for the older profile interface.
+const CANONICAL_PROFILE_STORAGE_KEY = 'userProfile';
+const LEGACY_PROFILE_STORAGE_KEY = 'moestuin_user_profile';
+const DEFAULT_USER_PROFILE = {
     name: '',
     climate: 'Nederland (Zeeklimaat)',
     units: 'Metric',
-    light: '', 
-    level: '',
+    gardenType: '',
+    light: '',
+    experience: '',
     photo: ''
 };
+const unreadableStoredJSONKeys = new Set();
+
+function cloneStorageFallback(fallback) {
+    if (Array.isArray(fallback)) return [...fallback];
+    if (fallback && typeof fallback === 'object') return { ...fallback };
+    return fallback;
+}
+
+function normalizeStoredObject(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined;
+}
+
+function hasMeaningfulProfileValue(value) {
+    return value !== undefined && value !== null &&
+        (typeof value !== 'string' || value.trim() !== '');
+}
+
+function firstNonEmptyString(...values) {
+    return values.find(value => typeof value === 'string' && value.trim() !== '') || '';
+}
+
+function prepareProfileAliases(value) {
+    const profile = normalizeStoredObject(value);
+    if (!profile) return {};
+
+    const prepared = { ...profile };
+    if (!firstNonEmptyString(prepared.gardenType)) {
+        prepared.gardenType = firstNonEmptyString(
+            prepared.tuinType, prepared.tuintype, prepared.type, prepared.onboarding_type
+        );
+    }
+    if (!firstNonEmptyString(prepared.experience)) {
+        prepared.experience = firstNonEmptyString(prepared.level, prepared.onboarding_level);
+    }
+    if (!firstNonEmptyString(prepared.light)) prepared.light = firstNonEmptyString(prepared.onboarding_sun);
+    return prepared;
+}
+
+function mergeProfileRecords(...records) {
+    const merged = {};
+    for (const record of records) {
+        const prepared = prepareProfileAliases(record);
+        for (const [key, value] of Object.entries(prepared)) {
+            if (!hasMeaningfulProfileValue(merged[key]) && hasMeaningfulProfileValue(value)) {
+                merged[key] = value;
+            }
+        }
+    }
+    return merged;
+}
+
+function normalizeUserProfile(value) {
+    const profile = prepareProfileAliases(value);
+    if (!Object.keys(profile).length) return undefined;
+
+    const normalized = {
+        name: typeof profile.name === 'string' ? profile.name : DEFAULT_USER_PROFILE.name,
+        climate: typeof profile.climate === 'string' && profile.climate.trim() !== '' ? profile.climate : DEFAULT_USER_PROFILE.climate,
+        units: typeof profile.units === 'string' && profile.units.trim() !== '' ? profile.units : DEFAULT_USER_PROFILE.units,
+        gardenType: firstNonEmptyString(profile.gardenType),
+        light: normalizeOnboardingLight(profile.light),
+        experience: firstNonEmptyString(profile.experience),
+        photo: typeof profile.photo === 'string' ? profile.photo : DEFAULT_USER_PROFILE.photo
+    };
+    const knownFields = new Set(['name', 'climate', 'units', 'gardenType', 'light', 'experience', 'photo']);
+    for (const [key, fieldValue] of Object.entries(profile)) {
+        if (!knownFields.has(key)) normalized[key] = fieldValue;
+    }
+    return normalized;
+}
+
+function normalizeStoredArray(value) {
+    return Array.isArray(value) ? value : undefined;
+}
+
+// Keep legacy onboarding wording compatible with the canonical seed value.
+function normalizeStandplaatsValue(value) {
+    return value === 'Volle zon' ? 'Zon' : value;
+}
+
+function normalizeOnboardingLight(value) {
+    return normalizeStandplaatsValue(value) || '';
+}
+
+function readStoredString(key) {
+    try {
+        const value = localStorage.getItem(key);
+        return typeof value === 'string' ? value : '';
+    } catch (error) {
+        return '';
+    }
+}
+
+function normalizeReminders(value) {
+    const reminders = normalizeStoredArray(value);
+    if (!reminders) return undefined;
+
+    return reminders.filter(reminder => reminder && typeof reminder === 'object' &&
+        typeof reminder.title === 'string' && typeof reminder.date === 'string');
+}
+
+function normalizeDailyProgress(value) {
+    const progress = normalizeStoredObject(value);
+    if (!progress) return undefined;
+
+    const count = Number(progress.count);
+    return {
+        ...progress,
+        date: typeof progress.date === 'string' ? progress.date : '',
+        count: Number.isFinite(count) && count >= 0 ? count : 0
+    };
+}
+
+function normalizeWishlist(value) {
+    const wishlist = normalizeStoredArray(value);
+    if (!wishlist) return undefined;
+
+    return wishlist.filter(item => item && typeof item === 'object' && typeof item.name === 'string');
+}
+
+function readStoredJSON(key, fallback, normalize) {
+    let rawValue;
+
+    try {
+        rawValue = localStorage.getItem(key);
+    } catch (error) {
+        unreadableStoredJSONKeys.add(key);
+        console.warn(`[KweekKompas] Opgeslagen data voor "${key}" is niet beschikbaar.`);
+        return cloneStorageFallback(fallback);
+    }
+
+    if (rawValue === null) return cloneStorageFallback(fallback);
+
+    try {
+        const parsedValue = JSON.parse(rawValue);
+        const normalizedValue = normalize ? normalize(parsedValue) : parsedValue;
+
+        if (normalizedValue === undefined) {
+            unreadableStoredJSONKeys.add(key);
+            console.warn(`[KweekKompas] Opgeslagen data voor "${key}" heeft een onverwacht formaat.`);
+            return cloneStorageFallback(fallback);
+        }
+
+        return normalizedValue;
+    } catch (error) {
+        unreadableStoredJSONKeys.add(key);
+        console.warn(`[KweekKompas] Opgeslagen data voor "${key}" kon niet worden gelezen.`);
+        return cloneStorageFallback(fallback);
+    }
+}
+
+function profileRecordHasMeaningfulData(value) {
+    const profile = normalizeStoredObject(value);
+    if (!profile) return false;
+    return Object.values(profile).some(hasMeaningfulProfileValue);
+}
+
+const ONBOARDING_GARDEN_PLACE_VALUES = Object.freeze([
+    'Volle grond', 'Bakken of potten', 'Balkon of terras'
+]);
+const ONBOARDING_LIGHT_VALUES = new Set(['Zon', 'Halfschaduw', 'Schaduw']);
+const ONBOARDING_EXPERIENCE_VALUES = new Set(['Beginner', 'Gemiddeld', 'Ervaren']);
+
+function normalizeOnboardingGardenPlaces(value) {
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value.filter(place => ONBOARDING_GARDEN_PLACE_VALUES.includes(place)))];
+}
+
+function toggleOnboardingGardenPlace(places, primaryPlace, toggledPlace) {
+    const currentPlaces = normalizeOnboardingGardenPlaces(places);
+    if (!ONBOARDING_GARDEN_PLACE_VALUES.includes(toggledPlace)) {
+        return {
+            places: currentPlaces,
+            primaryPlace: currentPlaces.includes(primaryPlace) ? primaryPlace : (currentPlaces[0] || '')
+        };
+    }
+
+    const wasSelected = currentPlaces.includes(toggledPlace);
+    const nextPlaces = wasSelected
+        ? currentPlaces.filter(place => place !== toggledPlace)
+        : [...currentPlaces, toggledPlace];
+    const nextPrimaryPlace = wasSelected && primaryPlace === toggledPlace
+        ? (nextPlaces[0] || '')
+        : (nextPlaces.includes(primaryPlace) ? primaryPlace : (nextPlaces[0] || ''));
+    return { places: nextPlaces, primaryPlace: nextPrimaryPlace };
+}
+
+function getOnboardingProfileFields() {
+    return {
+        gardenType: readStoredString('onboarding_type').trim(),
+        light: normalizeOnboardingLight(readStoredString('onboarding_sun').trim()),
+        experience: readStoredString('onboarding_level').trim()
+    };
+}
+
+function buildLegacyProfileMirror(profile) {
+    const mirror = { ...profile };
+    mirror.level = profile.experience || '';
+    return mirror;
+}
+
+function saveUserProfileData(profile, { syncOnboarding = true } = {}) {
+    const normalized = normalizeUserProfile(profile) || { ...DEFAULT_USER_PROFILE };
+    const canonical = JSON.stringify(normalized);
+    const legacy = JSON.stringify(buildLegacyProfileMirror(normalized));
+
+    localStorage.setItem(CANONICAL_PROFILE_STORAGE_KEY, canonical);
+    localStorage.setItem(LEGACY_PROFILE_STORAGE_KEY, legacy);
+
+    if (syncOnboarding) {
+        const synchronizedFields = [
+            ['onboarding_type', normalized.gardenType],
+            ['onboarding_sun', normalized.light],
+            ['onboarding_level', normalized.experience]
+        ];
+        for (const [key, value] of synchronizedFields) {
+            if (hasMeaningfulProfileValue(value) || readStoredString(key) !== '') {
+                localStorage.setItem(key, value || '');
+            }
+        }
+    }
+
+    window.userProfile = normalized;
+    return normalized;
+}
+
+function loadUserProfile() {
+    const canonicalStored = readStoredJSON(CANONICAL_PROFILE_STORAGE_KEY, null, normalizeStoredObject);
+    const legacyStored = readStoredJSON(LEGACY_PROFILE_STORAGE_KEY, null, normalizeStoredObject);
+    const onboardingFields = getOnboardingProfileFields();
+    const hasStoredProfile = profileRecordHasMeaningfulData(canonicalStored) ||
+        profileRecordHasMeaningfulData(legacyStored);
+    const onboardingCompleted = readStoredString('onboarding_done') === 'true';
+    // Precedence is canonical non-empty values, then legacy, then onboarding,
+    // and only finally the defaults.
+    const merged = mergeProfileRecords(canonicalStored, legacyStored, onboardingFields);
+    const normalized = normalizeUserProfile(merged) || { ...DEFAULT_USER_PROFILE };
+
+    // Migrate only when a real profile already exists; partial onboarding
+    // selections remain temporary until the user presses Finish.
+    if (hasStoredProfile || (onboardingCompleted && profileRecordHasMeaningfulData(onboardingFields))) {
+        try {
+            saveUserProfileData(normalized);
+        } catch (error) {
+            console.warn('[KweekKompas] Profielmigratie kon niet worden opgeslagen.');
+        }
+    }
+
+    return normalized;
+}
+
+function hasStoredUserProfile() {
+    const canonicalStored = readStoredJSON(CANONICAL_PROFILE_STORAGE_KEY, null, normalizeStoredObject);
+    const legacyStored = readStoredJSON(LEGACY_PROFILE_STORAGE_KEY, null, normalizeStoredObject);
+    const onboardingStored = getOnboardingProfileFields();
+    return profileRecordHasMeaningfulData(canonicalStored) ||
+        profileRecordHasMeaningfulData(legacyStored) ||
+        (readStoredString('onboarding_done') === 'true' && profileRecordHasMeaningfulData(onboardingStored));
+}
+
+function buildProfileFromOnboarding(profile, onboardingData) {
+    const baseProfile = normalizeUserProfile(profile) || { ...DEFAULT_USER_PROFILE };
+    const usesNewPlaceSelection = Array.isArray(onboardingData?.places);
+    const gardenPlaces = usesNewPlaceSelection
+        ? normalizeOnboardingGardenPlaces(onboardingData.places)
+        : normalizeOnboardingGardenPlaces(baseProfile.gardenPlaces);
+    const requestedPrimary = onboardingData?.primaryPlace;
+    const primaryPlace = gardenPlaces.includes(requestedPrimary) ? requestedPrimary : (gardenPlaces[0] || '');
+    const legacyType = !usesNewPlaceSelection ? firstNonEmptyString(onboardingData?.type) : '';
+    const requestedLight = usesNewPlaceSelection
+        ? (ONBOARDING_LIGHT_VALUES.has(onboardingData?.light) ? onboardingData.light : '')
+        : normalizeOnboardingLight(onboardingData?.light || baseProfile.light || '');
+    const requestedExperience = usesNewPlaceSelection
+        ? (ONBOARDING_EXPERIENCE_VALUES.has(onboardingData?.level) ? onboardingData.level : '')
+        : firstNonEmptyString(onboardingData?.level, baseProfile.experience);
+    const gardenType = usesNewPlaceSelection ? primaryPlace : (legacyType || baseProfile.gardenType || '');
+    const savedPrimaryPlace = gardenPlaces.includes(baseProfile.primaryGardenPlace)
+        ? baseProfile.primaryGardenPlace
+        : (gardenPlaces.includes(baseProfile.gardenType) ? baseProfile.gardenType : '');
+    return {
+        ...baseProfile,
+        gardenType,
+        gardenPlaces,
+        primaryGardenPlace: usesNewPlaceSelection ? primaryPlace : savedPrimaryPlace,
+        light: requestedLight,
+        experience: requestedExperience
+    };
+}
+
+function shouldStartOnboarding(doneOnboarding, profileExists, seedCount, databaseAvailable) {
+    return !doneOnboarding && !profileExists && seedCount === 0 && databaseAvailable;
+}
+
+// Global State
+window.userProfile = loadUserProfile();
 
 window.toggleSettingsPanel_REPAIR_V131 = function() {
     isSettingsOpen = !isSettingsOpen;
@@ -22,44 +358,48 @@ window.openInfoModal = function(section) {
     console.log("Opening modal section:", section);
     const modal = document.getElementById('info-modal');
     if (!modal) { console.error("Modal #info-modal not found!"); return; }
-    
+
     // Hide all views
     document.querySelectorAll('.info-view').forEach(v => v.classList.add('hidden'));
-    
+
     const targetView = document.getElementById('info-view-' + section);
     if (targetView) {
         targetView.classList.remove('hidden');
     } else {
         console.error("View not found: info-view-" + section);
     }
-    
+
     const title = document.getElementById('info-modal-title');
     if (title) {
-        const titles = { 
-            'about': 'Over KweekKompas', 
-            'faq': 'Veelgestelde vragen', 
-            'privacy': 'Privacy', 
-            'data': 'Data & Opslag', 
-            'profile': '👤 Profiel Bewerken' 
+        const titles = {
+            'about': 'Over KweekKompas',
+            'faq': 'Veelgestelde vragen',
+            'privacy': 'Privacy',
+            'data': 'Data & Opslag',
+            'profile': '👤 Profiel Bewerken'
         };
         title.textContent = titles[section] || 'Info & Support';
     }
-    
+
     if (section === 'profile') {
         const iN = document.getElementById('profile-input-name');
         const iC = document.getElementById('profile-input-climate');
+        const iT = document.getElementById('profile-input-tuin');
+        const iL = document.getElementById('profile-input-level');
         const iU = document.getElementById('profile-input-units');
         if (iN) iN.value = window.userProfile.name || '';
         if (iC) iC.value = window.userProfile.climate || '';
+        if (iT) iT.value = window.userProfile.gardenType || '';
+        if (iL) iL.value = window.userProfile.experience || '';
         if (iU) iU.value = window.userProfile.units || 'Metric';
-        
+
         // 🔥 Foto updaten
         const avatar = targetView.querySelector('.profile-avatar');
         if (avatar) {
-            avatar.src = window.userProfile.photo || 'assets/default-avatar.png';
+            avatar.src = safeProfileImageUrl(window.userProfile.photo);
         }
     }
-    
+
     modal.classList.remove('hidden');
 };
 
@@ -70,11 +410,18 @@ window.closeInfoModal = function() {
 window.saveUserProfile = function() {
     const iN = document.getElementById('profile-input-name');
     const iC = document.getElementById('profile-input-climate');
+    const iT = document.getElementById('profile-input-tuin');
+    const iL = document.getElementById('profile-input-level');
     const iU = document.getElementById('profile-input-units');
-    window.userProfile.name = iN ? iN.value : window.userProfile.name;
-    window.userProfile.climate = iC ? iC.value : window.userProfile.climate;
-    window.userProfile.units = iU ? iU.value : window.userProfile.units;
-    localStorage.setItem('moestuin_user_profile', JSON.stringify(window.userProfile));
+    const profile = {
+        ...window.userProfile,
+        name: iN ? iN.value : window.userProfile.name,
+        climate: iC ? iC.value : window.userProfile.climate,
+        gardenType: iT ? iT.value : window.userProfile.gardenType,
+        experience: iL ? iL.value : window.userProfile.experience,
+        units: iU ? iU.value : window.userProfile.units
+    };
+    saveUserProfileData(profile);
     if (window.updateProfileUI) window.updateProfileUI();
     if (isSettingsOpen) renderSettingsPanel();
     window.closeInfoModal();
@@ -94,6 +441,8 @@ function renderSettingsPanel() {
         overlay.classList.remove('hidden');
         // Re-render to ensure theme labels and state are correct
         panel.innerHTML = getSettingsHTML();
+        applySettingsPanelValues(panel);
+        window.KweekServices?.mount(panel);
     } else {
         panel.classList.remove('open');
         overlay.classList.add('hidden');
@@ -112,7 +461,7 @@ window.openSettingsModal = function(html) {
   modal.style.display = 'flex';
   modal.style.alignItems = 'center';
   modal.style.justifyContent = 'center';
-  
+
   modal.innerHTML = `
     <div class="modal-content" style="max-width: 440px; width: 90%; margin: auto; background: #1E201E; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh; border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 20px 40px rgba(0,0,0,0.5); position: relative;">
       <button class="modal-close-btn" style="position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.05); border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #D1D5DB; cursor: pointer; z-index: 10;" onclick="document.getElementById('settings-generic-modal').remove()">✕</button>
@@ -122,6 +471,7 @@ window.openSettingsModal = function(html) {
     </div>
   `;
   document.body.appendChild(modal);
+  populateProfileModal(modal);
 
   modal.addEventListener('click', function(e) {
     if (e.target === modal) modal.remove();
@@ -129,22 +479,130 @@ window.openSettingsModal = function(html) {
 }
 
 window.openSettingsSection = function(section) {
-    if (section === 'profile') window.openSettingsModal(getProfileHTML());
-    if (section === 'about') window.openSettingsModal(getAboutHTML());
-    if (section === 'storage') window.openSettingsModal(getDataStorageHTML());
-    if (section === 'faq') window.openSettingsModal(getFAQHTML());
+    const targetId = `settings-section-${section}`;
+    const focusSection = () => {
+        const panel = document.getElementById('settings-panel');
+        const target = panel?.querySelector(`#${targetId}`);
+        if (!target) return;
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        target.focus?.({ preventScroll: true });
+    };
+    if (!isSettingsOpen) {
+        window.toggleSettingsPanel_REPAIR_V131();
+        window.setTimeout(focusSection, 0);
+    } else {
+        focusSection();
+    }
+}
+
+function safeFiniteNumber(value, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function applySettingsPanelValues(panel) {
+    if (!panel) return;
+    const profile = normalizeUserProfile(window.userProfile) || { ...DEFAULT_USER_PROFILE };
+    const photo = panel.querySelector('#settings-drawer-photo');
+    if (photo) {
+        photo.src = safeProfileImageUrl(profile.photo);
+        const zoom = Math.min(3, Math.max(1, safeFiniteNumber(profile.photoZoom, 1)));
+        const x = safeFiniteNumber(profile.photoX);
+        const y = safeFiniteNumber(profile.photoY);
+        photo.style.transform = `scale(${zoom}) translate(${x * (56 / 120)}px, ${y * (56 / 120)}px)`;
+    }
+
+    const name = panel.querySelector('#settings-drawer-name');
+    if (name) name.textContent = profile.name || 'Jouw profiel';
+    const meta = panel.querySelector('#settings-drawer-meta');
+    if (meta) meta.textContent = `${profile.gardenType || 'Geen type'} \u2022 ${profile.climate || 'Nederland'}`;
+
+    populateProfileModal(panel);
+    bindSettingsProfileControls(panel);
+
+    const currentTheme = normalizeAppTheme(document.documentElement.getAttribute('data-theme') || getStoredAppTheme());
+    panel.querySelectorAll('[data-theme-choice]').forEach(button => {
+        const active = button.dataset.themeChoice === currentTheme;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    const layout = localStorage.getItem('layout_width') === 'wide' ? 'wide' : 'standard';
+    panel.querySelectorAll('[data-layout-choice]').forEach(button => {
+        const active = button.dataset.layoutChoice === layout;
+        button.classList.toggle('active', active);
+        button.style.background = active ? 'rgba(255,255,255,0.12)' : 'transparent';
+    });
+}
+
+function bindSettingsProfileControls(panel) {
+    if (!panel) return;
+    const fieldMap = {
+        'profile-modal-name': 'name',
+        'profile-modal-experience': 'experience',
+        'profile-modal-light': 'light',
+        'profile-modal-climate': 'climate',
+        'profile-modal-units': 'units',
+        'profile-modal-garden-type': 'gardenType'
+    };
+    Object.entries(fieldMap).forEach(([id, key]) => {
+        const field = panel.querySelector(`#${id}`);
+        field?.addEventListener('change', () => window.saveProfileField(key, field.value));
+    });
+    panel.querySelectorAll('[data-profile-garden-place]').forEach(field => {
+        field.addEventListener('change', () => {
+            const places = Array.from(panel.querySelectorAll('[data-profile-garden-place]:checked'))
+                .map(input => input.value);
+            window.saveProfileField('gardenPlaces', places);
+        });
+    });
+    panel.querySelector('#profile-photo-upload')?.addEventListener('change', window.handleProfilePhotoUpload);
+    panel.querySelector('#profile-modal-zoom')?.addEventListener('input', event => window.handleAvatarZoom(event.target.value));
+    panel.querySelector('#profile-avatar-container')?.addEventListener('mousedown', window.initAvatarDrag);
+    panel.querySelector('#profile-avatar-container')?.addEventListener('touchstart', window.initAvatarDrag, { passive: false });
+    panel.querySelector('[data-profile-photo-trigger]')?.addEventListener('click', () => panel.querySelector('#profile-photo-upload')?.click());
+}
+
+function populateProfileModal(modal) {
+    const preview = modal?.querySelector('#profile-avatar-preview');
+    if (!preview) return;
+    const profile = normalizeUserProfile(window.userProfile) || { ...DEFAULT_USER_PROFILE };
+    const name = modal.querySelector('#profile-modal-name');
+    const experience = modal.querySelector('#profile-modal-experience');
+    const light = modal.querySelector('#profile-modal-light');
+    const climate = modal.querySelector('#profile-modal-climate');
+    const units = modal.querySelector('#profile-modal-units');
+    const gardenType = modal.querySelector('#profile-modal-garden-type');
+    if (name) name.value = profile.name || '';
+    if (experience) experience.value = profile.experience || '';
+    if (light) light.value = ONBOARDING_LIGHT_VALUES.has(profile.light) ? profile.light : '';
+    if (climate) climate.value = profile.climate || 'Nederland (Zeeklimaat)';
+    if (units) units.value = profile.units === 'Imperial' ? 'Imperial' : 'Metric';
+    if (gardenType) gardenType.value = profile.primaryGardenPlace || profile.gardenType || '';
+
+    const gardenPlaces = normalizeOnboardingGardenPlaces(profile.gardenPlaces);
+    if (!gardenPlaces.length && ONBOARDING_GARDEN_PLACE_VALUES.includes(profile.gardenType)) {
+        gardenPlaces.push(profile.gardenType);
+    }
+    modal.querySelectorAll('[data-profile-garden-place]').forEach(field => {
+        field.checked = gardenPlaces.includes(field.value);
+    });
+
+    preview.src = safeProfileImageUrl(profile.photo);
+    const zoom = Math.min(3, Math.max(1, safeFiniteNumber(profile.photoZoom, 1)));
+    const x = safeFiniteNumber(profile.photoX);
+    const y = safeFiniteNumber(profile.photoY);
+    preview.style.transform = `scale(${zoom}) translate(${x}px, ${y}px)`;
+    const zoomValue = modal.querySelector('#zoom-value');
+    if (zoomValue) zoomValue.textContent = `${Math.round(zoom * 100)}%`;
+    const zoomSlider = modal.querySelector('#profile-modal-zoom');
+    if (zoomSlider) zoomSlider.value = String(zoom);
 }
 
 function getProfileHTML() {
-  const profile = JSON.parse(localStorage.getItem('userProfile') || '{}');
-  const name = profile.name || '';
-  const experience = profile.experience || 'Beginner';
-  const climate = profile.climate || 'Nederland (Zeeklimaat)';
-  const units = profile.units || 'Metric';
-
   return `
     <div style="display: flex; flex-direction: column; gap: 16px;">
-      
+
       <div style="text-align:center; margin-bottom: 8px;">
         <h2 style="margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; color: var(--text-main);">Jouw profiel</h2>
       </div>
@@ -152,25 +610,25 @@ function getProfileHTML() {
       <!-- FOTO / AVATAR TOOL -->
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; margin-bottom: 8px;">
         <div style="position: relative;">
-          <div id="profile-avatar-container" 
+          <div id="profile-avatar-container"
                style="width: 120px; height: 120px; border-radius: 50%; overflow: hidden; border: 3px solid rgba(255,255,255,0.1); background: #2a2c2a; cursor: grab; position: relative; display: flex; align-items: center; justify-content: center;"
                onmousedown="window.initAvatarDrag(event)"
                ontouchstart="window.initAvatarDrag(event)">
-            <img id="profile-avatar-preview" 
-                 src="${profile.photo || 'assets/default-avatar.png'}" 
-                 style="position: absolute; width: 100%; height: 100%; object-fit: cover; pointer-events: none; transform: scale(${profile.photoZoom || 1}) translate(${profile.photoX || 0}px, ${profile.photoY || 0}px); transition: transform 0.1s ease-out; transform-origin: center;">
+            <img id="profile-avatar-preview"
+                 src="assets/default-avatar.png"
+                 style="position: absolute; width: 100%; height: 100%; object-fit: cover; pointer-events: none; transform: scale(1) translate(0px, 0px); transition: transform 0.1s ease-out; transform-origin: center;">
           </div>
-          <div onclick="document.getElementById('profile-photo-upload').click()" 
+          <div onclick="document.getElementById('profile-photo-upload').click()"
                style="position: absolute; z-index: 10; bottom: 4px; right: 4px; background: #648166; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; border: 3px solid #1E201E; box-shadow: 0 4px 10px rgba(0,0,0,0.3); cursor: pointer;">✏️</div>
         </div>
-        
+
         <!-- ZOOM CONTROLS -->
         <div style="width: 160px; display: flex; flex-direction: column; gap: 4px;">
           <div style="display: flex; justify-content: space-between; font-size: 11px; opacity: 0.6; color: #fff;">
             <span>Zoom</span>
-            <span id="zoom-value">${Math.round((profile.photoZoom || 1) * 100)}%</span>
+            <span id="zoom-value">100%</span>
           </div>
-          <input type="range" min="1" max="3" step="0.05" value="${profile.photoZoom || 1}" 
+          <input id="profile-modal-zoom" type="range" min="1" max="3" step="0.05" value="1"
                  style="width: 100%; accent-color: #648166; cursor: pointer;"
                  oninput="window.handleAvatarZoom(this.value)">
           <p style="font-size: 10px; opacity: 0.4; text-align: center; margin-top: 4px;">Sleep de foto om te verplaatsen</p>
@@ -182,46 +640,49 @@ function getProfileHTML() {
       <!-- NAAM -->
       <div style="display: flex; flex-direction: column; gap: 6px;">
         <label style="font-size: 13px; font-weight: 600; color: var(--text-muted);">Jouw Naam</label>
-        <input type="text" value="${name}" placeholder="Hoe mogen we je noemen?" onchange="window.saveProfileField('name', this.value)" style="padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); font-size: 15px; font-family: inherit;">
+        <input id="profile-modal-name" type="text" value="" placeholder="Hoe mogen we je noemen?" onchange="window.saveProfileField('name', this.value)" style="padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); font-size: 15px; font-family: inherit;">
       </div>
 
       <!-- ERVARING -->
       <div style="display: flex; flex-direction: column; gap: 6px;">
         <label style="font-size: 13px; font-weight: 600; color: var(--text-muted);">Ervaring</label>
-        <select onchange="window.saveProfileField('experience', this.value)" style="padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); font-size: 15px; font-family: inherit; appearance: none; position: relative;">
-          <option value="Beginner" ${experience === 'Beginner' ? 'selected' : ''}>Beginner (Startende tuinder)</option>
-          <option value="Gemiddeld" ${experience === 'Gemiddeld' ? 'selected' : ''}>Gemiddeld (Al oogst gehad)</option>
-          <option value="Expert" ${experience === 'Expert' ? 'selected' : ''}>Expert (Groene vingers)</option>
+        <select id="profile-modal-experience" onchange="window.saveProfileField('experience', this.value)" style="padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); font-size: 15px; font-family: inherit; appearance: none; position: relative;">
+          <option value="Beginner">Beginner (Startende tuinder)</option>
+          <option value="Gemiddeld">Gemiddeld (Al oogst gehad)</option>
+          <option value="Expert">Expert (Groene vingers)</option>
+          <option value="Ervaren">Ervaren (Groene vingers)</option>
         </select>
       </div>
 
       <!-- ZONE -->
       <div style="display: flex; flex-direction: column; gap: 6px;">
         <label style="font-size: 13px; font-weight: 600; color: var(--text-muted);">Klimaatzone</label>
-        <select onchange="window.saveProfileField('climate', this.value)" style="padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); font-size: 15px; font-family: inherit; appearance: none;">
-          <option value="Nederland (Zeeklimaat)" ${climate.includes('Nederland') ? 'selected' : ''}>Nederland / België (Zeeklimaat)</option>
-          <option value="Warm (Subtropisch)" ${climate.includes('Warm') ? 'selected' : ''}>Warm / Kas (Subtropisch)</option>
-          <option value="Koud (Continentaal)" ${climate.includes('Koud') ? 'selected' : ''}>Koud (Continentaal)</option>
+        <select id="profile-modal-climate" onchange="window.saveProfileField('climate', this.value)" style="padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); font-size: 15px; font-family: inherit; appearance: none;">
+          <option value="Nederland (Zeeklimaat)">Nederland / België (Zeeklimaat)</option>
+          <option value="Warm (Subtropisch)">Warm / Kas (Subtropisch)</option>
+          <option value="Koud (Continentaal)">Koud (Continentaal)</option>
         </select>
       </div>
 
       <!-- EENHEDEN -->
       <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px;">
         <label style="font-size: 13px; font-weight: 600; color: var(--text-muted);">Eenheden</label>
-        <select onchange="window.saveProfileField('units', this.value)" style="padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); font-size: 15px; font-family: inherit; appearance: none;">
-          <option value="Metric" ${units === 'Metric' || units === 'cm / °C' ? 'selected' : ''}>Metrisch (cm / °C)</option>
-          <option value="Imperial" ${units === 'Imperial' || units !== 'Metric' ? 'selected' : ''}>Imperiaal (inch / °F)</option>
+        <select id="profile-modal-units" onchange="window.saveProfileField('units', this.value)" style="padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); font-size: 15px; font-family: inherit; appearance: none;">
+          <option value="Metric">Metrisch (cm / °C)</option>
+          <option value="Imperial">Imperiaal (inch / °F)</option>
         </select>
       </div>
 
       <!-- TYPE TUIN -->
       <div style="display: flex; flex-direction: column; gap: 6px;">
         <label style="font-size: 13px; font-weight: 600; color: var(--text-muted);">Type Tuin</label>
-        <select onchange="window.saveProfileField('gardenType', this.value)" style="padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); font-size: 15px; font-family: inherit; appearance: none;">
-          <option value="Achtertuin" ${profile.gardenType === 'Achtertuin' ? 'selected' : ''}>Achtertuin</option>
-          <option value="Balkon" ${profile.gardenType === 'Balkon' ? 'selected' : ''}>Balkon</option>
-          <option value="Volkstuin" ${profile.gardenType === 'Volkstuin' ? 'selected' : ''}>Volkstuin</option>
-          <option value="Geen" ${profile.gardenType === 'Geen' ? 'selected' : ''}>Geen (potten)</option>
+        <select id="profile-modal-garden-type" onchange="window.saveProfileField('gardenType', this.value)" style="padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); font-size: 15px; font-family: inherit; appearance: none;">
+          <option value="Moestuin">Moestuin</option>
+          <option value="Achtertuin">Achtertuin</option>
+          <option value="Balkon">Balkon</option>
+          <option value="Gemengd">Gemengd</option>
+          <option value="Volkstuin">Volkstuin</option>
+          <option value="Geen">Geen (potten)</option>
         </select>
       </div>
 
@@ -231,12 +692,55 @@ function getProfileHTML() {
 }
 
 window.saveProfileField = function(key, value) {
-  let profile = JSON.parse(localStorage.getItem('userProfile') || localStorage.getItem('moestuin_user_profile') || '{}');
-  profile[key] = value;
-  localStorage.setItem('userProfile', JSON.stringify(profile));
-  localStorage.setItem('moestuin_user_profile', JSON.stringify(profile));
-  window.userProfile = profile;
-  
+  const profile = { ...(window.userProfile || loadUserProfile()) };
+  if (key === 'photo') {
+    const safePhoto = safeWishlistImageUrl(value);
+    if (!safePhoto) return;
+    value = safePhoto;
+  }
+  if (key === 'light') {
+    value = ONBOARDING_LIGHT_VALUES.has(value) ? value : '';
+    profile.light = value;
+  } else if (key === 'gardenPlaces') {
+    const places = normalizeOnboardingGardenPlaces(value);
+    const primary = places.includes(profile.primaryGardenPlace)
+      ? profile.primaryGardenPlace
+      : (places[0] || '');
+    profile.gardenPlaces = places;
+    profile.primaryGardenPlace = primary;
+    profile.gardenType = primary;
+  } else if (key === 'gardenType') {
+    profile.gardenType = value;
+    if (ONBOARDING_GARDEN_PLACE_VALUES.includes(value)) {
+      profile.primaryGardenPlace = value;
+      profile.gardenPlaces = normalizeOnboardingGardenPlaces([...(profile.gardenPlaces || []), value]);
+    } else {
+      const places = normalizeOnboardingGardenPlaces(profile.gardenPlaces);
+      if (value === '') {
+        const primary = places.includes(profile.primaryGardenPlace)
+          ? profile.primaryGardenPlace
+          : (places[0] || '');
+        profile.primaryGardenPlace = primary;
+        profile.gardenType = primary;
+      } else {
+        profile.primaryGardenPlace = '';
+      }
+    }
+  } else {
+    profile[key] = value;
+  }
+  const savedProfile = saveUserProfileData(profile);
+
+  if (key === 'gardenType' || key === 'gardenPlaces') {
+    const profilePanel = document.getElementById('settings-panel') || document.getElementById('settings-generic-modal');
+    const primaryField = profilePanel?.querySelector('#profile-modal-garden-type');
+    if (primaryField) primaryField.value = savedProfile.primaryGardenPlace || savedProfile.gardenType || '';
+    const savedPlaces = normalizeOnboardingGardenPlaces(savedProfile.gardenPlaces);
+    profilePanel?.querySelectorAll('[data-profile-garden-place]').forEach(field => {
+      field.checked = savedPlaces.includes(field.value);
+    });
+  }
+
   if (key === 'name') {
     const el = document.getElementById('settings-drawer-name');
     if (el) el.textContent = value || 'Jouw profiel';
@@ -244,11 +748,13 @@ window.saveProfileField = function(key, value) {
   if (key === 'photo') {
     const el = document.getElementById('settings-drawer-photo');
     if (el) {
-       el.src = value;
+       el.src = safeProfileImageUrl(value);
        el.style.display = 'block';
        if(el.nextElementSibling) el.nextElementSibling.style.display = 'none';
     }
   }
+  const meta = document.getElementById('settings-drawer-meta');
+  if (meta) meta.textContent = `${savedProfile.gardenType || 'Geen type'} \u2022 ${savedProfile.climate || 'Nederland'}`;
 };
 
 window.handleProfilePhotoUpload = function(e) {
@@ -257,21 +763,26 @@ window.handleProfilePhotoUpload = function(e) {
   const reader = new FileReader();
   reader.onload = function(event) {
     const dataUrl = event.target.result;
+    const safeDataUrl = safeWishlistImageUrl(dataUrl);
+    if (!safeDataUrl) {
+      showToast('Ongeldige profielfoto.');
+      return;
+    }
     // Reset zoom and position on new upload
-    const profile = JSON.parse(localStorage.getItem('userProfile') || '{}');
-    profile.photo = dataUrl;
+    const profile = { ...(window.userProfile || loadUserProfile()) };
+    profile.photo = safeDataUrl;
     profile.photoZoom = 1;
     profile.photoX = 0;
     profile.photoY = 0;
-    localStorage.setItem('userProfile', JSON.stringify(profile));
-    localStorage.setItem('moestuin_user_profile', JSON.stringify(profile));
-    window.userProfile = profile;
+    saveUserProfileData(profile);
 
     const preview = document.getElementById('profile-avatar-preview');
     if (preview) {
-      preview.src = dataUrl;
+      preview.src = safeDataUrl;
       preview.style.transform = 'scale(1) translate(0px, 0px)';
     }
+    const drawerPhoto = document.getElementById('settings-drawer-photo');
+    if (drawerPhoto) drawerPhoto.src = safeProfileImageUrl(safeDataUrl);
     const zoomSlider = document.querySelector('input[type="range"]');
     if (zoomSlider) zoomSlider.value = 1;
     const zoomVal = document.getElementById('zoom-value');
@@ -289,15 +800,15 @@ window.handleAvatarZoom = function(val) {
     const preview = document.getElementById('profile-avatar-preview');
     const zoomVal = document.getElementById('zoom-value');
     if (!preview) return;
-    
+
     // Get current translation from userProfile
-    const profile = window.userProfile || {};
+    const profile = window.userProfile || loadUserProfile();
     const x = profile.photoX || 0;
     const y = profile.photoY || 0;
-    
+
     preview.style.transform = `scale(${val}) translate(${x}px, ${y}px)`;
     if (zoomVal) zoomVal.textContent = Math.round(val * 100) + '%';
-    
+
     // Auto-save zoom state
     window.saveProfileField('photoZoom', parseFloat(val));
 };
@@ -307,17 +818,17 @@ window.initAvatarDrag = function(e) {
     isDraggingAvatar = true;
     const container = document.getElementById('profile-avatar-container');
     if (container) container.style.cursor = 'grabbing';
-    
+
     const clientX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
     const clientY = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
-    
+
     startX = clientX;
     startY = clientY;
-    
-    const profile = window.userProfile || {};
+
+    const profile = window.userProfile || loadUserProfile();
     initialX = profile.photoX || 0;
     initialY = profile.photoY || 0;
-    
+
     document.addEventListener('mousemove', window.doAvatarDrag);
     document.addEventListener('mouseup', window.stopAvatarDrag);
     document.addEventListener('touchmove', window.doAvatarDrag, { passive: false });
@@ -327,22 +838,22 @@ window.initAvatarDrag = function(e) {
 window.doAvatarDrag = function(e) {
     if (!isDraggingAvatar) return;
     if (e.type === 'touchmove') e.preventDefault();
-    
+
     const clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
     const clientY = e.type === 'touchmove' ? e.touches[0].clientY : e.clientY;
-    
+
     const dx = (clientX - startX);
     const dy = (clientY - startY);
-    
+
     const newX = initialX + dx;
     const newY = initialY + dy;
-    
+
     const preview = document.getElementById('profile-avatar-preview');
     if (preview) {
-        const profile = window.userProfile || {};
+        const profile = window.userProfile || loadUserProfile();
         const zoom = profile.photoZoom || 1;
         preview.style.transform = `scale(${zoom}) translate(${newX}px, ${newY}px)`;
-        
+
         // Update local memory but dont save to localStorage every pixel for performance
         profile.photoX = newX;
         profile.photoY = newY;
@@ -354,22 +865,21 @@ window.stopAvatarDrag = function() {
     isDraggingAvatar = false;
     const container = document.getElementById('profile-avatar-container');
     if (container) container.style.cursor = 'grab';
-    
+
     document.removeEventListener('mousemove', window.doAvatarDrag);
     document.removeEventListener('mouseup', window.stopAvatarDrag);
     document.removeEventListener('touchmove', window.doAvatarDrag);
     document.removeEventListener('touchend', window.stopAvatarDrag);
-    
+
     // Final save of position
-    const profile = window.userProfile || {};
-    localStorage.setItem('userProfile', JSON.stringify(profile));
-    localStorage.setItem('moestuin_user_profile', JSON.stringify(profile));
+    const profile = window.userProfile || loadUserProfile();
+    saveUserProfileData(profile);
 };
 
 function getAboutHTML() {
   return `
     <div style="display: flex; flex-direction: column; align-items: center; text-align: center; color: #fff;">
-      
+
       <!-- ICON GRAPHIC -->
       <div style="position: relative; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px;">
         <div style="position: absolute; width: 140px; height: 100px;">
@@ -378,19 +888,19 @@ function getAboutHTML() {
           <span style="position: absolute; bottom: 20%; left: 15%; color: #5B8A61; font-size: 8px;">✦</span>
           <span style="position: absolute; bottom: 10%; right: -10px; color: #5B8A61; font-size: 12px;">✦</span>
         </div>
-        
+
         <div style="width: 72px; height: 72px; border-radius: 50%; border: 2px solid #5B8A61; display: flex; align-items: center; justify-content: center; background: rgba(91, 138, 97, 0.1); position: relative; z-index: 2;">
           <span style="font-size: 32px;">🌱</span>
         </div>
       </div>
 
       <h2 style="margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 16px; color: #fff;">Over de app</h2>
-      
+
       <!-- Green Separator -->
       <div style="width: 24px; height: 3px; background: #648166; border-radius: 4px; margin-bottom: 32px;"></div>
 
       <div style="text-align: left; width: 100%; display: flex; flex-direction: column; gap: 24px;">
-        
+
         <div>
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: #7DBA84;">
             <span style="font-size: 16px;">🌱</span>
@@ -405,13 +915,13 @@ function getAboutHTML() {
             <span style="font-size: 16px;">🔒</span>
             <strong style="font-size: 15px;">Jouw gegevens</strong>
           </div>
-          <p style="margin: 0; font-size: 14px; color: #D1D5DB; line-height: 1.5;">Je gegevens blijven op jouw apparaat. KweekKompas verstuurt niets naar externe servers.</p>
+          <p style="margin: 0; font-size: 14px; color: #D1D5DB; line-height: 1.5;">Je gegevens worden automatisch op dit apparaat opgeslagen. Een account is niet nodig. Cloud-synchronisatie gebeurt alleen op jouw verzoek.</p>
         </div>
 
       </div>
 
       <button onclick="document.getElementById('settings-generic-modal').remove()" style="margin-top: 40px; width: 100%; border-radius: 12px; padding: 14px; background: #648166; color: white; border: none; font-weight: 700; font-size: 15px; cursor: pointer;">Begrepen</button>
-      
+
     </div>
   `;
 }
@@ -419,25 +929,25 @@ function getAboutHTML() {
 function getDataStorageHTML() {
   return `
     <div style="display: flex; flex-direction: column; color: #fff;">
-      
+
       <h2 class="modal-title">💾 Data & Opslag</h2>
-      <p class="modal-subtitle">Beheer je gegevens eenvoudig en veilig.</p>
+      <p class="modal-subtitle">Je gegevens worden automatisch op dit apparaat opgeslagen. Een account is niet nodig.</p>
 
       <div class="data-section">
         <h4>💾 Backup maken</h4>
         <p>Sla je huidige gegevens op in een bestand voor later.</p>
-        <button class="data-button" onclick="exportData()">Backup bouwen</button>
+        <button class="data-button" onclick="exportData()">Back-up downloaden</button>
       </div>
 
       <div class="data-section">
         <h4>♻️ Herstellen</h4>
-        <p>Herstel je gegevens vanuit een eerdere backup.</p>
+        <p>Zet gegevens uit een back-up terug. Wat in het bestand staat vervangt de bijbehorende gegevens; de rest blijft bewaard. Je bevestigt dit eerst.</p>
         <button class="data-button" onclick="restoreBackup()">Backup herstellen</button>
       </div>
 
       <div class="data-section">
         <h4>📥 Importeren</h4>
-        <p>Importeer gegevens uit een extern bestand.</p>
+        <p>Open een opgeslagen bestand. Importeren werkt hetzelfde als herstellen: je controleert en bevestigt eerst wat wordt vervangen.</p>
         <button class="data-button" onclick="importData()">Data importeren</button>
       </div>
 
@@ -448,7 +958,7 @@ function getDataStorageHTML() {
       </div>
 
       <button class="modal-footer-button" onclick="document.getElementById('settings-generic-modal').remove()">Sluiten</button>
-      
+
     </div>
   `;
 }
@@ -462,7 +972,7 @@ if (typeof window.restoreBackup !== 'function' || true) {
 function getFAQHTML() {
   return `
     <div style="display: flex; flex-direction: column; align-items: center; text-align: center; color: #fff;">
-      
+
       <!-- ICON GRAPHIC -->
       <div style="position: relative; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px;">
         <div style="position: absolute; width: 140px; height: 100px;">
@@ -471,19 +981,19 @@ function getFAQHTML() {
           <span style="position: absolute; bottom: 20%; left: 15%; color: #5B8A61; font-size: 8px;">✦</span>
           <span style="position: absolute; bottom: 10%; right: -10px; color: #5B8A61; font-size: 12px;">✦</span>
         </div>
-        
+
         <div style="width: 72px; height: 72px; border-radius: 50%; border: 2px solid #5B8A61; display: flex; align-items: center; justify-content: center; background: rgba(91, 138, 97, 0.1); position: relative; z-index: 2;">
           <span style="font-size: 32px;">❓</span>
         </div>
       </div>
 
       <h2 style="margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 16px; color: #fff;">Veelgestelde vragen</h2>
-      
+
       <!-- Green Separator -->
       <div style="width: 24px; height: 3px; background: #648166; border-radius: 4px; margin-bottom: 32px;"></div>
 
       <div style="text-align: left; width: 100%; display: flex; flex-direction: column; gap: 24px;">
-        
+
         <div class="faq-item">
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: #7DBA84;">
             <span style="font-size: 16px;">🌱</span>
@@ -497,7 +1007,7 @@ function getFAQHTML() {
             <span style="font-size: 16px;">💾</span>
             <strong style="font-size: 15px;">Worden mijn gegevens opgeslagen?</strong>
           </div>
-          <p style="margin: 0; font-size: 14px; color: #D1D5DB; line-height: 1.5;">Ja. Alles wordt lokaal opgeslagen op jouw apparaat. Niets wordt naar externe servers verstuurd.</p>
+          <p style="margin: 0; font-size: 14px; color: #D1D5DB; line-height: 1.5;">Ja. Je gegevens worden automatisch op dit apparaat opgeslagen. Een account is niet nodig.</p>
         </div>
 
         <div class="faq-item">
@@ -511,38 +1021,33 @@ function getFAQHTML() {
       </div>
 
       <button onclick="document.getElementById('settings-generic-modal').remove()" style="margin-top: 40px; width: 100%; border-radius: 12px; padding: 14px; background: #648166; color: white; border: none; font-weight: 700; font-size: 15px; cursor: pointer;">Begrepen</button>
-      
+
     </div>
   `;
 }
 
-function getSettingsHTML() {
-    const profile = window.userProfile || { name: '', climate: 'Nederland', units: 'Metric', experience: 'Beginner' };
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    
+function getLegacySettingsHTML() {
     return `
         <div class="settings-header">
             <h2>Instellingen</h2>
             <button onclick="toggleSettingsPanel_REPAIR_V131()" style="background:none; border:none; color:#fff; font-size:20px; cursor:pointer; opacity:0.6;">✕</button>
         </div>
-        
+
         <div class="settings-content" style="flex: 1; overflow-y: auto;">
-            
+
             <!-- PROFIEL CARD -->
             <div class="settings-profile-card">
                 <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px;">
                     <div style="width: 56px; height: 56px; border-radius: 50%; overflow: hidden; border: 2px solid rgba(255,255,255,0.1); background: #2a2c2a; flex-shrink: 0; display: flex; align-items: center; justify-content: center; position: relative;">
-                        <img id="settings-drawer-photo" src="${profile.photo || 'assets/default-avatar.png'}" 
-                             style="position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scale(${profile.photoZoom || 1}) translate(${(profile.photoX || 0) * (56/120)}px, ${(profile.photoY || 0) * (56/120)}px); transform-origin: center;">
+                        <img id="settings-drawer-photo" src="assets/default-avatar.png"
+                             style="position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scale(1) translate(0px, 0px); transform-origin: center;">
                     </div>
                     <div>
-                        <p style="font-weight: 700; font-size: 18px; color: #fff; opacity: 1; margin: 0; letter-spacing: -0.3px;">${profile.name || 'Jouw profiel'}</p>
-                        <p style="font-size: 13px; opacity: 0.6; margin: 2px 0;">${profile.gardenType || 'Geen type'} • ${profile.climate || 'Nederland'}</p>
+                        <p id="settings-drawer-name" style="font-weight: 700; font-size: 18px; color: #fff; opacity: 1; margin: 0; letter-spacing: -0.3px;">Jouw profiel</p>
+                        <p id="settings-drawer-meta" style="font-size: 13px; opacity: 0.6; margin: 2px 0;">Geen type • Nederland</p>
                     </div>
-                </div>
                 <button class="settings-button" onclick="window.openSettingsSection('profile')">
                     Profiel bewerken
-                </button>
             </div>
 
             <!-- MENU SECTIES -->
@@ -562,16 +1067,18 @@ function getSettingsHTML() {
             </div>
 
             <!-- THEME SECTIE -->
-            <div class="settings-section">
-                <div class="settings-item">
-                    <i id="theme-panel-icon">${isDark ? '🌙' : '☀️'}</i>
-                    <span id="theme-panel-label">${isDark ? 'Donkere modus' : 'Lichte modus'}</span>
-                    <div class="settings-toggle">
-                        <label class="switch">
-                            <input type="checkbox" ${isDark ? 'checked' : ''} onchange="window.toggleThemeFromPanel(this)">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
+            <div class="settings-section settings-theme-section">
+                <p class="settings-section-label">Thema</p>
+                <div class="theme-choice-list" role="group" aria-label="Kies thema">
+                    <button type="button" class="theme-choice" data-theme-choice="light" aria-pressed="false" onclick="window.setAppTheme('light')">
+                        <span class="theme-choice-swatch theme-choice-swatch-light" aria-hidden="true"></span><span>Licht</span>
+                    </button>
+                    <button type="button" class="theme-choice" data-theme-choice="dark" aria-pressed="false" onclick="window.setAppTheme('dark')">
+                        <span class="theme-choice-swatch theme-choice-swatch-dark" aria-hidden="true"></span><span>Donker</span>
+                    </button>
+                    <button type="button" class="theme-choice" data-theme-choice="playful" aria-pressed="false" onclick="window.setAppTheme('playful')">
+                        <span class="theme-choice-swatch theme-choice-swatch-playful" aria-hidden="true"></span><span>Warm</span>
+                    </button>
                 </div>
             </div>
 
@@ -579,14 +1086,14 @@ function getSettingsHTML() {
             <div class="settings-section hidden-mobile-settings" style="margin-top: 10px;">
                 <p style="font-size: 11px; font-weight: 700; color: #fff; opacity: 0.4; margin: 0 0 8px 14px; text-transform: uppercase;">Werkruimte breedte</p>
                 <div style="display: flex; gap: 8px; padding: 0 12px; margin-bottom: 12px;">
-                    <button class="layout-toggle-btn ${localStorage.getItem('layout_width') !== 'wide' ? 'active' : ''}" 
-                            onclick="window.toggleLayoutWidth('standard')" 
-                            style="flex: 1; padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: ${localStorage.getItem('layout_width') !== 'wide' ? 'rgba(255,255,255,0.12)' : 'transparent'}; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;">
+                    <button class="layout-toggle-btn" data-layout-choice="standard"
+                            onclick="window.toggleLayoutWidth('standard')"
+                            style="flex: 1; padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;">
                         Standaard
                     </button>
-                    <button class="layout-toggle-btn ${localStorage.getItem('layout_width') === 'wide' ? 'active' : ''}" 
-                            onclick="window.toggleLayoutWidth('wide')" 
-                            style="flex: 1; padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: ${localStorage.getItem('layout_width') === 'wide' ? 'rgba(255,255,255,0.12)' : 'transparent'}; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;">
+                    <button class="layout-toggle-btn" data-layout-choice="wide"
+                            onclick="window.toggleLayoutWidth('wide')"
+                            style="flex: 1; padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;">
                         Breed
                     </button>
                 </div>
@@ -601,27 +1108,93 @@ function getSettingsHTML() {
             <div class="settings-footer" style="padding: 20px 14px; opacity: 0.4; font-size: 12px; text-align: center;">
                 Versie 1.3.2 🌱 KweekKompas
             </div>
-            
+
         </div>
     `;
 }
 
-window.toggleThemeFromPanel = function(checkbox) {
-    const icon = document.getElementById('theme-panel-icon');
-    const label = document.getElementById('theme-panel-label');
-    if (checkbox.checked) { 
-        document.documentElement.setAttribute('data-theme', 'dark'); 
-        localStorage.setItem('theme', 'dark'); 
-        if(icon) icon.textContent = '🌙';
-        if(label) label.textContent = 'Donkere modus';
-    } 
-    else { 
-        document.documentElement.removeAttribute('data-theme'); 
-        localStorage.setItem('theme', 'light'); 
-        if(icon) icon.textContent = '☀️';
-        if(label) label.textContent = 'Lichte modus';
-    }
+/* Fase 7C settings page: one scrollable overview keeps profile, display,
+   local data and help in the existing drawer without changing storage APIs. */
+function getSettingsHTML() {
+    return `
+        <div class="settings-page" aria-labelledby="settings-page-title">
+            <div class="settings-header settings-page-header">
+                <div>
+                    <p class="settings-kicker">Persoonlijk en lokaal</p>
+                    <h2 id="settings-page-title">Instellingen</h2>
+                    <p class="settings-page-intro">Beheer je profiel, weergave en lokale gegevens op één rustige plek.</p>
+                </div>
+                <button class="settings-close-button" type="button" aria-label="Instellingen sluiten" onclick="toggleSettingsPanel_REPAIR_V131()">×</button>
+            </div>
+
+            <div class="settings-content">
+                <section class="settings-page-section settings-profile-section" id="settings-section-profile" aria-labelledby="settings-profile-title" tabindex="-1">
+                    <div class="settings-section-heading">
+                        <div><p class="settings-section-eyebrow">Profiel</p><h3 id="settings-profile-title">Jouw profiel</h3><p>Deze gegevens helpen KweekKompas je tuin en planning persoonlijk te tonen.</p></div>
+                        <div class="settings-profile-summary" aria-label="Huidig profiel"><div class="settings-profile-avatar"><img id="settings-drawer-photo" src="assets/default-avatar.png" alt="" aria-hidden="true"></div><div><strong id="settings-drawer-name">Jouw profiel</strong><span id="settings-drawer-meta">Geen type • Nederland</span></div></div>
+                    </div>
+                    <div class="settings-profile-editor">
+                        <div class="settings-avatar-editor">
+                            <div class="settings-avatar-frame" id="profile-avatar-container"><img id="profile-avatar-preview" src="assets/default-avatar.png" alt="Voorbeeld van je profielfoto"></div>
+                            <button class="settings-secondary-button settings-photo-trigger" type="button" data-profile-photo-trigger>Nieuwe foto</button>
+                            <input type="file" id="profile-photo-upload" accept="image/*" hidden>
+                            <label class="settings-range-label" for="profile-modal-zoom"><span>Foto bijsnijden</span><output id="zoom-value">100%</output></label>
+                            <input id="profile-modal-zoom" class="settings-range" type="range" min="1" max="3" step="0.05" value="1" aria-label="Profielfoto zoomen">
+                            <small>Sleep de foto om de uitsnede te verplaatsen.</small>
+                        </div>
+                        <div class="settings-form-grid">
+                            <label class="settings-field"><span>Jouw naam</span><input id="profile-modal-name" type="text" placeholder="Hoe mogen we je noemen?"></label>
+                            <label class="settings-field"><span>Ervaring</span><select id="profile-modal-experience"><option value="">Later invullen</option><option value="Beginner">Beginner</option><option value="Gemiddeld">Gemiddeld</option><option value="Expert">Expert (bestaand profiel)</option><option value="Ervaren">Ervaren</option></select></label>
+                            <label class="settings-field"><span>Klimaat</span><select id="profile-modal-climate"><option value="Nederland (Zeeklimaat)">Nederland / België (zeeklimaat)</option><option value="Warm (Subtropisch)">Warm / kas (subtropisch)</option><option value="Koud (Continentaal)">Koud (continentaal)</option></select></label>
+                            <label class="settings-field"><span>Eenheden</span><select id="profile-modal-units"><option value="Metric">Metrisch (cm / °C)</option><option value="Imperial">Imperiaal (inch / °F)</option></select></label>
+                            <label class="settings-field"><span>Zonlicht</span><select id="profile-modal-light"><option value="">Later invullen</option><option value="Zon">Volle zon</option><option value="Halfschaduw">Halfschaduw</option><option value="Schaduw">Schaduw</option></select></label>
+                            <label class="settings-field"><span>Hoofdplek</span><select id="profile-modal-garden-type"><option value="">Geen hoofdplek</option><option value="Volle grond">Volle grond</option><option value="Bakken of potten">Bakken of potten</option><option value="Balkon of terras">Balkon of terras</option><option value="Moestuin">Moestuin (bestaand profiel)</option><option value="Achtertuin">Achtertuin (bestaand profiel)</option><option value="Balkon">Balkon (bestaand profiel)</option><option value="Gemengd">Gemengd (bestaand profiel)</option><option value="Volkstuin">Volkstuin (bestaand profiel)</option><option value="Geen">Geen (potten)</option></select></label>
+                            <fieldset class="settings-field settings-field-wide settings-garden-places"><legend>Tuinplekken</legend><div class="settings-garden-place-options"><label><input type="checkbox" data-profile-garden-place value="Volle grond">Volle grond</label><label><input type="checkbox" data-profile-garden-place value="Bakken of potten">Bakken of potten</label><label><input type="checkbox" data-profile-garden-place value="Balkon of terras">Balkon of terras</label></div></fieldset>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="settings-page-section" id="settings-section-display" aria-labelledby="settings-display-title" tabindex="-1">
+                    <div class="settings-section-heading"><div><p class="settings-section-eyebrow">Weergave</p><h3 id="settings-display-title">Kies je sfeer</h3><p>Dezelfde functies, met een andere visuele toon.</p></div></div>
+                    <div class="theme-choice-list settings-theme-grid" role="group" aria-label="Kies thema">
+                        <button type="button" class="theme-choice" data-theme-choice="light" aria-pressed="false" onclick="window.setAppTheme('light')"><span class="theme-choice-swatch theme-choice-swatch-light" aria-hidden="true"></span><span>Licht</span><small>Rustig en helder</small></button>
+                        <button type="button" class="theme-choice" data-theme-choice="dark" aria-pressed="false" onclick="window.setAppTheme('dark')"><span class="theme-choice-swatch theme-choice-swatch-dark" aria-hidden="true"></span><span>Donker</span><small>Diep en kalm</small></button>
+                        <button type="button" class="theme-choice" data-theme-choice="playful" aria-pressed="false" onclick="window.setAppTheme('playful')"><span class="theme-choice-swatch theme-choice-swatch-playful" aria-hidden="true"></span><span>Warm</span><small>Crème, groen en koraal</small></button>
+                    </div>
+                    <div class="settings-layout-control"><div><strong>Werkruimtebreedte</strong><span>Gebruik de beschikbare ruimte op grotere schermen.</span></div><div class="settings-layout-buttons" role="group" aria-label="Werkruimtebreedte"><button class="layout-toggle-btn" type="button" data-layout-choice="standard" onclick="window.toggleLayoutWidth('standard')">Standaard</button><button class="layout-toggle-btn" type="button" data-layout-choice="wide" onclick="window.toggleLayoutWidth('wide')">Breed</button></div></div>
+                </section>
+
+                ${window.KweekServices?.settingsHTML() || ''}
+
+                <section class="settings-page-section" id="settings-section-storage" aria-labelledby="settings-storage-title" tabindex="-1">
+                    <div class="settings-section-heading"><div><p class="settings-section-eyebrow">Data & opslag</p><h3 id="settings-storage-title">Opgeslagen op dit apparaat</h3><p>Je gegevens worden automatisch op dit apparaat opgeslagen.</p></div></div>
+                    <div class="settings-info-note"><strong>Een account is niet nodig</strong><span>Je kunt de app zonder account gebruiken. Via Account & cloud kun je zelf een kopie synchroniseren. Inloggen verandert je lokale tuin niet.</span></div>
+                    <div class="settings-data-grid">
+                        <article class="settings-data-card"><div><h4>Back-up downloaden</h4><p>Download een volledige back-up als bestand om zelf te bewaren.</p></div><button class="settings-primary-button" type="button" onclick="exportData()">Back-up downloaden</button></article>
+                        <article class="settings-data-card"><div><h4>Back-up herstellen</h4><p>Zet een back-up terug. Wat in het bestand staat vervangt de bijbehorende gegevens; de rest blijft bewaard. Je bevestigt dit eerst.</p></div><button class="settings-primary-button" type="button" onclick="restoreBackup()">Back-up herstellen</button></article>
+                        <article class="settings-data-card"><div><h4>Data importeren</h4><p>Open een opgeslagen bestand. Importeren werkt hetzelfde als herstellen: je bevestigt eerst wat wordt vervangen.</p></div><button class="settings-secondary-button" type="button" onclick="importData()">Data importeren</button></article>
+                        <article class="settings-data-card"><div><h4>Voorbeeldtuin</h4><p>Voeg voorbeeldplanten met foto's en teeltinformatie toe. Je eigen planten blijven bewaard. Planten die er al staan worden overgeslagen.</p><p id="example-garden-status" role="status" aria-live="polite"></p></div><button id="load-example-garden" class="settings-secondary-button" type="button" onclick="loadExampleGarden(this)" aria-describedby="example-garden-status">Voorbeeldtuin laden</button></article>
+                    </div>
+                    <div class="settings-danger-zone"><div><p class="settings-section-eyebrow">Gevarenzone</p><h4>Applicatie resetten</h4><p>Verwijdert alle zaden, instellingen en lokale gegevens. Dit kan niet ongedaan worden gemaakt.</p></div><button class="settings-danger-button" type="button" onclick="resetApp()">Alles verwijderen</button></div>
+                </section>
+
+                <section class="settings-page-section" id="settings-section-about" aria-labelledby="settings-about-title" tabindex="-1"><div class="settings-section-heading"><div><p class="settings-section-eyebrow">Over de app</p><h3 id="settings-about-title">KweekKompas</h3><p>Een overzichtelijke lokale planner voor zaaien, verzorgen en oogsten.</p></div><span class="settings-version">Versie 1.3.2</span></div></section>
+
+                <section class="settings-page-section settings-faq-section" id="settings-section-faq" aria-labelledby="settings-faq-title" tabindex="-1"><div class="settings-section-heading"><div><p class="settings-section-eyebrow">Hulp</p><h3 id="settings-faq-title">Veelgestelde vragen</h3></div></div><details><summary>Worden mijn gegevens opgeslagen?</summary><p>Ja. Je gegevens worden automatisch op dit apparaat opgeslagen. Een account is niet nodig.</p></details><details><summary>Kan ik een back-up maken?</summary><p>Ja. Gebruik Back-up downloaden en bewaar het bestand op een veilige plek.</p></details></section>
+            </div>
+        </div>
+    `;
 }
+
+window.setAppTheme = function(theme) {
+    saveAppTheme(theme);
+    if (isSettingsOpen) renderSettingsPanel();
+};
+
+// Compatibility for older markup/extensions that still call the checkbox API.
+window.toggleThemeFromPanel = function(checkbox) {
+    window.setAppTheme(checkbox?.checked ? 'dark' : 'light');
+};
 
 window.toggleLayoutWidth = function(type) {
     document.body.classList.remove('layout-standard', 'layout-full', 'layout-wide');
@@ -684,7 +1257,8 @@ const mockData = {
 // --- INDEXED DB WRAPPER ---
 const DB_NAME = 'MoestuinDB';
 const STORE_NAME = 'seeds';
-let db;
+let db = null;
+let seeds = [];
 
 function initDB() {
     return new Promise((resolve, reject) => {
@@ -697,6 +1271,11 @@ function initDB() {
         };
         request.onsuccess = (e) => {
             db = e.target.result;
+            db.onversionchange = () => {
+                db.close();
+                db = null;
+                console.warn('[KweekKompas] Lokale database is niet meer beschikbaar.');
+            };
             resolve(db);
         };
         request.onerror = (e) => reject(e.target.error);
@@ -704,6 +1283,8 @@ function initDB() {
 }
 
 function getAllSeeds() {
+    if (!db) return Promise.reject(new Error('Lokale database is niet beschikbaar.'));
+
     return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readonly');
         const store = tx.objectStore(STORE_NAME);
@@ -717,28 +1298,662 @@ function getAllSeeds() {
 }
 
 function saveSeed(seed) {
+    if (!db) return Promise.reject(new Error('Lokale database is niet beschikbaar.'));
+
     return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.put(seed);
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
+        let tx;
+        let requestResult;
+        let settled = false;
+        const fail = error => {
+            if (settled) return;
+            settled = true;
+            reject(error || new Error('Opslaan van zaad is mislukt.'));
+        };
+
+        try {
+            tx = db.transaction(STORE_NAME, 'readwrite');
+            tx.oncomplete = () => {
+                if (settled) return;
+                settled = true;
+                void requestResult;
+                resolve();
+            };
+            tx.onerror = event => fail(tx.error || event?.target?.error || new Error('Opslaan van zaad is mislukt.'));
+            tx.onabort = event => fail(tx.error || event?.target?.error || new Error('Opslaan van zaad is afgebroken.'));
+
+            const request = tx.objectStore(STORE_NAME).put(seed);
+            request.onsuccess = () => { requestResult = request.result; };
+            request.onerror = event => fail(request.error || event?.target?.error || new Error('Opslaan van zaad is mislukt.'));
+        } catch (error) {
+            fail(error);
+            try { tx?.abort(); } catch (abortError) { /* already closed */ }
+        }
+    });
+}
+
+function replaceAllSeedsAtomic(seedsToRestore) {
+    if (!db) return Promise.reject(new Error('Lokale database is niet beschikbaar.'));
+
+    return new Promise((resolve, reject) => {
+        let transaction;
+        try {
+            transaction = db.transaction(STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            store.clear();
+            for (const seed of seedsToRestore) store.put(seed);
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error || new Error('Opslaan van zaden is mislukt.'));
+            transaction.onabort = () => reject(transaction.error || new Error('Opslaan van zaden is afgebroken.'));
+        } catch (error) {
+            try { transaction?.abort(); } catch (abortError) { /* already closed */ }
+            reject(error);
+        }
+    });
+}
+
+function addExampleSeedsAtomic(examples) {
+    if (!db) return Promise.reject(new Error('Lokale opslag is niet beschikbaar.'));
+    const nameKey = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('nl-NL');
+    // Read and add in one transaction: simultaneous tabs cannot overwrite user
+    // edits or add the same example twice. Existing records are never written.
+    return new Promise((resolve, reject) => {
+        let transaction;
+        let added = 0;
+        try {
+            transaction = db.transaction(STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.getAll();
+            request.onsuccess = () => {
+                try {
+                    const existing = request.result;
+                    const ids = new Set(existing.map(plant => String(plant.id)));
+                    const names = new Set(existing.map(plant => nameKey(plant.naam)));
+                    const keys = new Set(existing.map(plant => plant.examplePlantKey).filter(Boolean));
+                    for (const example of examples) {
+                        const key = String(example.id);
+                        const name = nameKey(example.naam);
+                        if (keys.has(key) || names.has(name)) continue;
+                        let id = key;
+                        let suffix = 2;
+                        while (ids.has(id)) id = `${key}-${suffix++}`;
+                        store.add({ ...example, id, examplePlantKey: key });
+                        ids.add(id); names.add(name); keys.add(key); added++;
+                    }
+                } catch { transaction.abort(); }
+            };
+            transaction.oncomplete = () => resolve(added);
+            transaction.onerror = () => reject(new Error('Voorbeeldtuin opslaan is mislukt. Er is niets toegevoegd.'));
+            transaction.onabort = () => reject(new Error('Voorbeeldtuin opslaan is afgebroken. Er is niets toegevoegd.'));
+        } catch (error) {
+            try { transaction?.abort(); } catch { /* already closed */ }
+            reject(error);
+        }
     });
 }
 
 function deleteSeedDB(id) {
+    if (!db) return Promise.reject(new Error('Lokale database is niet beschikbaar.'));
+
     return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.delete(id);
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
+        let tx;
+        let requestResult;
+        let settled = false;
+        const fail = error => {
+            if (settled) return;
+            settled = true;
+            reject(error || new Error('Verwijderen van zaad is mislukt.'));
+        };
+
+        try {
+            tx = db.transaction(STORE_NAME, 'readwrite');
+            tx.oncomplete = () => {
+                if (settled) return;
+                settled = true;
+                void requestResult;
+                resolve();
+            };
+            tx.onerror = event => fail(tx.error || event?.target?.error || new Error('Verwijderen van zaad is mislukt.'));
+            tx.onabort = event => fail(tx.error || event?.target?.error || new Error('Verwijderen van zaad is afgebroken.'));
+
+            const request = tx.objectStore(STORE_NAME).delete(id);
+            request.onsuccess = () => { requestResult = request.result; };
+            request.onerror = event => fail(request.error || event?.target?.error || new Error('Verwijderen van zaad is mislukt.'));
+        } catch (error) {
+            fail(error);
+            try { tx?.abort(); } catch (abortError) { /* already closed */ }
+        }
     });
+}
+
+// --- SAFE DYNAMIC CONTENT ---
+const SAFE_AI_ACTION_TYPES = new Set(['sow', 'plant', 'harvest', 'care', 'log', 'recommend', 'buy', 'wishlist', 'none']);
+const SAFE_AI_DESTINATIONS = new Set(['wishlist', 'todo']);
+const AI_ACTION_ICONS = {
+    sow: '🌱',
+    plant: '🌱',
+    harvest: '🥗',
+    care: '💧',
+    log: '📝',
+    none: '💡'
+};
+
+function safeHttpUrl(value) {
+    if (typeof value !== 'string' || !value.trim()) return '';
+    try {
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
+    } catch (error) {
+        return '';
+    }
+}
+
+function safeWishlistImageUrl(value) {
+    if (typeof value !== 'string') return '';
+    const trimmed = value.trim();
+    if (/^data:image\/(?:png|gif|jpe?g|webp|avif);base64,[a-z0-9+/]+={0,2}$/i.test(trimmed)) return trimmed;
+    if (/^(?:\.?\/)?assets\/[a-z0-9/_-]+\.(?:png|gif|jpe?g|webp|avif)$/i.test(trimmed)) return trimmed;
+    return safeHttpUrl(trimmed);
+}
+
+function safeProfileImageUrl(value) {
+    return safeWishlistImageUrl(value) || 'assets/default-avatar.png';
+}
+
+function normalizeExternalImageResult(item) {
+    if (!item || typeof item !== 'object') return null;
+    const imageUrl = safeWishlistImageUrl(item.url || item.image || item.src);
+    if (!imageUrl) return null;
+
+    const sourceLink = safeHttpUrl(item.sourceLink || item.sourceUrl || item.link || item.photographerUrl || item.user?.links?.html);
+    const title = typeof item.title === 'string' ? item.title : (typeof item.name === 'string' ? item.name : '');
+    const description = typeof item.description === 'string' ? item.description : '';
+    const photographer = typeof item.photographer === 'string' ? item.photographer :
+        (typeof item.photographerName === 'string' ? item.photographerName : (typeof item.user?.name === 'string' ? item.user.name : ''));
+    const alt = typeof item.alt === 'string' && item.alt.trim() ? item.alt : (title || description || 'Plantafbeelding');
+
+    return { ...item, imageUrl, sourceLink, title, description, photographer, alt };
+}
+
+function buildImageSearchCard(item, { isSelected = false, isFeatured = false, onFeature, onToggle } = {}) {
+    const normalized = normalizeExternalImageResult(item);
+    if (!normalized) return null;
+
+    const card = document.createElement('div');
+    card.className = `unified-gallery-card ${isSelected ? 'selected' : ''} ${isFeatured ? 'featured' : ''}`.trim();
+    const accessibleText = [normalized.title, normalized.description, normalized.photographer].filter(Boolean).join(' — ');
+    if (accessibleText) card.setAttribute('aria-label', accessibleText);
+
+    const image = document.createElement('img');
+    image.src = normalized.imageUrl;
+    image.alt = normalized.alt;
+    image.loading = 'lazy';
+    card.appendChild(image);
+
+    const selectedCheck = document.createElement('div');
+    selectedCheck.className = 'selected-check';
+    selectedCheck.textContent = '\u2713';
+    card.appendChild(selectedCheck);
+
+    const featuredStar = document.createElement('div');
+    featuredStar.className = 'featured-star';
+    featuredStar.title = 'Stel in als hoofdfoto';
+    featuredStar.textContent = '\u2605';
+    featuredStar.addEventListener('click', event => {
+        event.stopPropagation();
+        onFeature?.(normalized);
+    });
+    card.appendChild(featuredStar);
+
+    const featuredLabel = document.createElement('div');
+    featuredLabel.className = 'featured-label';
+    featuredLabel.textContent = 'Hoofdfoto';
+    card.appendChild(featuredLabel);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'card-overlay';
+    const featureButton = document.createElement('button');
+    featureButton.type = 'button';
+    featureButton.className = 'card-feature-btn';
+    featureButton.textContent = '\u2605 Maak hoofdfoto';
+    featureButton.addEventListener('click', event => {
+        event.stopPropagation();
+        onFeature?.(normalized);
+    });
+    const selectButton = document.createElement('button');
+    selectButton.type = 'button';
+    selectButton.className = 'card-select-btn';
+    selectButton.textContent = isSelected ? 'Verwijder' : 'Selecteer';
+    selectButton.addEventListener('click', event => {
+        event.stopPropagation();
+        onToggle?.(normalized);
+    });
+    overlay.append(featureButton, selectButton);
+    card.appendChild(overlay);
+
+    if (normalized.sourceLink) {
+        const sourceLink = document.createElement('a');
+        sourceLink.className = 'image-source-link';
+        sourceLink.href = normalized.sourceLink;
+        sourceLink.target = '_blank';
+        sourceLink.rel = 'noopener noreferrer';
+        sourceLink.textContent = normalized.photographer ? `Foto: ${normalized.photographer}` : 'Bron';
+        sourceLink.addEventListener('click', event => event.stopPropagation());
+        card.appendChild(sourceLink);
+    }
+
+    card.addEventListener('click', event => {
+        if (event.target.closest('button, a')) return;
+        onToggle?.(normalized);
+    });
+    return card;
+}
+
+function setSafeText(element, value, fallback = '') {
+    if (!element) return element;
+    element.textContent = value === null || value === undefined ? fallback : String(value);
+    return element;
+}
+
+function safeClassToken(value, fallback = 'item') {
+    const token = typeof value === 'string' ? value.toLowerCase().replace(/[^a-z0-9_-]/g, '') : '';
+    return /^[a-z][a-z0-9_-]*$/.test(token) ? token : fallback;
+}
+
+function appendHighlightedText(container, value, query) {
+    if (!container) return;
+    const text = value === null || value === undefined ? '' : String(value);
+    const search = typeof query === 'string' ? query : '';
+    if (!search) {
+        container.textContent = text;
+        return;
+    }
+    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const matcher = new RegExp(`(${escaped})`, 'gi');
+    let cursor = 0;
+    text.replace(matcher, (match, _group, offset) => {
+        if (offset > cursor) container.appendChild(document.createTextNode(text.slice(cursor, offset)));
+        const mark = document.createElement('mark');
+        mark.textContent = match;
+        container.appendChild(mark);
+        cursor = offset + match.length;
+        return match;
+    });
+    if (cursor < text.length) container.appendChild(document.createTextNode(text.slice(cursor)));
+}
+
+function groupUpcomingCalendarReminders(reminderList, todayStr) {
+    const groups = [
+        { label: 'Vandaag', items: [] },
+        { label: 'Binnenkort', items: [] },
+        { label: 'Later', items: [] }
+    ];
+    if (typeof todayStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(todayStr)) return groups;
+
+    const [year, month, day] = todayStr.split('-').map(Number);
+    const today = new Date(year, month - 1, day);
+    if (today.getFullYear() !== year || today.getMonth() !== month - 1 || today.getDate() !== day) return groups;
+    const soonEnd = new Date(year, month - 1, day);
+    soonEnd.setDate(soonEnd.getDate() + 7);
+    const soonEndStr = `${soonEnd.getFullYear()}-${String(soonEnd.getMonth() + 1).padStart(2, '0')}-${String(soonEnd.getDate()).padStart(2, '0')}`;
+    const openReminders = (Array.isArray(reminderList) ? reminderList : [])
+        .filter(reminder => !reminder?.done && typeof reminder?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(reminder.date) && reminder.date >= todayStr)
+        .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+
+    groups[0].items = openReminders.filter(reminder => reminder.date === todayStr);
+    groups[1].items = openReminders.filter(reminder => reminder.date > todayStr && reminder.date <= soonEndStr);
+    groups[2].items = openReminders.filter(reminder => reminder.date > soonEndStr);
+    return groups;
+}
+
+function buildReminderRow(item, handlers = {}) {
+    const row = document.createElement('div');
+    row.className = `reminder-row ${item?.done ? 'done' : ''}`;
+
+    const checkColumn = document.createElement('div');
+    checkColumn.className = 'reminder-check-col';
+    const checkbox = document.createElement('div');
+    checkbox.className = `custom-checkbox ${item?.done ? 'active' : ''}`;
+    checkbox.setAttribute('role', 'checkbox');
+    checkbox.setAttribute('tabindex', '0');
+    checkbox.setAttribute('aria-checked', String(Boolean(item?.done)));
+    checkbox.setAttribute('aria-label', `${item?.done ? 'Heropen' : 'Voltooien'}: ${typeof item?.title === 'string' ? item.title : 'herinnering'}`);
+    checkColumn.appendChild(checkbox);
+
+    const textColumn = document.createElement('div');
+    textColumn.className = 'reminder-text-col';
+    const title = document.createElement('span');
+    title.textContent = typeof item?.title === 'string' ? item.title : '';
+    textColumn.appendChild(title);
+    const meta = document.createElement('div');
+    meta.className = 'reminder-meta';
+    const date = document.createElement('span');
+    date.className = 'reminder-date';
+    const rawDate = typeof item?.date === 'string' ? item.date : '';
+    const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? new Date(`${rawDate}T00:00:00`) : null;
+    date.textContent = parsedDate && Number.isFinite(parsedDate.getTime())
+        ? parsedDate.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
+        : rawDate;
+    const status = document.createElement('span');
+    status.className = `reminder-status ${item?.done ? 'is-done' : 'is-open'}`;
+    status.textContent = item?.done ? 'Afgerond' : 'Open';
+    meta.append(date, status);
+    textColumn.appendChild(meta);
+
+    const actionColumn = document.createElement('div');
+    actionColumn.className = 'reminder-actions-col';
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'btn-delete-reminder';
+    deleteButton.title = 'Verwijder';
+    deleteButton.setAttribute('aria-label', 'Verwijder herinnering');
+    deleteButton.textContent = '×';
+    actionColumn.appendChild(deleteButton);
+
+    const toggleReminder = event => {
+        event.stopPropagation();
+        handlers.onToggle?.(item);
+    };
+    checkbox.addEventListener('click', toggleReminder);
+    checkbox.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggleReminder(event);
+        }
+    });
+    deleteButton.addEventListener('click', event => {
+        event.stopPropagation();
+        handlers.onDelete?.(item);
+    });
+
+    row.append(checkColumn, textColumn, actionColumn);
+    return row;
+}
+
+function buildCalendarReminderPills(dayReminders) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'cal-pills-container';
+    const remindersForDay = Array.isArray(dayReminders) ? dayReminders : [];
+    const visibleCount = Math.min(remindersForDay.length, 2);
+
+    for (let index = 0; index < visibleCount; index += 1) {
+        const pill = document.createElement('div');
+        pill.className = 'cal-reminder-pill';
+        const title = typeof remindersForDay[index]?.title === 'string' ? remindersForDay[index].title : '';
+        let label = title.split(' ')[0] || '';
+        if (label.length > 10) label = `${label.substring(0, 9)}…`;
+        pill.textContent = label;
+        wrapper.appendChild(pill);
+    }
+
+    if (remindersForDay.length > 2) {
+        const more = document.createElement('div');
+        more.className = 'cal-pill-more';
+        more.textContent = `+${remindersForDay.length - 2}`;
+        wrapper.appendChild(more);
+    }
+    return wrapper;
+}
+
+function normalizeAIAction(action) {
+    if (!action || typeof action !== 'object' || typeof action.type !== 'string') return null;
+    const type = action.type.trim().toLowerCase();
+    if (!SAFE_AI_ACTION_TYPES.has(type)) return null;
+    if (action.destination !== undefined && !SAFE_AI_DESTINATIONS.has(action.destination)) return null;
+    if (action.plantName !== undefined && typeof action.plantName !== 'string') return null;
+    const plantName = action.plantName?.trim() || '';
+    const subject = plantName || (['buy', 'wishlist', 'care', 'log'].includes(type) && typeof action.subject === 'string' ? action.subject.trim() : '');
+    if (!subject || subject.length > 160 || /^(?:plant|plantnaam|unknown|onbekend|n\/a|none|null|-|\?)$/i.test(subject)) return null;
+    const wishlist = ['recommend', 'buy', 'wishlist'].includes(type) || action.destination === 'wishlist';
+    if (type === 'none' && !wishlist) return null;
+    if (wishlist && action.destination === 'todo') return null;
+    const label = typeof action.label === 'string' ? action.label.trim() : '';
+    const bareLabel = !label || /^(?:sow|plant|harvest|care|log|zaaien|planten|oogsten|verzorgen|noteren)$/i.test(label);
+    const verbs = {
+        sow: /\b(?:zaai|zaaien|sow|sowing)\b/i,
+        plant: /\b(?:plant|planten|uitplanten|aanplanten|planting)\b/i,
+        harvest: /\b(?:oogst|oogsten|harvest|harvesting)\b/i,
+        care: /\b(?:water|bemest|bemesten|snoei|snoeien|verpot|verpotten|wied|wieden|controleer|controleren|bescherm|beschermen|verzorg|verzorgen|prune|fertilize)\b/i,
+        log: /\b(?:noteer|noteren|registreer|registreren|log|record)\b/i
+    };
+    // A description or variety recommendation is not evidence of a garden task.
+    if (!wishlist && ((!bareLabel && !verbs[type]?.test(label)) || (['care', 'log'].includes(type) && bareLabel))) return null;
+    const date = action.date == null || action.date === '' ? '' : action.date;
+    if (typeof date !== 'string' || (date && !isAIPlanningDate(date))) return null;
+    const titles = { sow: 'Zaaien', plant: 'Planten', harvest: 'Oogsten', care: 'Verzorgen', log: 'Noteren' };
+    return {
+        type, plantName, subject, date,
+        label: `${wishlist ? 'Op verlanglijst' : titles[type]}: ${subject}`,
+        detail: bareLabel || ['sow', 'plant', 'harvest'].includes(type) ? '' : label,
+        title: ['care', 'log'].includes(type) ? `${subject}: ${label}` : `${subject} ${titles[type]?.toLowerCase()}`,
+        wishlistType: plantName ? 'seed' : 'item',
+        destination: wishlist ? 'wishlist' : 'todo'
+    };
+}
+
+function isAIPlanningDate(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return year >= 1000 && date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
+function filterWishlistItems(items, typeFilter = 'all', query = '') {
+    const normalizedQuery = typeof query === 'string' ? query.trim().toLocaleLowerCase('nl-NL') : '';
+    return (Array.isArray(items) ? items : []).filter(item => {
+        if (typeFilter !== 'all' && item?.type !== typeFilter) return false;
+        if (!normalizedQuery) return true;
+        return [item?.name, item?.note, item?.link, item?.type].some(value =>
+            typeof value === 'string' && value.toLocaleLowerCase('nl-NL').includes(normalizedQuery)
+        );
+    });
+}
+
+function createWishlistIcon(name) {
+    const paths = {
+        seed: 'M12 20v-8m0 3c-4 0-6-2.2-6-6 4 0 6 2 6 6Zm0-2c0-4 2.2-6 6-6 0 4-2 6-6 6Z',
+        item: 'M4 8h16l-1.5 12h-13L4 8Zm-1-4h18v4H3Zm9 4V4',
+        open: 'M14 4h6v6m0-6-9 9m5-4v9H4V6h9',
+        edit: 'm4 16.5-.8 4.3 4.3-.8L20 7.5 16.5 4 4 16.5Zm10.8-10.8 3.5 3.5',
+        trash: 'M4 7h16m-10 4v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3',
+        plus: 'M12 5v14M5 12h14'
+    };
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', paths[name] || paths.seed);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.7');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+    return svg;
+}
+
+function createPlantDetailIcon(name, filled = false) {
+    const paths = {
+        sprout: 'M12 20V10m0 3c-4.5 0-7-2.2-7-6 4.8 0 7 2 7 6Zm0 1c4.3 0 7-2.3 7-6-4.6 0-7 2.2-7 6Z',
+        leaf: 'M19.5 4.5C10 4 5 8 5 13.5A5.5 5.5 0 0 0 10.5 19C16 19 20 14 19.5 4.5ZM5 20c2.5-4 6-7.5 11-10',
+        basket: 'M4 10h16l-2 10H6L4 10Zm3-1 5-5 5 5m-8 4v4m4-4v4m4-4v4',
+        sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0-5v2m0 14v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M3 12h2m14 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
+        water: 'M12 3c-2.5 4-7 8-7 12a7 7 0 0 0 14 0c0-4-4.5-8-7-12Zm-4 12a4 4 0 0 0 4 4',
+        status: 'M7 4h10v4H7V4ZM7 6H4v15h16V6h-3M8 13l3 3 5-5',
+        location: 'M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Zm-4 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
+        calendar: 'M7 3v3m10-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13H4V6a1 1 0 0 1 1-1Z',
+        link: 'm10 13 4-4m-5-1 2-2a4 4 0 0 1 6 6l-2 2m-6-4-2 2a4 4 0 0 0 6 6l2-2',
+        star: 'm12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9Z',
+        tags: 'M3 3h8l10 10-8 8L3 11V3Zm4 4h.01',
+        info: 'M12 11v6m0-10h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+        book: 'M12 5v16M3 4c3-1 6-1 9 1 3-2 6-2 9-1v15c-3-1-6-1-9 2-3-3-6-3-9-2V4Z',
+        image: 'M3 3h18v18H3V3Zm1 14 5-5 4 4 3-3 5 5M9 8h.01',
+        external: 'M14 4h6v6m0-6-9 9m5-4v9H4V6h5',
+        recipe: 'M7 12a4 4 0 0 1 0-8 5 5 0 0 1 10 0 4 4 0 0 1 0 8v8H7v-8Zm0 4h10'
+    };
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+    svg.classList.add('plant-detail-icon');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', paths[name] || paths.sprout);
+    path.setAttribute('fill', filled ? 'currentColor' : 'none');
+    path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '1.6');
+    path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path); return svg;
+}
+
+function buildWishlistCard(item, handlers = {}) {
+    const card = document.createElement('article');
+    card.className = 'wish-item-card';
+
+    const openButton = document.createElement('button');
+    openButton.type = 'button';
+    openButton.className = 'wish-card-open';
+    openButton.setAttribute('aria-label', 'Bekijk details van ' + (typeof item.name === 'string' ? item.name : 'verlanglijstitem'));
+
+    const imageBox = document.createElement('span');
+    imageBox.className = 'wish-img-box';
+    const imageUrl = safeWishlistImageUrl(item.image);
+    if (imageUrl) {
+        const image = document.createElement('img');
+        image.src = imageUrl;
+        image.alt = '';
+        image.loading = 'lazy';
+        imageBox.appendChild(image);
+    } else {
+        const placeholder = document.createElement('span');
+        placeholder.className = 'wish-img-placeholder';
+        placeholder.appendChild(createWishlistIcon(item.type === 'item' ? 'item' : 'seed'));
+        imageBox.appendChild(placeholder);
+    }
+
+    const contentBox = document.createElement('span');
+    contentBox.className = 'wish-content-box';
+    const title = document.createElement('span');
+    title.className = 'wish-title';
+    title.textContent = typeof item.name === 'string' ? item.name : '';
+    contentBox.appendChild(title);
+
+    const meta = document.createElement('span');
+    meta.className = 'wish-card-meta';
+    const badge = document.createElement('span');
+    const isSeed = item.type === 'seed';
+    badge.className = 'wish-type-label ' + (isSeed ? 'is-seed' : 'is-item');
+    badge.textContent = isSeed ? 'Zaad' : 'Item';
+    meta.appendChild(badge);
+    contentBox.appendChild(meta);
+
+    if (typeof item.note === 'string' && item.note.trim()) {
+        const note = document.createElement('span');
+        note.className = 'wish-note-preview';
+        note.textContent = item.note.trim();
+        contentBox.appendChild(note);
+    }
+    openButton.append(imageBox, contentBox);
+    openButton.addEventListener('click', event => {
+        event.stopPropagation();
+        handlers.onOpen?.(item.id);
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'wish-card-actions';
+    const addActionButton = (className, iconName, label, handler) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = className;
+        button.setAttribute('aria-label', label);
+        button.title = label;
+        button.appendChild(createWishlistIcon(iconName));
+        const buttonLabel = document.createElement('span');
+        buttonLabel.textContent = label;
+        button.appendChild(buttonLabel);
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            handler?.(button);
+        });
+        actions.appendChild(button);
+        return button;
+    };
+
+    addActionButton('btn-wish-icon', 'edit', 'Bewerken', () => handlers.onEdit?.(item.id));
+    const link = safeHttpUrl(item.link);
+    if (link) addActionButton('btn-wish-icon', 'open', 'Bekijk online', () => handlers.onLink?.(link));
+    if (isSeed) addActionButton('btn-convert-seed', 'plus', 'Naar zaden', button => handlers.onConvert?.(item.id, button));
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button'; deleteButton.className = 'wish-card-delete';
+    deleteButton.setAttribute('aria-label', 'Verwijder ' + (item.name || 'verlanglijstitem'));
+    deleteButton.title = 'Verwijderen'; deleteButton.appendChild(createWishlistIcon('trash'));
+    deleteButton.addEventListener('click', event => {
+        event.stopPropagation(); handlers.onDelete?.(item.id);
+    });
+
+    card.append(openButton, actions, deleteButton);
+    card.addEventListener('click', () => handlers.onOpen?.(item.id));
+    return card;
+}
+function buildAISuggestionRow(action, handlers = {}) {
+    const normalized = normalizeAIAction(action);
+    if (!normalized) return null;
+
+    const row = document.createElement('div');
+    row.className = 'ai-suggestion-row';
+    const copy = document.createElement('div');
+    copy.className = 'ai-suggestion-copy';
+    const label = document.createElement('span');
+    label.style.cssText = 'font-size: 14px; font-weight: 600;';
+    label.textContent = normalized.label;
+    copy.appendChild(label);
+    if (normalized.detail) {
+        const detail = document.createElement('p');
+        detail.textContent = normalized.detail;
+        copy.appendChild(detail);
+    }
+    row.appendChild(copy);
+
+    if (normalized.subject) {
+        const actionGroup = document.createElement('div');
+        actionGroup.className = 'ai-actions-group';
+        const destinations = [normalized.destination];
+        if (destinations.includes('wishlist')) {
+            const wishlistButton = document.createElement('button');
+            wishlistButton.type = 'button';
+            wishlistButton.className = 'btn-ai-action ghost';
+            wishlistButton.title = 'Op verlanglijst';
+            wishlistButton.textContent = 'Op verlanglijst';
+            wishlistButton.addEventListener('click', event => {
+                event.stopPropagation();
+                handlers.onWishlist?.(normalized.subject, wishlistButton, normalized);
+            });
+            actionGroup.appendChild(wishlistButton);
+        }
+        if (destinations.includes('todo')) {
+            const todoButton = document.createElement('button');
+            todoButton.type = 'button';
+            todoButton.className = 'btn-ai-action secondary';
+            todoButton.title = 'Inplannen';
+            todoButton.textContent = 'Inplannen';
+            todoButton.addEventListener('click', event => {
+                event.stopPropagation();
+                handlers.onPlan?.(normalized, todoButton);
+            });
+            actionGroup.appendChild(todoButton);
+        }
+        row.appendChild(actionGroup);
+    }
+    return row;
 }
 
 
 document.addEventListener('DOMContentLoaded', async () => {
-    try { await initDB(); } catch (err) { console.error("DB Init failed", err); }
+    let databaseAvailable = false;
+    try {
+        await initDB();
+        databaseAvailable = true;
+    } catch (err) {
+        console.warn('[KweekKompas] Lokale database kon niet worden geopend.');
+    }
 
     // --- USER PROFILE & ONBOARDING ---
     window.updateProfileUI = function() {
@@ -760,90 +1975,103 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     window.updateProfileUI();
 
-    let onboardingData = { light: '', type: '', level: '' };
+    const savedOnboardingFields = getOnboardingProfileFields();
+    const initialGardenPlaces = normalizeOnboardingGardenPlaces(userProfile.gardenPlaces);
+    const savedPrimaryPlace = ONBOARDING_GARDEN_PLACE_VALUES.includes(userProfile.primaryGardenPlace)
+        ? userProfile.primaryGardenPlace
+        : (ONBOARDING_GARDEN_PLACE_VALUES.includes(userProfile.gardenType) ? userProfile.gardenType : '');
+    if (!initialGardenPlaces.length && savedPrimaryPlace) initialGardenPlaces.push(savedPrimaryPlace);
+    let onboardingData = {
+        places: initialGardenPlaces,
+        primaryPlace: initialGardenPlaces.includes(savedPrimaryPlace) ? savedPrimaryPlace : (initialGardenPlaces[0] || ''),
+        light: ONBOARDING_LIGHT_VALUES.has(savedOnboardingFields.light || userProfile.light)
+            ? (savedOnboardingFields.light || userProfile.light) : '',
+        level: ONBOARDING_EXPERIENCE_VALUES.has(savedOnboardingFields.experience || userProfile.experience)
+            ? (savedOnboardingFields.experience || userProfile.experience) : ''
+    };
 
     async function finishOnboarding() {
-        userProfile.light = onboardingData.light || '';
-        userProfile.level = onboardingData.level || '';
-        localStorage.setItem('moestuin_user_profile', JSON.stringify(userProfile));
+        const onboardingProfile = buildProfileFromOnboarding(userProfile, onboardingData);
+        saveUserProfileData(onboardingProfile);
+        const onboardingLight = onboardingProfile.light;
         updateProfileUI();
-        
+
         localStorage.setItem('onboarding_done', 'true');
         const starters = [
-            { 
-                id: Date.now() + 1, 
-                naam: "Cherry Tomaat 'Sweet Million'", 
-                type: "Groente", 
-                standplaats: onboardingData.light || 'Zon', 
-                zaaitijd: "Maart - April (Binnen)", 
-                oogsttijd: "Juli - September", 
-                status: "Voorraad", 
-                tags: ["Zoet", "Productief", "Starter"], 
+            {
+                id: Date.now() + 1,
+                naam: "Cherry Tomaat 'Sweet Million'",
+                type: "Groente",
+                standplaats: onboardingLight || 'Zon',
+                zaaitijd: "Maart - April (Binnen)",
+                oogsttijd: "Juli - September",
+                status: "Voorraad",
+                tags: ["Zoet", "Productief", "Starter"],
                 image: "assets/starters/tomaat.png",
-                isFavorite: true 
+                isFavorite: true
             },
-            { 
-                id: Date.now() + 2, 
-                naam: "Radijs 'Cherry Belle'", 
-                type: "Groente", 
-                standplaats: onboardingData.light || 'Halfschaduw', 
-                zaaitijd: "Maart - Augustus", 
-                oogsttijd: "April - September", 
-                status: "Voorraad", 
-                tags: ["Snel", "Krokant", "Makkelijk"], 
+            {
+                id: Date.now() + 2,
+                naam: "Radijs 'Cherry Belle'",
+                type: "Groente",
+                standplaats: onboardingLight || 'Halfschaduw',
+                zaaitijd: "Maart - Augustus",
+                oogsttijd: "April - September",
+                status: "Voorraad",
+                tags: ["Snel", "Krokant", "Makkelijk"],
                 image: "assets/starters/radijs.png"
             },
-            { 
-                id: Date.now() + 3, 
-                naam: "Courgette 'Black Beauty'", 
-                type: "Groente", 
-                standplaats: "Zon", 
-                zaaitijd: "Mei - Juni", 
-                oogsttijd: "Juli - September", 
-                status: "Voorraad", 
-                tags: ["Groot", "Rijke oogst", "Populair"], 
+            {
+                id: Date.now() + 3,
+                naam: "Courgette 'Black Beauty'",
+                type: "Groente",
+                standplaats: "Zon",
+                zaaitijd: "Mei - Juni",
+                oogsttijd: "Juli - September",
+                status: "Voorraad",
+                tags: ["Groot", "Rijke oogst", "Populair"],
                 image: "assets/starters/courgette.png"
             },
-            { 
-                id: Date.now() + 4, 
-                naam: "Pluksla 'Gemengd'", 
-                type: "Groente", 
-                standplaats: "Halfschaduw", 
-                zaaitijd: "Maart - Augustus", 
-                oogsttijd: "Mei - Oktober", 
-                status: "Voorraad", 
-                tags: ["Gezond", "Snel", "Vers"], 
+            {
+                id: Date.now() + 4,
+                naam: "Pluksla 'Gemengd'",
+                type: "Groente",
+                standplaats: "Halfschaduw",
+                zaaitijd: "Maart - Augustus",
+                oogsttijd: "Mei - Oktober",
+                status: "Voorraad",
+                tags: ["Gezond", "Snel", "Vers"],
                 image: "assets/starters/sla.png"
             },
-            { 
-                id: Date.now() + 5, 
-                naam: "Basilicum 'Genovese'", 
-                type: "Kruid", 
-                standplaats: "Zon", 
-                zaaitijd: "Mei - Juli", 
-                oogsttijd: "Juli - September", 
-                status: "Voorraad", 
-                tags: ["Aromatisch", "Keuken", "Pot"], 
+            {
+                id: Date.now() + 5,
+                naam: "Basilicum 'Genovese'",
+                type: "Kruid",
+                standplaats: "Zon",
+                zaaitijd: "Mei - Juli",
+                oogsttijd: "Juli - September",
+                status: "Voorraad",
+                tags: ["Aromatisch", "Keuken", "Pot"],
                 image: "assets/starters/basilicum.png"
             },
-            { 
-                id: Date.now() + 6, 
-                naam: "Regenboog Snijbiet", 
-                type: "Groente", 
-                standplaats: "Halfschaduw", 
-                zaaitijd: "Maart - Augustus", 
-                oogsttijd: "Juni - November", 
-                status: "Voorraad", 
-                tags: ["Kleurrijk", "Vitamines", "Makkelijk"], 
+            {
+                id: Date.now() + 6,
+                naam: "Regenboog Snijbiet",
+                type: "Groente",
+                standplaats: "Halfschaduw",
+                zaaitijd: "Maart - Augustus",
+                oogsttijd: "Juni - November",
+                status: "Voorraad",
+                tags: ["Kleurrijk", "Vitamines", "Makkelijk"],
                 image: "assets/starters/snijbiet.png"
             }
         ];
         // Only add if not already present by name
         const existingSeeds = await getAllSeeds();
-        for (let s of starters) { 
+        for (let s of starters) {
             const exists = existingSeeds.some(es => es.naam.toLowerCase() === s.naam.toLowerCase());
             if (!exists) {
-                await saveSeed(s); 
+                await saveSeed(s);
             }
         }
         seeds = await getAllSeeds();
@@ -852,50 +2080,134 @@ document.addEventListener('DOMContentLoaded', async () => {
         showToast("Je tuin is klaar 🌱");
     }
 
-    // Attach Onboarding Listeners early
-    document.querySelectorAll('.onboarding-next').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const next = btn.dataset.next;
-            document.querySelectorAll('.onboarding-step').forEach(s => s.classList.add('hidden'));
-            const nextStep = document.getElementById(`onboarding-step-${next}`);
-            if (nextStep) nextStep.classList.remove('hidden');
+    function renderOnboardingChoices() {
+        document.querySelectorAll('[data-choice-group]').forEach(button => {
+            const { choiceGroup, val } = button.dataset;
+            const selected = choiceGroup === 'places'
+                ? onboardingData.places.includes(val)
+                : onboardingData[choiceGroup] === val;
+            button.setAttribute('aria-pressed', String(selected));
+            button.classList.toggle('is-selected', selected);
+        });
+
+        const primaryWrap = document.getElementById('onboarding-primary-place-wrap');
+        const primarySelect = document.getElementById('onboarding-primary-place');
+        if (primaryWrap && primarySelect) {
+            primaryWrap.hidden = onboardingData.places.length === 0;
+            primarySelect.replaceChildren();
+            onboardingData.places.forEach(place => {
+                const option = document.createElement('option');
+                option.value = place;
+                option.textContent = place;
+                primarySelect.appendChild(option);
+            });
+            if (onboardingData.places.length && !onboardingData.places.includes(onboardingData.primaryPlace)) {
+                onboardingData.primaryPlace = onboardingData.places[0];
+            }
+            primarySelect.value = onboardingData.primaryPlace;
+        }
+    }
+
+    function renderOnboardingSummary() {
+        const summary = document.getElementById('onboarding-summary');
+        if (!summary) return;
+        summary.replaceChildren();
+
+        const locations = onboardingData.places.length
+            ? onboardingData.places.map(place => place === onboardingData.primaryPlace ? `${place} (hoofdplek)` : place).join(', ')
+            : 'Later invullen';
+        const lightLabel = onboardingData.light === 'Zon' ? 'Volle zon' : (onboardingData.light || 'Later invullen');
+        const rows = [
+            ['Tuinplekken', locations],
+            ['Zonlicht', lightLabel],
+            ['Ervaring', onboardingData.level || 'Later invullen']
+        ];
+
+        rows.forEach(([label, value]) => {
+            const row = document.createElement('div');
+            row.className = 'onboarding-summary-row';
+            const term = document.createElement('dt');
+            term.textContent = label;
+            const detail = document.createElement('dd');
+            detail.textContent = value;
+            row.append(term, detail);
+            summary.appendChild(row);
+        });
+    }
+
+    function showOnboardingStep(stepNumber) {
+        document.querySelectorAll('.onboarding-step').forEach(step => {
+            const isCurrent = step.id === `onboarding-step-${stepNumber}`;
+            step.classList.toggle('hidden', !isCurrent);
+            step.setAttribute('aria-hidden', String(!isCurrent));
+            step.inert = !isCurrent;
+        });
+
+        const progressLabel = document.getElementById('onboarding-progress-label');
+        const progressFill = document.getElementById('onboarding-progress-fill');
+        const progress = document.querySelector('.onboarding-progress');
+        if (progressLabel) progressLabel.textContent = `Stap ${stepNumber} van 3`;
+        if (progressFill) progressFill.style.width = `${(stepNumber / 3) * 100}%`;
+        if (progress) progress.setAttribute('aria-valuenow', String(stepNumber));
+        document.querySelectorAll('[data-progress-name]').forEach(label => {
+            const labelStep = Number(label.dataset.progressName);
+            label.classList.toggle('is-current', labelStep === stepNumber);
+            label.classList.toggle('is-complete', labelStep < stepNumber);
+            if (labelStep === stepNumber) label.setAttribute('aria-current', 'step');
+            else label.removeAttribute('aria-current');
+        });
+        if (stepNumber === 3) renderOnboardingSummary();
+        renderOnboardingChoices();
+    }
+
+    document.querySelectorAll('.onboarding-next').forEach(button => {
+        button.addEventListener('click', () => showOnboardingStep(Number(button.dataset.next)));
+    });
+    document.querySelectorAll('.onboarding-back').forEach(button => {
+        button.addEventListener('click', () => showOnboardingStep(Number(button.dataset.back)));
+    });
+
+    document.querySelectorAll('[data-choice-group]').forEach(button => {
+        button.addEventListener('click', () => {
+            const group = button.dataset.choiceGroup;
+            const value = button.dataset.val;
+            if (group === 'places') {
+                const selection = toggleOnboardingGardenPlace(onboardingData.places, onboardingData.primaryPlace, value);
+                onboardingData.places = selection.places;
+                onboardingData.primaryPlace = selection.primaryPlace;
+            } else if (group === 'light' && ONBOARDING_LIGHT_VALUES.has(value)) {
+                onboardingData.light = onboardingData.light === value ? '' : value;
+            } else if (group === 'level' && ONBOARDING_EXPERIENCE_VALUES.has(value)) {
+                onboardingData.level = onboardingData.level === value ? '' : value;
+            }
+            renderOnboardingChoices();
         });
     });
 
-    document.querySelectorAll('.onboarding-opt').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const step = btn.closest('.onboarding-step');
-            if (!step) return;
-            const val = btn.dataset.val;
-            if (step.id === 'onboarding-step-2') {
-                onboardingData.light = val;
-                localStorage.setItem('onboarding_sun', val);
+    document.querySelectorAll('[data-later]').forEach(button => {
+        button.addEventListener('click', () => {
+            if (button.dataset.later === 'places') {
+                onboardingData.places = [];
+                onboardingData.primaryPlace = '';
+            } else if (button.dataset.later === 'light') {
+                onboardingData.light = '';
+            } else if (button.dataset.later === 'level') {
+                onboardingData.level = '';
             }
-            if (step.id === 'onboarding-step-3') {
-                onboardingData.type = val;
-                localStorage.setItem('onboarding_type', val);
-            }
-            if (step.id === 'onboarding-step-4') {
-                onboardingData.level = val;
-                localStorage.setItem('onboarding_level', val);
-            }
-
-            const nextId = parseInt(step.id.split('-').pop()) + 1;
-            step.classList.add('hidden');
-            if (nextId <= 4) {
-                document.getElementById(`onboarding-step-${nextId}`)?.classList.remove('hidden');
-            } else {
-                document.getElementById('onboarding-finish')?.classList.remove('hidden');
-            }
+            renderOnboardingChoices();
         });
     });
 
-    document.querySelectorAll('.onboarding-skip').forEach(btn => {
-        btn.addEventListener('click', () => {
-            localStorage.setItem('onboarding_done', 'true');
-            switchView('home');
-        });
+    document.getElementById('onboarding-primary-place')?.addEventListener('change', event => {
+        const nextPrimary = event.currentTarget.value;
+        onboardingData.primaryPlace = onboardingData.places.includes(nextPrimary) ? nextPrimary : (onboardingData.places[0] || '');
     });
+
+    document.getElementById('btn-onboarding-restore')?.addEventListener('click', () => {
+        if (typeof window.restoreBackup === 'function') window.restoreBackup();
+    });
+
+    showOnboardingStep(1);
 
     const btnFinishOnboarding = document.getElementById('btn-onboarding-finish');
     if (btnFinishOnboarding) btnFinishOnboarding.onclick = finishOnboarding;
@@ -903,16 +2215,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Expose switchView immediately so it works for early clicks
     window.switchView = switchView;
 
-    seeds = await getAllSeeds();
-    let reminders = JSON.parse(localStorage.getItem('moestuin_reminders')) || [];
-    let dailyProgress = JSON.parse(localStorage.getItem('daily_progress')) || { date: '', count: 0 };
+    if (databaseAvailable) {
+        try {
+            seeds = await getAllSeeds();
+        } catch (err) {
+            databaseAvailable = false;
+            seeds = [];
+            console.warn('[KweekKompas] Lokale databasegegevens konden niet worden geladen.');
+        }
+    } else {
+        seeds = [];
+    }
+
+    let reminders = readStoredJSON('moestuin_reminders', [], normalizeReminders);
+    let dailyProgress = readStoredJSON('daily_progress', { date: '', count: 0 }, normalizeDailyProgress);
     let curCalDate = new Date();
     let selectedDateStr = null;
+    let calendarTaskWeek = false;
+    let aiPlanningDraft = null;
+    let calendarHasRendered = false;
 
     const todayStr = new Date().toISOString().split('T')[0];
     if (dailyProgress.date !== todayStr) {
         dailyProgress = { date: todayStr, count: 0 };
-        localStorage.setItem('daily_progress', JSON.stringify(dailyProgress));
+        if (!unreadableStoredJSONKeys.has('daily_progress')) {
+            localStorage.setItem('daily_progress', JSON.stringify(dailyProgress));
+        }
     }
 
 
@@ -922,8 +2250,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (confirm("Weet je het zeker? Al je zaden en instellingen worden gewist.")) {
                 localStorage.clear();
                 // Sluit de connectie eerst, anders kan de DB niet verwijderd worden
-                if (db) db.close(); 
-                
+                if (db) db.close();
+
                 const req = indexedDB.deleteDatabase('MoestuinDB');
                 req.onsuccess = () => {
                     location.reload();
@@ -968,21 +2296,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         const dateToUse = customDate || today;
         const dateStr = dateToUse.toISOString().split('T')[0];
         const title = `${seed.naam} zaaien`;
-        
+
         const isDuplicateDay = reminders.some(r => r.title.toLowerCase().includes(seed.naam.toLowerCase()) && r.date === dateStr);
-        
+
         if (isDuplicateDay) {
             showToast(`Staat al in je kalender op deze dag. 📅`);
             return;
         }
-        
+
         const newReminder = {
             id: Date.now(),
             date: dateStr,
             title: title,
             done: false
         };
-        
+
         reminders.push(newReminder);
         saveReminders();
         incrementDailyProgress();
@@ -1061,6 +2389,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let displayedPhotoCount = 6; // How many web results to show initially
     let editingId = null;
     let activeCategory = 'Alles';
+    let activePlantStatus = null;
+    let dashboardPlantStatus = 'Gezaaid';
     let activeMonthFilter = null; // null or 0-11
     let showAllMissed = false;
 
@@ -1125,6 +2455,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     filterChips.forEach(chip => {
         chip.addEventListener('click', () => {
             const filterValue = chip.dataset.filter;
+            if (!filterValue) return;
+            activePlantStatus = null;
 
             if (filterValue === 'Alles') {
                 activeCategory = 'Alles';
@@ -1177,7 +2509,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const triggerAutoFill = async (force = false) => {
         const inputNaam = document.getElementById('naam');
         const naamRaw = inputNaam ? inputNaam.value.trim() : '';
-        
+
         if (!naamRaw) {
             showToast("Vul eerst een naam in om info aan te vullen! ✍️");
             if (inputNaam) inputNaam.focus();
@@ -1208,20 +2540,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 waterbehoefte: document.getElementById('water')?.value || "",
                 notes: document.getElementById('beschrijving')?.value || ""
             };
-
-            const response = await fetch('/api/seed-info', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: naamRaw, existingFields })
-            });
-
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
-                console.error(`[DEBUG] Seed-info API Fail: ${response.status}`, errData);
-                throw new Error(errData.error || `API Fout (${response.status})`);
-            }
-            
-            const data = await response.json();
+            const data = await window.KweekServices.requestAI('seed-info', { name: naamRaw, existingFields });
             let fieldsUpdated = 0;
 
             // Bestaand starter-icoon / foto mapping op basis van plantnaam
@@ -1287,10 +2606,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (!months || months.length === 0) return;
                 const container = document.getElementById(containerId);
                 if (!container) return;
-                
+
                 const items = container.querySelectorAll('.month-picker-item');
                 const anyChecked = Array.from(items).some(item => item.classList.contains('active'));
-                
+
                 if (force || !anyChecked) {
                     const activeIndices = getActiveMonths(months);
                     items.forEach(item => {
@@ -1321,7 +2640,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 banner.classList.remove('hidden');
                 banner.querySelector('span').textContent = `🪄 AI-voorstel geladen — controleer de gegevens.`;
             }
-            
+
             setSourceStatus("AI-voorstel opgehaald", 'success');
             showToast(fieldsUpdated > 0 ? "Info aangevuld! ✨" : "Bestaande velden behouden. ✨");
 
@@ -1330,6 +2649,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             hideBanner();
             setSourceStatus("AI tijdelijk niet beschikbaar.", 'error');
             showToast("AI kon dit zaad nu niet aanvullen.");
+            const errorState = document.createElement('div');
+            errorState.className = 'ai-error-state';
+            errorState.className = 'ai-error';
+            errorState.appendChild(document.createTextNode('Fout: '));
+            errorState.appendChild(document.createTextNode(err?.message || 'Onbekende fout'));
+            errorState.appendChild(document.createElement('br'));
+            const hint = document.createElement('small');
+            hint.textContent = 'Controleer je keuze bij Instellingen → AI.';
+            errorState.appendChild(hint);
+            sourceStatusEl?.replaceChildren(errorState);
         } finally {
             if (btn) {
                 btn.disabled = false;
@@ -1346,30 +2675,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnResetAi) {
         btnResetAi.onclick = () => triggerAutoFill(true);
     }
-    const btnThemeToggle = document.getElementById('btn-theme-toggle');
-    const storedTheme = localStorage.getItem('theme') || 'dark';
-    if (storedTheme === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
-        if (btnThemeToggle) btnThemeToggle.textContent = '\u2600\uFE0F';
-    }
-    
+    // Apply the migrated theme before rendering the first view. Older values
+    // (including a missing preference) safely resolve to Light.
+    applyAppTheme(getStoredAppTheme());
+
     // Layout Width Init
     const storedLayout = localStorage.getItem('layout_width') || 'standard';
     document.body.classList.add('layout-' + storedLayout);
-    if (btnThemeToggle) {
-        btnThemeToggle.addEventListener('click', () => {
-            const theme = document.documentElement.getAttribute('data-theme');
-            if (theme === 'dark') {
-                document.documentElement.removeAttribute('data-theme');
-                localStorage.setItem('theme', 'light');
-                btnThemeToggle.textContent = '\uD83C\uDF19';
-            } else {
-                document.documentElement.setAttribute('data-theme', 'dark');
-                localStorage.setItem('theme', 'dark');
-                btnThemeToggle.textContent = '\u2600\uFE0F';
-            }
-        });
-    }
 
     // Collapsible state is now handled within the toggle initialization below
 
@@ -1486,10 +2798,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (e.key === 'Enter') {
                 e.preventDefault(); // Stop form submit
                 btnQuickPhoto.click(); // Trigger photo search
-                
+
                 // ALSO trigger AI info fill automatically if empty
                 if (window._autoFillSeedInfo) {
-                    window._autoFillSeedInfo(false); 
+                    window._autoFillSeedInfo(false);
                 }
             }
         });
@@ -1498,24 +2810,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     let nuDoenExpandedGroups = { missed: false, now: false, soon: false };
 
     let lastToast = { message: '', time: 0 };
-    function showToast(message) {
-        if (!message) return;
-        
-        // Anti-spam: max 1 toast
+    function showToastContent(buildContent) {
+        // Anti-spam: max 1 toast. Build content as DOM so user values can
+        // never become executable markup in a toast.
         const container = document.getElementById('toast-container');
-        if (container) {
-            Array.from(container.children).forEach(c => c.remove());
-        }
+        if (container) Array.from(container.children).forEach(c => c.remove());
 
         const toast = document.createElement('div');
         toast.className = 'toast show';
-        toast.innerHTML = `<span>${message}</span>`;
+        const content = document.createElement('span');
+        buildContent(content);
+        toast.appendChild(content);
         if (container) container.appendChild(toast);
 
         setTimeout(() => {
             toast.classList.remove('show');
             setTimeout(() => toast.remove(), 300);
         }, 2000);
+    }
+
+    function showToast(message) {
+        if (!message) return;
+        showToastContent(content => {
+            content.textContent = String(message);
+        });
+    }
+
+    function showAssistantFeedback(message) {
+        showToast(message);
+        document.querySelector('#toast-container .toast')?.classList.add('ai-action-feedback');
+    }
+
+    function showToastWithHomeLink(prefix, suffix) {
+        showToastContent(content => {
+            content.appendChild(document.createTextNode(String(prefix || '')));
+            const link = document.createElement('button');
+            link.type = 'button';
+            link.className = 'toast-link';
+            link.textContent = 'je tuin';
+            link.addEventListener('click', () => switchView('home'));
+            content.appendChild(link);
+            content.appendChild(document.createTextNode(String(suffix || '')));
+        });
     }
 
 
@@ -1580,13 +2916,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await deleteSeedDB(seed.id);
                 seeds = await getAllSeeds();
                 showToast("Zaadje verwijderd! 🗑️");
-                
+
                 // Force global UI refresh
                 renderHome();
                 applyFilters();
                 renderSowingGrid();
                 renderCalendar();
-                
+
                 switchView('list');
             }
         };
@@ -1610,6 +2946,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const selectedTags = Array.from(document.querySelectorAll('.tag-picker-chip.active')).map(c => c.dataset.tag);
         const existing = editingId ? seeds.find(s => s.id === editingId) : null;
+        const safeImages = pendingImages.map(image => {
+            const safeUrl = safeWishlistImageUrl(image?.url);
+            return safeUrl ? { ...image, url: safeUrl } : null;
+        }).filter(Boolean);
+        const safeFeaturedImage = safeWishlistImageUrl(inputNaam.dataset.featuredUrl) || safeImages[0]?.url || '';
 
         const newSeed = {
             id: editingId || Date.now().toString(),
@@ -1631,9 +2972,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             shopLink: document.getElementById('shopLink')?.value.trim() || '',
             beschrijving: inputBeschrijving?.value.trim() || '',
             ervaringen: inputErvaringen?.value.trim() || '',
-            images: pendingImages,
+            images: safeImages,
             tags: selectedTags,
-            featuredImageUrl: inputNaam.dataset.featuredUrl || (pendingImages.length > 0 ? pendingImages[0].url : ''),
+            featuredImageUrl: safeFeaturedImage,
             isFavorite: existing ? (existing.isFavorite || false) : false
         };
         if (newSeed.status === 'Wishlist') {
@@ -1641,13 +2982,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         await saveSeed(newSeed);
         seeds = await getAllSeeds();
-        
+
         // Ensure UI reflects changes everywhere
         renderHome();
         applyFilters();
         renderSowingGrid();
         renderCalendar();
-        
+
         showToast(editingId ? "Wijzigingen opgeslagen! ✨" : "Nieuwe plant toegevoegd! 🌱");
         switchView('list');
     }
@@ -1673,86 +3014,184 @@ document.addEventListener('DOMContentLoaded', async () => {
         return 'Voorraad';
     }
 
+    function updateSeedSummary() {
+        const total = document.getElementById('seed-summary-total');
+        const favorites = document.getElementById('seed-summary-favorites');
+        const season = document.getElementById('seed-summary-season');
+        if (!total && !favorites && !season) return;
+
+        const allSeeds = Array.isArray(seeds) ? seeds : [];
+        if (total) total.textContent = String(allSeeds.length);
+        if (favorites) favorites.textContent = String(allSeeds.filter(seed => seed.isFavorite).length);
+        if (season) {
+            const currentMonth = new Date().getMonth();
+            season.textContent = String(allSeeds.filter(seed => getActiveMonths(seed).has(currentMonth)).length);
+        }
+    }
+
     function renderSeeds(items) {
-
-
         if (!seedGrid) return;
-        seedGrid.innerHTML = '';
+        updateSeedSummary();
+        seedGrid.replaceChildren();
 
         if (items.length === 0) {
-            const q = searchInput.value;
-            const hasFilters = activeCategory !== 'Alles' || activeMonthFilter !== null || q;
-            
-            const msg = hasFilters ? "Geen resultaten gevonden" : "Je hebt nog geen zaden toegevoegd";
-            const submsg = hasFilters ? "Met deze filters of zoekterm konden we niets vinden." : "Begin met het toevoegen van je eerste plant.";
-            const btnText = hasFilters ? "Wis filters & toon alles" : "Voeg je eerste zaadje toe +";
-            const clickAction = hasFilters ? "window._resetAllFilters()" : "window.openAddForm()";
-
-            seedGrid.innerHTML = `
-                <div class="empty-state" style="padding: 60px 20px;">
-                    <p style="font-size: 16px; font-weight: 700; color: var(--text-main); margin-bottom: 4px;">${msg}</p>
-                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">${submsg}</p>
-                    <button class="empty-state-btn" onclick="${clickAction}">${btnText}</button>
-                </div>`;
+            const q = searchInput?.value || '';
+            const hasFilters = activePlantStatus !== null || activeCategory !== 'Alles' || activeMonthFilter !== null || q;
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.style.cssText = 'padding: 60px 20px;';
+            const message = document.createElement('p');
+            message.style.cssText = 'font-size: 16px; font-weight: 700; color: var(--text-main); margin-bottom: 4px;';
+            message.textContent = activePlantStatus === 'Actief' ? 'Geen actieve planten' : hasFilters ? 'Geen resultaten gevonden' : 'Je hebt nog geen zaden toegevoegd';
+            const submessage = document.createElement('p');
+            submessage.style.cssText = 'font-size: 13px; color: var(--text-muted); margin-bottom: 20px;';
+            submessage.textContent = hasFilters ? 'Met deze filters of zoekterm konden we niets vinden.' : 'Begin met het toevoegen van je eerste plant.';
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'empty-state-btn';
+            button.textContent = hasFilters ? 'Wis filters & toon alles' : 'Eerste zaad toevoegen';
+            button.addEventListener('click', () => hasFilters ? window._resetAllFilters() : window.openAddForm());
+            empty.append(message, submessage, button);
+            seedGrid.appendChild(empty);
             return;
         }
 
-        const favorites = items.filter(s => s.isFavorite);
-        const others = items.filter(s => !s.isFavorite);
+        const favorites = items.filter(seed => seed.isFavorite);
+        const others = items.filter(seed => !seed.isFavorite);
+        const addSectionHeader = (label, className) => {
+            const header = document.createElement('div');
+            header.className = `list-section-header${className ? ` ${className}` : ''}`;
+            header.style.gridColumn = '1 / -1';
+            header.textContent = label;
+            seedGrid.appendChild(header);
+        };
 
         if (favorites.length > 0) {
-            const favHeader = document.createElement('div');
-            favHeader.className = 'list-section-header fav';
-            favHeader.style.gridColumn = '1 / -1';
-            favHeader.innerHTML = `⭐ Favorieten`;
-            seedGrid.appendChild(favHeader);
-            favorites.forEach(s => seedGrid.appendChild(createSeedCard(s)));
-
-            if (others.length > 0) {
-                const otherHeader = document.createElement('div');
-                otherHeader.className = 'list-section-header';
-                otherHeader.style.gridColumn = '1 / -1';
-                otherHeader.innerHTML = `🌱 Overige zaden`;
-                seedGrid.appendChild(otherHeader);
-            }
+            addSectionHeader('Favorieten', 'fav');
+            favorites.forEach(seed => seedGrid.appendChild(createSeedCard(seed)));
+            if (others.length > 0) addSectionHeader('Overige zaden', '');
         }
-        others.forEach(s => seedGrid.appendChild(createSeedCard(s)));
+        others.forEach(seed => seedGrid.appendChild(createSeedCard(seed)));
     }
 
     function createSeedCard(seed) {
-        const card = document.createElement('div');
+        const card = document.createElement('article');
         card.className = 'seed-card';
-        card.dataset.id = seed.id;
-        card.id = `seed-card-${seed.id}`;
-        // Priority: featuredImageUrl > image > first image > placeholder
-        const img = seed.featuredImageUrl || seed.image || (seed.images && seed.images.length > 0 ? seed.images[0].url : null);
-        const imgHTML = img ? `<div class="card-img" style="background-image: url('${img}')"></div>` : `<div class="card-img placeholder-img">🌱</div>`;
-        const nameH = highlightSearchTerm(seed.naam, searchInput.value);
+        card.dataset.id = String(seed.id ?? '');
+        card.id = `seed-card-${String(seed.id ?? '')}`;
+        card.tabIndex = 0;
+        card.setAttribute('aria-label', `Bekijk details van ${String(seed.naam || 'plant')}`);
 
+        const appendPlaceholder = imageBox => {
+            imageBox.replaceChildren();
+            imageBox.classList.add('placeholder-img');
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('aria-hidden', 'true');
+            svg.classList.add('seed-placeholder-icon');
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', 'M12 20V8M12 12C8 12 5 9.7 5 5c4.4 0 7 2.1 7 7Zm0 2c4 0 7-2.3 7-7-4.4 0-7 2.1-7 7Z');
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', 'currentColor');
+            path.setAttribute('stroke-linecap', 'round');
+            path.setAttribute('stroke-linejoin', 'round');
+            path.setAttribute('stroke-width', '1.5');
+            svg.appendChild(path);
+            imageBox.appendChild(svg);
+        };
 
-        const sowingRange = formatMonthRanges(getActiveMonths(seed));
-        const harvestRange = formatMonthRanges(getActiveMonths(seed.oogsttijd));
+        const imageBox = document.createElement('div');
+        const imageUrl = safeWishlistImageUrl(seed.featuredImageUrl || seed.image || seed.images?.[0]?.url);
+        if (imageUrl) {
+            imageBox.className = 'card-img seed-card-media';
+            const image = document.createElement('img');
+            image.className = 'seed-card-image';
+            image.setAttribute('src', imageUrl);
+            image.setAttribute('alt', `Foto van ${String(seed.naam || 'plant')}`);
+            image.setAttribute('loading', 'lazy');
+            image.addEventListener('error', () => appendPlaceholder(imageBox), { once: true });
+            imageBox.appendChild(image);
+        } else {
+            imageBox.className = 'card-img seed-card-media';
+            appendPlaceholder(imageBox);
+        }
+        card.appendChild(imageBox);
 
-        card.innerHTML = `
-            ${imgHTML}
-            <div class="card-actions-top-right">
-                ${seed.isFavorite ? '<span class="action-icon-static">⭐</span>' : ''}
-            </div>
-            <div class="card-content">
-                <div class="card-badges" style="display:flex; gap:6px; margin-bottom:8px;">
-                    <span class="badge ${seed.type.toLowerCase()}" style="font-weight: 700;">${seed.type}</span>
-                    <span class="badge ${seed.status.toLowerCase()}" style="opacity: 0.8;">${getStatusLabel(seed.status)}</span>
-                </div>
-                <h3 style="margin:0 0 4px 0; font-size:17px;">${nameH}</h3>
-                ${seed.code ? `<div style="font-size:11px; color:var(--text-muted); margin-bottom: 6px; opacity: 0.8; font-weight: 500; font-family: monospace;"># ${seed.code}</div>` : ''}
-                <div class="seed-meta">
-                  <p class="seed-sow">📅 Zaaien: ${sowingRange || 'n.v.t.'}</p>
-                  <p class="seed-harvest">🥗 Oogst: ${harvestRange || 'n.v.t.'}</p>
-                </div>
-            </div>
-        `;
+        const actions = document.createElement('div');
+        actions.className = 'card-actions-top-right';
+        const favorite = document.createElement('button');
+        favorite.type = 'button';
+        favorite.className = `card-favorite-button${seed.isFavorite ? ' active' : ''}`;
+        favorite.setAttribute('aria-pressed', seed.isFavorite ? 'true' : 'false');
+        favorite.setAttribute('aria-label', seed.isFavorite ? `Verwijder ${String(seed.naam || 'plant')} uit favorieten` : `Markeer ${String(seed.naam || 'plant')} als favoriet`);
+        favorite.textContent = seed.isFavorite ? '\u2605' : '\u2606';
+        favorite.addEventListener('click', event => {
+            event.stopPropagation();
+            window._toggleFavContent?.(seed.id, { openDetail: false });
+        });
+        actions.appendChild(favorite);
+        card.appendChild(actions);
 
-        card.onclick = () => openDetailView(seed);
+        const content = document.createElement('div');
+        content.className = 'card-content';
+        const badges = document.createElement('div');
+        badges.className = 'card-badges';
+        const typeBadge = document.createElement('span');
+        typeBadge.className = `badge ${safeClassToken(seed.type)}`;
+        typeBadge.textContent = typeof seed.type === 'string' ? seed.type : '';
+        const statusBadge = document.createElement('span');
+        statusBadge.className = `badge ${safeClassToken(seed.status)}`;
+        statusBadge.textContent = getStatusLabel(seed.status);
+        const locationBadge = document.createElement('span');
+        locationBadge.className = 'badge seed-location-badge';
+        locationBadge.textContent = typeof seed.standplaats === 'string' && seed.standplaats ? seed.standplaats : 'Standplaats onbekend';
+        badges.append(typeBadge, statusBadge);
+        badges.appendChild(locationBadge);
+        content.appendChild(badges);
+
+        const name = document.createElement('h3');
+        appendHighlightedText(name, seed.naam, searchInput?.value || '');
+        content.appendChild(name);
+
+        if (seed.code) {
+            const code = document.createElement('div');
+            code.className = 'seed-code';
+            code.textContent = `# ${String(seed.code)}`;
+            content.appendChild(code);
+        }
+
+        const meta = document.createElement('div');
+        meta.className = 'seed-meta';
+        const sowing = document.createElement('p');
+        sowing.className = 'seed-meta-item seed-sow';
+        sowing.textContent = `Zaaien: ${formatMonthRanges(getActiveMonths(seed)) || 'n.v.t.'}`;
+        const harvest = document.createElement('p');
+        harvest.className = 'seed-meta-item seed-harvest';
+        harvest.textContent = `Oogst: ${formatMonthRanges(getActiveMonths(seed.oogsttijd)) || 'n.v.t.'}`;
+        meta.append(sowing, harvest);
+        content.appendChild(meta);
+
+        const cardActions = document.createElement('div');
+        cardActions.className = 'seed-card-actions';
+        const detailButton = document.createElement('button');
+        detailButton.type = 'button';
+        detailButton.className = 'seed-detail-button';
+        detailButton.textContent = 'Bekijk details';
+        detailButton.addEventListener('click', event => {
+            event.stopPropagation();
+            openDetailView(seed);
+        });
+        cardActions.appendChild(detailButton);
+        content.appendChild(cardActions);
+        card.appendChild(content);
+
+        card.addEventListener('click', () => openDetailView(seed));
+        card.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openDetailView(seed);
+            }
+        });
         return card;
     }
 
@@ -1780,291 +3219,281 @@ document.addEventListener('DOMContentLoaded', async () => {
         showToast("Toegevoegd aan wishlist ✨");
     }
 
-    function highlightSearchTerm(text, q) {
-        if (!q) return text;
-        const regex = new RegExp(`(${q})`, 'gi');
-        return text.replace(regex, '<mark>$1</mark>');
-    }
-
-
     // --- DETAIL VIEW ---
     function openDetailView(seed) {
-        viewDetail.dataset.currentSeedId = seed.id; // Store for edit button
-        window.scrollTo({ top: 0, behavior: 'smooth' }); // Ensure page is at top when opening detail
+        const focusedAction = document.activeElement?.closest('#view-detail .btn-action-chip')?.dataset.detailAction;
+        viewDetail.dataset.currentSeedId = seed.id;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
 
-        // Data Validation & Normalization
         const sowingMonthsSet = getActiveMonths(seed);
-
-        if (sowingMonthsSet.size === 0) {
-            console.warn("No sowing months found for seed:", seed.naam);
-        }
-
-        // Image logic
-        const featuredImg = seed.featuredImageUrl || seed.image || (seed.images && seed.images.length > 0 ? seed.images[0].url : null);
-        const headerImgHTML = featuredImg ? `<img src="${featuredImg}" alt="${seed.naam}" class="detail-hero-img">` : '<div class="card-img placeholder-img">🌱</div>';
-
-        let carouselHTML = '';
-        // Combine image sources for gallery
-        let allImages = seed.images ? [...seed.images] : [];
-        if (seed.image && !allImages.some(img => img.url === seed.image)) {
-            allImages.unshift({ url: seed.image, id: 'starter', caption: 'Starter Foto' });
-        }
-
-        if (allImages.length > 0) {
-            window._currentDetailImages = allImages;
-            const items = allImages.map((img, idx) => `
-                <div class="detail-carousel-item" onclick="openLightbox(window._currentDetailImages, ${idx})">
-                    <img src="${img.url}" alt="Foto ${idx + 1}" loading="lazy">
-                </div>
-            `).join('');
-            carouselHTML = `
-                <div class="detail-carousel-section">
-                    <h4>🖼️ Fotogalerij</h4>
-                    <div class="detail-carousel">${items}</div>
-                </div>
-            `;
-        }
-
-        const actionRow = `
-            <div class="detail-action-row" style="padding: 20px; display: flex; gap: 8px; flex-wrap: wrap;">
-                <button class="btn-action-chip ${seed.fase_gezaaid ? 'active' : ''}" onclick="window._updateStatus('${seed.id}', 'Gezaaid')" aria-label="Markeer als gezaaid">🌱 Gezaaid</button>
-                <button class="btn-action-chip ${seed.fase_groeit ? 'active' : ''}" onclick="window._updateStatus('${seed.id}', 'Groeit')" aria-label="Markeer als Groeit">🌿 Groeit</button>
-                <button class="btn-action-chip ${seed.fase_geoogst ? 'active' : ''}" onclick="window._updateStatus('${seed.id}', 'Geoogst')" aria-label="Markeer als geoogst">🧺 Oogst</button>
-                <button class="btn-action-chip fav-chip ${seed.isFavorite ? 'active' : ''}" onclick="window._toggleFavContent('${seed.id}')" aria-label="Wissel favoriet"><span>${seed.isFavorite ? '⭐' : '☆'}</span> Fav</button>
-            </div>
-        `;
-
-        // Render Sowing Months as chips
-        let sowingHTML = '';
-        if (sowingMonthsSet.size > 0) {
-            const chips = monthNamesShort.map((m, i) => `
-                <div class="month-bubble ${sowingMonthsSet.has(i) ? 'active' : ''}">${m}</div>
-            `).join('');
-            sowingHTML = `<div class="month-bar" style="grid-template-columns: repeat(6, 1fr); margin-top: 8px;">${chips}</div>`;
-        } else {
-            sowingHTML = `<span class="muted-value">Geen zaaitijd (n.v.t.)</span>`;
-        }
-
-        detailBody.innerHTML = `
-            <div class="header-image">
-                ${headerImgHTML}
-                <!-- Header Content Overlays -->
-                <div style="position: absolute; top: 30px; left: 20px; right: 20px; z-index: 20; pointer-events: none;">
-                    <h1 style="margin: 0; font-size: 24px; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.6);">${seed.naam}</h1>
-                </div>
-
-                <div style="position: absolute; bottom: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between; align-items: flex-end; z-index: 20; pointer-events: none;">
-                    <div style="display: flex; gap: 8px;">
-                        ${(seed.tags || []).some(t => t.toLowerCase().includes('lastige kiemer')) ? `
-                            <span class="category-badge difficult-germinator">
-                                <span>🌱</span> Lastige kiemer
-                            </span>
-                        ` : ''}
-                    </div>
-                    <div>
-                        <span class="category-badge">
-                            ${getStatusLabel(seed.status)}
-                        </span>
-                    </div>
-                </div>
-            </div>
-            ${actionRow}
-            <div class="detail-grid" style="padding: 0 20px 20px 20px;">
-                <div class="detail-item">
-                    <div class="detail-item-icon">☀️</div>
-                    <div class="detail-item-content">
-                        <strong>Standplaats</strong>
-                        <span>${seed.standplaats}</span>
-                    </div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-item-icon">💧</div>
-                    <div class="detail-item-content">
-                        <strong>Waterbehoefte</strong>
-                        <span>${seed.water ? seed.water.split(' (')[0] : 'n.v.t.'}</span>
-                    </div>
-                </div>
-                <div class="detail-item" style="grid-column: 1/-1;">
-                    <div class="detail-item-icon">🌱</div>
-                    <div class="detail-item-content">
-                        <strong>Wanneer zaaien?</strong>
-                        <span style="font-size: 13px; color: var(--text-muted); margin-bottom: 4px;">${formatMonthRanges(sowingMonthsSet) || 'Geen zaaitijd'}</span>
-                        ${sowingHTML}
-                    </div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-item-icon">🧺</div>
-                    <div class="detail-item-content">
-                        <strong>Wanneer oogsten?</strong>
-                        <span>${formatMonthRanges(getActiveMonths(seed.oogsttijd)) || 'n.v.t.'}</span>
-                    </div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-item-icon">📋</div>
-                    <div class="detail-item-content">
-                        <strong>Huidige Status</strong>
-                        <span>${seed.status}</span>
-                    </div>
-                </div>
-                ${seed.code ? `
-                <div class="detail-item">
-                    <div class="detail-item-icon">📍</div>
-                    <div class="detail-item-content">
-                        <strong>Code / Locatie</strong>
-                        <span>${seed.code}</span>
-                    </div>
-                </div>
-                ` : ''}
-                ${seed.purchaseYear ? `
-                <div class="detail-item">
-                    <div class="detail-item-icon">📅</div>
-                    <div class="detail-item-content">
-                        <strong>Gekocht</strong>
-                        <span>${seed.purchaseYear}</span>
-                    </div>
-                </div>
-                ` : ''}
-                ${seed.shopLink ? `
-                <div class="detail-item">
-                    <div class="detail-item-icon">🔗</div>
-                    <div class="detail-item-content">
-                        <strong>Webshop</strong>
-                        <a href="${seed.shopLink}" target="_blank" rel="noopener noreferrer" style="color: var(--primary-color); text-decoration: none; font-weight: 600;">Bekijk product</a>
-                    </div>
-                </div>
-                ` : ''}
-            </div>
-            ${seed.ervaringScore > 0 ? `
-                <div class="rating-section" style="padding: 0 20px 10px 20px; margin-top: -10px;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 13px; font-weight: 600; color: var(--text-muted);">Mijn ervaring:</span>
-                        ${renderStars(seed.ervaringScore)}
-                    </div>
-                </div>
-            ` : ''}
-            ${(() => {
-                if (seed.tags && seed.tags.length > 0) {
-                    const chips = seed.tags.map(t => `<span class="tag-chip">${t}</span>`).join('');
-                    return `
-                        <div class="tags-section" style="padding: 0 20px 20px 20px; margin-top: 6px;">
-                            <h4 style="font-size: 14px; font-weight: 700; margin-bottom: 10px; color: var(--text-main); opacity: 0.8; display: flex; align-items: center; gap: 6px;"><span style="color: #2E7D32; font-size: 11px; opacity: 0.7;">●</span> Kenmerken</h4>
-                            <div class="tags-container" style="display: flex; flex-wrap: wrap; gap: 8px;">
-                                ${seed.tags.map(t => `<span class="tag-chip"><span class="tag-text">${t}</span></span>`).join('')}
-                            </div>
-                        </div>
-                    `;
-                }
-                return '';
-            })()}
-
-            <div style="padding: 0 20px 20px 20px;">
-                <div class="detail-item" style="flex-direction: column; align-items: stretch; margin-bottom: 20px;">
-                    <h4 style="margin: 0 0 10px 0; font-size: 14px;">📋 Informatie</h4>
-                    <p style="white-space:pre-wrap; margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-main);">${seed.beschrijving || 'Geen info'}</p>
-                </div>
-                
-                <div class="detail-item" style="flex-direction: column; align-items: stretch;">
-                    <h4 style="margin: 0 0 10px 0; font-size: 14px;">📖 Beschrijving</h4>
-                    <p style="white-space:pre-wrap; margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-main);">${seed.ervaringen || 'Geen notities'}</p>
-                </div>
-            </div>
-            ${renderRecipeSuggestions(seed)}
-            ${carouselHTML}
-        `;
-
-    function getRecipeSearchUrl(plantName, recipeTitle) {
-        const query = `${plantName} ${recipeTitle} recept`;
-        return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-    }
-
-    function shuffleArray(arr) {
-        return [...arr].sort(() => 0.5 - Math.random());
-    }
-
-    function renderRecipeSuggestions(seed) {
-        // Alleen tonen voor eetbare planten (check tags of type)
-        const isEdible = (seed.tags || []).some(t => t.toLowerCase().includes('eetbaar')) || 
-                         ['Groente', 'Fruit', 'Kruid'].includes(seed.type);
-        
-        if (!isEdible) return '';
-        
-        const recipesData = {
-            'tomaat': ['Pasta saus', 'Bruschetta', 'Tomatensoep', 'Gepofte tomaatjes', 'Caprese salade', 'Tomaten salsa'],
-            'courgette': ['Pannenkoekjes', 'Gevulde courgette', 'Courgette soep', 'Gegrilde plakjes', 'Ratatouille', 'Courgette taart'],
-            'radijs': ['Salade', 'Toast met roomkaas', 'Ingelegde radijsjes', 'Gebakken radijs', 'Dip met kwark'],
-            'spinazie': ['Pasta pesto', 'Spinazie a la creme', 'Gado Gado', 'Frisse spinazie salade', 'Quiche met spinazie'],
-            'sla': ['Groene salade', 'Stamppot sla', 'Wraps', 'Sla soep', 'Salade niçoise'],
-            'paprika': ['Gevulde paprika', 'Ratatouille', 'Huisgemaakte sambal', 'Geroosterde paprika dip', 'Paprika soep'],
-            'peper': ['Chilisaus', 'Peperolie', 'Salsa', 'Sambal', 'Gedroogde vlokken'],
-            'komkommer': ['Komkommersalade', 'Tzatziki', 'Pickles', 'Komkommer soep', 'Frisse smoothie'],
-            'aardbei': ['Jam', 'Smoothie', 'Salade', 'Aardbeien kwark', 'Zomerse bowl'],
-            'basilicum': ['Pesto', 'Caprese', 'Kruidenolie', 'Basilicum siroop', 'Infused water'],
-            'munt': ['Muntthee', 'Mocktail', 'Tabbouleh', 'Munt dipsaus', 'Verse salade'],
-            'wortel': ['Worteltaart', 'Ovenwortels', 'Hutspot', 'Wortelsalade', 'Wortelsoep'],
-            'biet': ['Salade met geitenkaas', 'Borsjt', 'Geroosterde bieden', 'Bietenhulmus', 'Carpaccio van biet'],
-            'broccoli': ['Broccoli ovenschotel', 'Broccolisoep', 'Wokgerecht', 'Broccoli salade', 'Pasta broccoli'],
-            'boerenkool': ['Stamppot', 'Chips', 'Smoothie', 'Salade met appel', 'Boerenkool pesto'],
-            'pompoen': ['Pompoensoep', 'Geroosterde pompoen', 'Pompoentaart', 'Gevulde pompoen', 'Risotto met pompoen']
+        const text = value => value === null || value === undefined ? '' : String(value);
+        const make = (tag, className, value) => {
+            const element = document.createElement(tag);
+            if (className) element.className = className;
+            if (value !== undefined) setSafeText(element, value);
+            return element;
+        };
+        const appendDetailItem = (grid, icon, label, value, options = {}) => {
+            const item = make('div', 'detail-item');
+            if (options.fullWidth) item.style.gridColumn = '1/-1';
+            const iconElement = make('div', 'detail-item-icon');
+            iconElement.appendChild(createPlantDetailIcon(icon));
+            const content = make('div', 'detail-item-content');
+            content.appendChild(make('strong', '', label));
+            const valueElement = make('span', '', value);
+            if (options.valueStyle) valueElement.style.cssText = options.valueStyle;
+            content.appendChild(valueElement);
+            item.append(iconElement, content);
+            grid.appendChild(item);
+            return { item, content, valueElement };
         };
 
-        const plantName = seed.naam || 'deze plant';
-        const nameLower = plantName.toLowerCase();
-        let rawRecipes = [];
-        
-        for (let key in recipesData) {
-            if (nameLower.includes(key)) {
-                rawRecipes = recipesData[key];
-                break;
+        detailBody.replaceChildren();
+        const summaryColumn = make('div', 'detail-summary-column');
+        const informationColumn = make('div', 'detail-information-column');
+        const heading = (label, icon) => {
+            const element = make('h4', 'detail-section-heading');
+            element.append(createPlantDetailIcon(icon), document.createTextNode(label));
+            return element;
+        };
+
+        const header = make('div', 'detail-photo');
+        const featuredImg = seed.featuredImageUrl || seed.image || (seed.images && seed.images[0]?.url);
+        const safeFeaturedImg = safeWishlistImageUrl(featuredImg);
+        if (safeFeaturedImg) {
+            const image = make('img', 'detail-hero-img');
+            image.setAttribute('src', safeFeaturedImg);
+            image.setAttribute('alt', text(seed.naam));
+            image.addEventListener('error', () => {
+                header.classList.add('detail-without-photo');
+                const placeholder = make('div', 'detail-photo-placeholder');
+                placeholder.append(createPlantDetailIcon('sprout'), make('span', '', 'Geen foto beschikbaar'));
+                header.replaceChildren(placeholder);
+            }, { once: true });
+            header.appendChild(image);
+        } else {
+            header.classList.add('detail-without-photo');
+            const placeholder = make('div', 'detail-photo-placeholder');
+            placeholder.append(createPlantDetailIcon('sprout'), make('span', '', 'Geen foto toegevoegd'));
+            header.appendChild(placeholder);
+        }
+
+        const titleOverlay = make('div', 'detail-heading');
+        const title = make('h1', '', text(seed.naam) || 'Naam niet ingevuld');
+        titleOverlay.appendChild(title);
+        summaryColumn.appendChild(titleOverlay);
+
+        const badgeOverlay = make('div', 'detail-heading-badges');
+        const badgeLeft = make('div');
+        badgeLeft.style.cssText = 'display: flex; gap: 8px;';
+        const tags = Array.isArray(seed.tags) ? seed.tags.filter(tag => typeof tag === 'string') : [];
+        if (tags.some(tag => tag.toLowerCase().includes('lastige kiemer'))) {
+            const difficult = make('span', 'category-badge difficult-germinator');
+            difficult.append(createPlantDetailIcon('sprout'), document.createTextNode('Lastige kiemer'));
+            badgeLeft.appendChild(difficult);
+        }
+        const statusBadge = make('span', 'category-badge', seed.status ? getStatusLabel(seed.status) : 'Status niet ingevuld');
+        const badgeRight = make('div');
+        badgeRight.appendChild(statusBadge);
+        badgeOverlay.append(badgeLeft, badgeRight);
+        titleOverlay.appendChild(badgeOverlay);
+        summaryColumn.appendChild(header);
+
+        const actionRow = make('div', 'detail-action-row');
+        actionRow.setAttribute('role', 'group'); actionRow.setAttribute('aria-label', 'Status en favoriet');
+        const addStatusButton = (icon, label, status, active, ariaLabel) => {
+            const button = make('button', `btn-action-chip ${active ? 'active' : ''}`);
+            button.append(createPlantDetailIcon(icon), make('span', '', label));
+            button.type = 'button';
+            button.setAttribute('aria-label', ariaLabel);
+            button.setAttribute('aria-pressed', String(active)); button.dataset.detailAction = status;
+            button.addEventListener('click', () => window._updateStatus(seed.id, status));
+            actionRow.appendChild(button);
+        };
+        addStatusButton('sprout', 'Gezaaid', 'Gezaaid', Boolean(seed.fase_gezaaid), 'Markeer als gezaaid');
+        addStatusButton('leaf', 'Groeit', 'Groeit', Boolean(seed.fase_groeit), 'Markeer als Groeit');
+        addStatusButton('basket', 'Geoogst', 'Geoogst', Boolean(seed.fase_geoogst), 'Markeer als geoogst');
+        const favorite = make('button', `btn-action-chip fav-chip ${seed.isFavorite ? 'active' : ''}`);
+        favorite.type = 'button';
+        favorite.setAttribute('aria-label', 'Wissel favoriet');
+        favorite.setAttribute('aria-pressed', String(Boolean(seed.isFavorite))); favorite.dataset.detailAction = 'favorite';
+        favorite.append(createPlantDetailIcon('star', Boolean(seed.isFavorite)), make('span', '', 'Favoriet'));
+        favorite.addEventListener('click', () => window._toggleFavContent(seed.id));
+        actionRow.appendChild(favorite);
+        summaryColumn.appendChild(actionRow);
+
+        const detailGrid = make('div', 'detail-grid');
+        appendDetailItem(detailGrid, 'sun', 'Standplaats', text(seed.standplaats) || 'Niet ingevuld');
+        appendDetailItem(detailGrid, 'water', 'Waterbehoefte', seed.water ? text(seed.water).split(' (')[0] : 'Niet ingevuld');
+
+        const sowing = appendDetailItem(detailGrid, 'sprout', 'Wanneer zaaien?', formatMonthRanges(sowingMonthsSet) || 'Niet ingevuld', {
+            fullWidth: true,
+            valueStyle: 'font-size: 13px; color: var(--text-muted); margin-bottom: 4px;'
+        });
+        if (sowingMonthsSet.size > 0) {
+            const monthBar = make('div', 'month-bar');
+            monthNamesShort.forEach((month, index) => {
+                const bubble = make('div', `month-bubble ${sowingMonthsSet.has(index) ? 'active' : ''}`, month);
+                bubble.setAttribute('aria-label', `${month}: ${sowingMonthsSet.has(index) ? 'zaaimaand' : 'buiten de opgeslagen zaaitijd'}`);
+                monthBar.appendChild(bubble);
+            });
+            sowing.content.appendChild(monthBar);
+        }
+
+        appendDetailItem(detailGrid, 'basket', 'Wanneer oogsten?', formatMonthRanges(getActiveMonths(seed.oogsttijd)) || 'Niet ingevuld');
+        appendDetailItem(detailGrid, 'status', 'Huidige status', text(seed.status) || 'Niet ingevuld');
+        if (seed.code) appendDetailItem(detailGrid, 'location', 'Code / Locatie', text(seed.code));
+        if (seed.purchaseYear) appendDetailItem(detailGrid, 'calendar', 'Gekocht', text(seed.purchaseYear));
+        if (seed.shopLink) {
+            const safeShopLink = safeHttpUrl(seed.shopLink);
+            if (safeShopLink) {
+                const shop = make('div', 'detail-item');
+                const icon = make('div', 'detail-item-icon'); icon.appendChild(createPlantDetailIcon('link')); shop.appendChild(icon);
+                const content = make('div', 'detail-item-content');
+                content.appendChild(make('strong', '', 'Webshop'));
+                const link = make('a', '', 'Bekijk product');
+                link.setAttribute('href', safeShopLink);
+                link.setAttribute('target', '_blank');
+                link.setAttribute('rel', 'noopener noreferrer');
+                link.style.cssText = 'color: var(--primary-color); text-decoration: none; font-weight: 600;';
+                content.appendChild(link);
+                shop.appendChild(content);
+                detailGrid.appendChild(shop);
             }
         }
+        informationColumn.appendChild(detailGrid);
 
-        // Fallback: Als geen specifieke recepten gevonden zijn
-        if (rawRecipes.length === 0) {
-            rawRecipes = ['Simpele bereiding', 'Salade', 'Oven gerecht', 'Snelle snack', 'Roerbak gerecht', 'Gezonde lunch'];
-        }
-
-        // Shuffle en pak max 3
-        const recipes = shuffleArray(rawRecipes).slice(0, 3);
-
-        const title = seed.naam ? `Met je ${seed.naam} maken` : 'Recept ideeën';
-
-        return `
-            <div class="recipe-section" style="padding: 0 20px 20px 20px; margin-top: 16px;">
-                <div style="margin-bottom: 16px;">
-                    <h4 style="font-size: 15px; font-weight: 700; color: var(--text-main); margin-bottom: 4px;">${title}</h4>
-                    <p style="font-size: 12px; color: var(--text-muted); margin: 0;">Gebruik je oogst direct in de keuken.</p>
-                </div>
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                    ${recipes.map((r, idx) => {
-                        const searchUrl = getRecipeSearchUrl(plantName, r);
-                        const isFirst = idx === 0;
-                        return `
-                        <a href="${searchUrl}" target="_blank" rel="noopener noreferrer" class="recipe-card-v2 ${isFirst ? 'prominent' : ''}">
-                            <span>${r}</span>
-                            <span class="recipe-icon">↗</span>
-                        </a>
-                        `;
-                    }).join('')}
-                </div>
-            </div>
-        `;
-    }
-
-
-        // Fix duplicate rendering: ONLY append image if not already present
-        const bannerContainer = detailBody.querySelector('.header-image');
-        if (bannerContainer && seed.featuredImageUrl) {
-            if (!bannerContainer.querySelector('img')) {
-                const img = document.createElement('img');
-                img.src = seed.featuredImageUrl;
-                img.alt = seed.naam;
-                // Prepend so it sits behind the overlay/content
-                bannerContainer.prepend(img);
+        if (Number(seed.ervaringScore) > 0) {
+            const rating = make('div', 'rating-section');
+            const ratingLine = make('div');
+            ratingLine.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+            const ratingLabel = make('span', '', 'Mijn ervaring:');
+            ratingLabel.style.cssText = 'font-size: 13px; font-weight: 600; color: var(--text-muted);';
+            const stars = make('div', 'star-rating');
+            const score = Math.max(0, Math.min(5, Number.parseInt(seed.ervaringScore, 10) || 0));
+            stars.setAttribute('role', 'img'); stars.setAttribute('aria-label', `Ervaringsscore: ${score} van 5`);
+            for (let index = 1; index <= 5; index += 1) {
+                const star = make('span', `star-item ${index <= score ? 'active' : ''}`);
+                star.appendChild(createPlantDetailIcon('star', index <= score)); stars.appendChild(star);
             }
+            ratingLine.append(ratingLabel, stars);
+            rating.appendChild(ratingLine);
+            summaryColumn.appendChild(rating);
         }
 
-        detailBody.style.paddingBottom = '40px';
+        if (tags.length > 0) {
+            const tagsSection = make('div', 'tags-section');
+            const tagsHeading = heading('Kenmerken', 'tags');
+            tagsSection.appendChild(tagsHeading);
+            const tagsContainer = make('div', 'tags-container');
+            tagsContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px;';
+            tags.forEach(tag => {
+                const chip = make('span', 'tag-chip');
+                chip.appendChild(make('span', 'tag-text', tag));
+                tagsContainer.appendChild(chip);
+            });
+            tagsSection.appendChild(tagsContainer);
+            summaryColumn.appendChild(tagsSection);
+        }
+
+        const copySection = make('div', 'detail-copy-section');
+        const infoItem = make('div', 'detail-item');
+        infoItem.appendChild(heading('Informatie', 'info'));
+        const infoText = make('p', '', seed.beschrijving || 'Geen informatie toegevoegd.');
+        infoText.style.cssText = 'white-space:pre-wrap; margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-main);';
+        infoItem.appendChild(infoText);
+        const experienceItem = make('div', 'detail-item');
+        experienceItem.appendChild(heading('Eigen notities', 'book'));
+        const experienceText = make('p', '', seed.ervaringen || 'Geen notities toegevoegd.');
+        experienceText.style.cssText = 'white-space:pre-wrap; margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-main);';
+        experienceItem.appendChild(experienceText);
+        copySection.append(infoItem, experienceItem);
+        informationColumn.appendChild(copySection);
+
+        const getRecipeSearchUrl = (plant, recipe) => `https://www.google.com/search?q=${encodeURIComponent(`${plant} ${recipe} recept`)}`;
+        const shuffleArray = values => [...values].sort(() => 0.5 - Math.random());
+        const recipesData = {
+            tomaat: ['Pasta saus', 'Bruschetta', 'Tomatensoep', 'Gepofte tomaatjes', 'Caprese salade', 'Tomaten salsa'],
+            courgette: ['Pannenkoekjes', 'Gevulde courgette', 'Courgette soep', 'Gegrilde plakjes', 'Ratatouille', 'Courgette taart'],
+            radijs: ['Salade', 'Toast met roomkaas', 'Ingelegde radijsjes', 'Gebakken radijs', 'Dip met kwark'],
+            spinazie: ['Pasta pesto', 'Spinazie a la creme', 'Gado Gado', 'Frisse spinazie salade', 'Quiche met spinazie'],
+            sla: ['Groene salade', 'Stamppot sla', 'Wraps', 'Sla soep', 'Salade niçoise'],
+            paprika: ['Gevulde paprika', 'Ratatouille', 'Huisgemaakte sambal', 'Geroosterde paprika dip', 'Paprika soep'],
+            peper: ['Chilisaus', 'Peperolie', 'Salsa', 'Sambal', 'Gedroogde vlokken'],
+            komkommer: ['Komkommersalade', 'Tzatziki', 'Pickles', 'Komkommer soep', 'Frisse smoothie'],
+            aardbei: ['Jam', 'Smoothie', 'Salade', 'Aardbeien kwark', 'Zomerse bowl'],
+            basilicum: ['Pesto', 'Caprese', 'Kruidenolie', 'Basilicum siroop', 'Infused water'],
+            munt: ['Muntthee', 'Mocktail', 'Tabbouleh', 'Munt dipsaus', 'Verse salade'],
+            wortel: ['Worteltaart', 'Ovenwortels', 'Hutspot', 'Wortelsalade', 'Wortelsoep'],
+            biet: ['Salade met geitenkaas', 'Borsjt', 'Geroosterde bieden', 'Bietenhulmus', 'Carpaccio van biet'],
+            broccoli: ['Broccoli ovenschotel', 'Broccolisoep', 'Wokgerecht', 'Broccoli salade', 'Pasta broccoli'],
+            boerenkool: ['Stamppot', 'Chips', 'Smoothie', 'Salade met appel', 'Boerenkool pesto'],
+            pompoen: ['Pompoensoep', 'Geroosterde pompoen', 'Pompoentaart', 'Gevulde pompoen', 'Risotto met pompoen']
+        };
+        const rawPlantName = text(seed.naam);
+        const plantName = rawPlantName || 'deze plant';
+        const edible = tags.some(tag => tag.toLowerCase().includes('eetbaar')) || ['Groente', 'Fruit', 'Kruid'].includes(seed.type);
+        if (edible) {
+            const lowerName = plantName.toLowerCase();
+            let recipes = [];
+            for (const [key, values] of Object.entries(recipesData)) {
+                if (lowerName.includes(key)) { recipes = values; break; }
+            }
+            if (recipes.length === 0) recipes = ['Simpele bereiding', 'Salade', 'Oven gerecht', 'Snelle snack', 'Roerbak gerecht', 'Gezonde lunch'];
+            const recipeSection = make('div', 'recipe-section');
+            const recipeHeader = make('div');
+            recipeHeader.style.cssText = 'margin-bottom: 16px;';
+            const recipeTitle = heading(rawPlantName ? `Met je ${plantName} maken` : 'Recept ideeën', 'recipe');
+            recipeTitle.style.cssText = 'font-size: 15px; font-weight: 700; color: var(--text-main); margin-bottom: 4px;';
+            const recipeIntro = make('p', '', 'Gebruik je oogst direct in de keuken.');
+            recipeIntro.style.cssText = 'font-size: 12px; color: var(--text-muted); margin: 0;';
+            recipeHeader.append(recipeTitle, recipeIntro);
+            const recipeList = make('div');
+            recipeList.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+            shuffleArray(recipes).slice(0, 3).forEach((recipe, index) => {
+                const recipeLink = make('a', `recipe-card-v2 ${index === 0 ? 'prominent' : ''}`);
+                const safeRecipeUrl = safeHttpUrl(getRecipeSearchUrl(plantName, recipe));
+                if (!safeRecipeUrl) return;
+                recipeLink.setAttribute('href', safeRecipeUrl);
+                recipeLink.setAttribute('target', '_blank');
+                recipeLink.setAttribute('rel', 'noopener noreferrer');
+                recipeLink.append(make('span', '', recipe), createPlantDetailIcon('external'));
+                recipeList.appendChild(recipeLink);
+            });
+            recipeSection.append(recipeHeader, recipeList);
+            informationColumn.appendChild(recipeSection);
+        }
+
+        const allImages = Array.isArray(seed.images) ? [...seed.images] : [];
+        if (seed.image && !allImages.some(image => image && image.url === seed.image)) {
+            allImages.unshift({ url: seed.image, id: 'starter', caption: 'Starter Foto' });
+        }
+        const safeImages = allImages
+            .map(image => ({ ...image, url: safeWishlistImageUrl(image?.url) }))
+            .filter(image => image.url);
+        window._currentDetailImages = safeImages;
+        if (safeImages.length > 0) {
+            const gallerySection = make('div', 'detail-carousel-section');
+            gallerySection.appendChild(heading('Fotogalerij', 'image'));
+            const carousel = make('div', 'detail-carousel');
+            safeImages.forEach((image, index) => {
+                const carouselItem = make('button', 'detail-carousel-item');
+                carouselItem.type = 'button'; carouselItem.setAttribute('aria-label', `Open foto ${index + 1} van ${text(seed.naam)}`);
+                const imageElement = make('img');
+                imageElement.setAttribute('src', image.url);
+                imageElement.setAttribute('alt', `Foto ${index + 1}`);
+                imageElement.setAttribute('loading', 'lazy');
+                carouselItem.appendChild(imageElement);
+                carouselItem.addEventListener('click', () => openLightbox(window._currentDetailImages, index));
+                carousel.appendChild(carouselItem);
+            });
+            gallerySection.appendChild(carousel);
+            summaryColumn.appendChild(gallerySection);
+        }
+
+        detailBody.append(summaryColumn, informationColumn);
         switchView('detail');
+        if (focusedAction) detailBody.querySelector(`[data-detail-action="${focusedAction}"]`)?.focus({ preventScroll: true });
     }
     window.openDetailView = openDetailView;
 
@@ -2076,9 +3505,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             incrementDailyProgress();
         }
     };
-    window._toggleFavContent = async (id) => {
+    window._toggleFavContent = async (id, options = {}) => {
         const seed = seeds.find(s => String(s.id) === String(id));
-        if (seed) toggleQuickFavorite(seed);
+        if (seed) toggleQuickFavorite(seed, options);
     };
 
     function openEditView(seed) {
@@ -2124,7 +3553,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         renderTagPicker(seed.tags || []);
-        
+
         // Ensure all historical image sources are captured in the editable gallery
         pendingImages = seed.images ? [...seed.images] : [];
         if (seed.image && !pendingImages.some(img => img.url === seed.image)) {
@@ -2183,7 +3612,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (seed.fase_gezaaid) {
             seed.lastSownYear = seed.lastSownYear || new Date().getFullYear();
         }
-        
+
         await saveSeed(seed);
         showToast(`Status bijgewerkt naar: ${getStatusLabel(newMainStatus)} ✨`);
         openDetailView(seed);
@@ -2192,27 +3621,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!viewList.classList.contains('hidden')) applyFilters();
     }
 
-    async function toggleQuickFavorite(seed) {
+    async function toggleQuickFavorite(seed, options = {}) {
         seed.isFavorite = !seed.isFavorite;
         await saveSeed(seed);
         showToast(seed.isFavorite ? 'Favoriet! ⭐' : 'Verwijderd');
-        openDetailView(seed);
+        if (options.openDetail !== false) openDetailView(seed);
         seeds = await getAllSeeds();
         if (!viewList.classList.contains('hidden')) applyFilters();
         if (!viewHome.classList.contains('hidden')) renderHome();
     }
 
     // View Switching
-    function switchView(name) {
+    function switchView(name, options = {}) {
         window.scrollTo({ top: 0, behavior: 'instant' });
         [viewHome, viewList, viewSowingGrid, viewAdd, viewDetail, viewWishlist, viewCalendar, viewOnboarding].forEach(v => v?.classList.add('hidden'));
         // Sync Mobile Nav (Desktop & Mobile)
         document.querySelectorAll('.nav-buttons button').forEach(b => b?.classList.remove('active'));
         document.querySelectorAll('.mobile-nav-item').forEach(b => b.classList.remove('active'));
-        
+        document.querySelectorAll('.shell-nav-item').forEach(b => {
+            const active = b.dataset.shellView === name;
+            b.classList.toggle('active', active);
+            if (active) b.setAttribute('aria-current', 'page');
+            else b.removeAttribute('aria-current');
+        });
+
         const activeDesktopBtn = document.querySelector(`.nav-buttons button[onclick*="${name}"]`);
         if (activeDesktopBtn) activeDesktopBtn.classList.add('active');
-        
+
         const activeMobileBtn = document.querySelector(`.mobile-nav-item[data-view="${name}"]`);
         if (activeMobileBtn) activeMobileBtn.classList.add('active');
 
@@ -2233,11 +3668,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         else if (name === 'detail') { viewDetail?.classList.remove('hidden'); }
         else if (name === 'sowing-grid') { viewSowingGrid?.classList.remove('hidden'); btnSowingGrid?.classList.add('active'); renderSowingGrid(); }
         else if (name === 'wishlist') { viewWishlist?.classList.remove('hidden'); btnWishlist?.classList.add('active'); renderWishlist(); }
-        else if (name === 'calendar') { viewCalendar?.classList.remove('hidden'); btnCalendar?.classList.add('active'); renderCalendar(); }
+        else if (name === 'calendar') { calendarTaskWeek = Boolean(options.taskWeek); viewCalendar?.classList.remove('hidden'); btnCalendar?.classList.add('active'); renderCalendar(); }
     }
 
     if (btnHome) btnHome.onclick = () => switchView('home');
     if (btnList) btnList.onclick = () => {
+        activePlantStatus = null;
         localStorage.removeItem('activeMonthFilter');
         activeMonthFilter = null;
         activeCategory = 'Alles'; // RESET CATEGORY TOO
@@ -2246,17 +3682,72 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     if (btnSowingGrid) btnSowingGrid.onclick = () => switchView('sowing-grid');
 
+    // Shared sidebar and mobile drawer navigation. The existing view switcher
+    // remains the single source of truth for all production screens.
+    const shellSidebar = document.getElementById('app-sidebar');
+    const shellMobileMenu = document.getElementById('shell-mobile-menu');
+    const shellMobileScrim = document.getElementById('shell-mobile-scrim');
+    let shellMenuReturnFocus = null;
+
+    const closeShellMenu = () => {
+        document.body.classList.remove('shell-menu-open');
+        if (shellMobileMenu) shellMobileMenu.setAttribute('aria-expanded', 'false');
+        if (shellMobileScrim) shellMobileScrim.hidden = true;
+        shellSidebar?.classList.remove('mobile-open');
+        shellMenuReturnFocus?.focus?.();
+    };
+
+    const openShellMenu = () => {
+        shellMenuReturnFocus = document.activeElement;
+        document.body.classList.add('shell-menu-open');
+        if (shellMobileMenu) shellMobileMenu.setAttribute('aria-expanded', 'true');
+        if (shellMobileScrim) shellMobileScrim.hidden = false;
+        shellSidebar?.classList.add('mobile-open');
+        shellSidebar?.querySelector('.shell-nav-item')?.focus();
+    };
+
+    shellMobileMenu?.addEventListener('click', () => {
+        if (document.body.classList.contains('shell-menu-open')) closeShellMenu();
+        else openShellMenu();
+    });
+    shellMobileScrim?.addEventListener('click', closeShellMenu);
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && document.body.classList.contains('shell-menu-open')) closeShellMenu();
+    });
+
+    document.querySelectorAll('.shell-nav-item, [data-shell-home]').forEach(button => {
+        button.addEventListener('click', () => {
+            const view = button.dataset.shellView;
+            if (!view) return;
+            if (view === 'list') {
+                activePlantStatus = null;
+                localStorage.removeItem('activeMonthFilter');
+                activeMonthFilter = null;
+                activeCategory = 'Alles';
+                if (searchInput) searchInput.value = '';
+            }
+            switchView(view);
+            if (document.body.classList.contains('shell-menu-open')) closeShellMenu();
+        });
+    });
+
+    document.getElementById('shell-settings-button')?.addEventListener('click', () => {
+        if (document.body.classList.contains('shell-menu-open')) closeShellMenu();
+        toggleSettingsPanel_REPAIR_V131();
+    });
+
     // MOBILE NAV LISTENERS (Safe & Robust)
     document.querySelectorAll('.mobile-nav-item').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
             const view = this.dataset.view;
             if (!view) return;
-            
+
             if (view === 'list') {
+                activePlantStatus = null;
                 localStorage.removeItem('activeMonthFilter');
                 activeMonthFilter = null;
-                activeCategory = 'Alles'; 
+                activeCategory = 'Alles';
                 if (searchInput) searchInput.value = '';
             }
             switchView(view);
@@ -2265,17 +3756,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // New simplified Add trigger from Zaden page
     const btnAddZadenTop = document.getElementById('btn-add-zaden-top');
-    const openAddForm = () => {
-        editingId = null;
-        seedForm?.reset();
-        pendingImages = [];
-        photoSearchResults = [];
-        displayedPhotoCount = 15;
-        if (inputNaam) delete inputNaam.dataset.featuredUrl;
-        if (inputType) delete inputType.dataset.userChanged;
-        if (inputStandplaats) delete inputStandplaats.dataset.userChanged;
-        if (inputWater) delete inputWater.dataset.userChanged;
-        
+    const btnAddPlantHome = document.getElementById('btn-add-plant-home');
+    if (btnAddPlantHome) btnAddPlantHome.addEventListener('click', () => openAddForm());
+    // Initialize notes scanning independently of opening the seed form.
         // --- NOTE PARSER LOGIC ---
         const btnScanNotes = document.getElementById('btn-scan-notes');
         const parserModal = document.getElementById('note-parser-modal');
@@ -2334,12 +3817,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     if (foundPlants.length > 0) {
                         parserSection.classList.remove('hidden');
-                        parserList.innerHTML = foundPlants.map(p => `
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--bg-color); border-radius: 12px; border: 1px solid var(--border-color);">
-                                <span style="font-weight: 600; color: var(--text-main);">${p.name}</span>
-                                <button class="btn-primary-sm" onclick="window._addParsedSeed('${p.name.replace(/'/g, "\\'")}')" style="padding: 6px 12px; font-size: 11px;">Toevoegen</button>
-                            </div>
-                        `).join('');
+                        parserList.replaceChildren();
+                        foundPlants.forEach(plant => {
+                            const name = typeof plant?.name === 'string' ? plant.name : String(plant?.name || '');
+                            if (!name) return;
+                            const row = document.createElement('div');
+                            row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--bg-color); border-radius: 12px; border: 1px solid var(--border-color);';
+                            const label = document.createElement('span');
+                            label.style.cssText = 'font-weight: 600; color: var(--text-main);';
+                            label.textContent = name;
+                            const button = document.createElement('button');
+                            button.type = 'button';
+                            button.className = 'btn-primary-sm';
+                            button.style.cssText = 'padding: 6px 12px; font-size: 11px;';
+                            button.textContent = 'Toevoegen';
+                            button.addEventListener('click', () => window._addParsedSeed(name));
+                            row.append(label, button);
+                            parserList.appendChild(row);
+                        });
                     } else {
                         showToast("Geen planten herkend. Probeer duidelijker namen.");
                     }
@@ -2355,9 +3850,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             openAddForm();
             inputNaam.value = name;
             // Trigger auto-fill automatically to make it feel magic
-            triggerAutoFill(false); 
+            triggerAutoFill(false);
             showToast(`Seed herkend: ${name} ✨`);
         };
+
+
+    const openAddForm = () => {
+        editingId = null;
+        seedForm?.reset();
+        pendingImages = [];
+        photoSearchResults = [];
+        displayedPhotoCount = 15;
+        if (inputNaam) delete inputNaam.dataset.featuredUrl;
+        if (inputType) delete inputType.dataset.userChanged;
+        if (inputStandplaats) delete inputStandplaats.dataset.userChanged;
+        if (inputWater) delete inputWater.dataset.userChanged;
 
         // Reset manual change tracking
         [inputType, inputStandplaats, inputWater, inputBeschrijving].forEach(inp => {
@@ -2418,16 +3925,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderUnifiedGallery();
 
             btnQuickPhotoSearch.disabled = true;
-            btnQuickPhotoSearch.innerHTML = "⏳ Bezig met zoeken...";
+            btnQuickPhotoSearch.textContent = "⏳ Bezig met zoeken...";
 
             try {
                 const results = await searchPlantImage(query);
                 if (results && results.length > 0) {
-                    photoSearchResults = results.map(r => ({
+                    photoSearchResults = results.map(r => r && typeof r === 'object' ? ({
+                        ...r,
                         url: r.url,
                         source: 'web',
                         id: r.id || Math.random().toString(36).substr(2, 9)
-                    }));
+                    }) : null).filter(Boolean);
                 } else {
                     // No results is not a hard error, just show toast once
                     showToast(`Geen foto's gevonden voor "${query}".`);
@@ -2438,126 +3946,85 @@ document.addEventListener('DOMContentLoaded', async () => {
                 showToast("Foto-informatie niet bereikbaar.");
             } finally {
                 btnQuickPhotoSearch.disabled = false;
-                btnQuickPhotoSearch.innerHTML = "🔍 Zoek foto's op naam";
+                btnQuickPhotoSearch.textContent = "🔍 Zoek foto's op naam";
             }
         };
     }
 
     function renderUnifiedGallery() {
         if (!unifiedGallery) return;
-        unifiedGallery.innerHTML = '';
+        unifiedGallery.replaceChildren();
 
-        // Combine selected images and current search results into one view
-        // Priority: show results, but mark if they are in pendingImages
+        const validSearchResults = photoSearchResults.map(normalizeExternalImageResult).filter(Boolean);
+        const validPendingImages = pendingImages.map(normalizeExternalImageResult).filter(Boolean);
+        const loadMoreWrap = document.getElementById('photo-load-more');
+        if (loadMoreWrap) loadMoreWrap.classList.toggle('hidden', validSearchResults.length <= displayedPhotoCount);
 
-        const currentFeatured = inputNaam.dataset.featuredUrl;
-
-        // If everything is empty
-        if (pendingImages.length === 0 && photoSearchResults.length === 0) {
-            unifiedGallery.innerHTML = `
-                <div class="hub-empty">
-                   <span>📸 Nog geen foto's geselecteerd of gezocht.</span>
-                   <span style="font-size: 11px; font-weight: 400; opacity: 0.6;">Voer een naam in en klik op "Zoek foto's" om resultaten te zien.</span>
-                </div>`;
+        if (validPendingImages.length === 0 && validSearchResults.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'hub-empty';
+            const title = document.createElement('span');
+            title.textContent = '📸 Nog geen foto\'s geselecteerd of gezocht.';
+            const hint = document.createElement('span');
+            hint.style.cssText = 'font-size: 11px; font-weight: 400; opacity: 0.6;';
+            hint.textContent = 'Voer een naam in en klik op "Zoek foto\'s" om resultaten te zien.';
+            empty.append(title, hint);
+            unifiedGallery.appendChild(empty);
             return;
         }
 
-        // Show pending (selected/uploaded) images first if no active search results
-        // Actually, merged list is better.
-        // We show all search results + any pending images that are NOT in results
-        const displayedItems = [...photoSearchResults];
-        pendingImages.forEach(p => {
-            if (!displayedItems.some(d => d.url === p.url)) {
-                displayedItems.unshift(p);
-            }
+        const displayedItems = [...validSearchResults];
+        validPendingImages.forEach(item => {
+            if (!displayedItems.some(displayed => displayed.imageUrl === item.imageUrl)) displayedItems.unshift(item);
         });
 
-        displayedItems.forEach((item, idx) => {
-            // Apply limit only to web results that are NOT selected
-            const isSelected = pendingImages.some(p => p.url === item.url);
-
-            // If it's a web result, not selected, and beyond the limit: skip
-            // Note: we want to show all selected images anyway
-            if (!isSelected && photoSearchResults.some(s => s.url === item.url)) {
-                const searchIdx = photoSearchResults.findIndex(s => s.url === item.url);
-                if (searchIdx >= displayedPhotoCount) return;
+        displayedItems.forEach(item => {
+            const isSelected = validPendingImages.some(pending => pending.imageUrl === item.imageUrl);
+            if (!isSelected && validSearchResults.some(result => result.imageUrl === item.imageUrl)) {
+                const searchIndex = validSearchResults.findIndex(result => result.imageUrl === item.imageUrl);
+                if (searchIndex >= displayedPhotoCount) return;
             }
 
-            // Show Load More button if there are more results
-            const loadMoreWrap = document.getElementById('photo-load-more');
-            if (loadMoreWrap) {
-                if (photoSearchResults.length > displayedPhotoCount) {
-                    loadMoreWrap.classList.remove('hidden');
-                } else {
-                    loadMoreWrap.classList.add('hidden');
-                }
-            }
+            const currentFeatured = safeWishlistImageUrl(inputNaam.dataset.featuredUrl);
+            const isFeatured = currentFeatured === item.imageUrl || (!currentFeatured && validPendingImages[0]?.imageUrl === item.imageUrl && isSelected);
+            if (isFeatured && !inputNaam.dataset.featuredUrl && isSelected) inputNaam.dataset.featuredUrl = item.imageUrl;
 
-            const currentFeatured = inputNaam.dataset.featuredUrl;
-            const isFeatured = currentFeatured === item.url || (!currentFeatured && pendingImages[0]?.url === item.url && isSelected);
-
-            if (isFeatured && !inputNaam.dataset.featuredUrl && isSelected) {
-                inputNaam.dataset.featuredUrl = item.url;
-            }
-
-            const card = document.createElement('div');
-            card.className = `unified-gallery-card ${isSelected ? 'selected' : ''} ${isFeatured ? 'featured' : ''}`;
-            card.innerHTML = `
-                <img src="${item.url}" loading="lazy">
-                <div class="selected-check">✓</div>
-                <div class="featured-star" title="Stel in als hoofdfoto">★</div>
-                <div class="featured-label">Hoofdfoto</div>
-                <div class="card-overlay">
-                    <button type="button" class="card-feature-btn">★ Maak hoofdfoto</button>
-                    <button type="button" class="card-select-btn">${isSelected ? 'Verwijder' : 'Selecteer'}</button>
-                </div>
-            `;
-
-            card.onclick = (e) => {
-                // Feature star click
-                if (e.target.classList.contains('featured-star') || e.target.classList.contains('card-feature-btn')) {
-                    e.stopPropagation();
-                    if (!pendingImages.some(p => p.url === item.url)) {
-                        pendingImages.push(item);
-                    }
-                    inputNaam.dataset.featuredUrl = item.url;
+            const card = buildImageSearchCard(item, {
+                isSelected,
+                isFeatured,
+                onFeature: selectedItem => {
+                    if (!pendingImages.some(pending => safeWishlistImageUrl(pending.url) === selectedItem.imageUrl)) pendingImages.push(selectedItem);
+                    inputNaam.dataset.featuredUrl = selectedItem.imageUrl;
                     renderUnifiedGallery();
-                    return;
-                }
-
-                // Select area click
-                if (isSelected) {
-                    pendingImages = pendingImages.filter(p => p.url !== item.url);
-                    if (inputNaam.dataset.featuredUrl === item.url) {
-                        inputNaam.dataset.featuredUrl = pendingImages.length > 0 ? pendingImages[0].url : '';
+                },
+                onToggle: selectedItem => {
+                    if (isSelected) {
+                        pendingImages = pendingImages.filter(pending => safeWishlistImageUrl(pending.url) !== selectedItem.imageUrl);
+                        if (inputNaam.dataset.featuredUrl === selectedItem.imageUrl) inputNaam.dataset.featuredUrl = pendingImages[0]?.url || '';
+                    } else {
+                        pendingImages.push(selectedItem);
+                        if (!safeWishlistImageUrl(inputNaam.dataset.featuredUrl)) inputNaam.dataset.featuredUrl = selectedItem.imageUrl;
                     }
-                } else {
-                    pendingImages.push(item);
-                    if (!inputNaam.dataset.featuredUrl) {
-                        inputNaam.dataset.featuredUrl = item.url;
-                    }
+                    renderUnifiedGallery();
                 }
-                renderUnifiedGallery();
-            };
-            unifiedGallery.appendChild(card);
+            });
+            if (card) unifiedGallery.appendChild(card);
         });
 
-        // Add "More" button if needed
-        if (photoSearchResults.length > displayedPhotoCount) {
+        if (validSearchResults.length > displayedPhotoCount) {
             const moreContainer = document.createElement('div');
             moreContainer.style.gridColumn = '1 / -1';
             moreContainer.style.textAlign = 'center';
             moreContainer.style.marginTop = '10px';
-
             const btnMore = document.createElement('button');
             btnMore.type = 'button';
             btnMore.className = 'btn-helper-link';
             btnMore.style.fontSize = '12px';
-            btnMore.innerHTML = `⏷ Toon meer foto's (${photoSearchResults.length - displayedPhotoCount} meer)`;
-            btnMore.onclick = () => {
+            btnMore.textContent = '⏷ Toon meer foto\'s (' + (validSearchResults.length - displayedPhotoCount) + ' meer)';
+            btnMore.addEventListener('click', () => {
                 displayedPhotoCount += 15;
                 renderUnifiedGallery();
-            };
+            });
             moreContainer.appendChild(btnMore);
             unifiedGallery.appendChild(moreContainer);
         }
@@ -2573,16 +4040,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!query) return;
 
             btnPexelsCustom.disabled = true;
-            btnPexelsCustom.innerHTML = "⏳...";
+            btnPexelsCustom.textContent = "⏳...";
 
             try {
                 const results = await searchPlantImage(query);
                 if (results && results.length > 0) {
-                    const newItems = results.map(r => ({
+                    const newItems = results.map(r => r && typeof r === 'object' ? ({
+                        ...r,
                         url: r.url,
                         source: 'web',
                         id: r.id || Math.random().toString(36).substr(2, 9)
-                    }));
+                    }) : null).filter(Boolean);
                     // Add new unique items to the result set
                     newItems.forEach(item => {
                         if (!photoSearchResults.some(existing => existing.url === item.url)) {
@@ -2597,7 +4065,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.error(e);
             } finally {
                 btnPexelsCustom.disabled = false;
-                btnPexelsCustom.innerHTML = "🔍 Zoek";
+                btnPexelsCustom.textContent = "🔍 Zoek";
             }
         };
 
@@ -2638,7 +4106,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             files.forEach(file => {
                 const reader = new FileReader();
                 reader.onload = (re) => {
-                    const url = re.target.result; // base64
+                    const url = safeWishlistImageUrl(re.target.result);
+                    if (!url) return;
                     if (!pendingImages.some(p => p.url === url)) {
                         pendingImages.push({ url, source: 'upload' });
                         if (!inputNaam.dataset.featuredUrl) {
@@ -2698,21 +4167,82 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnCalendar) btnCalendar.onclick = () => switchView('calendar');
     if (btnDetailBack) btnDetailBack.onclick = () => switchView('list');
 
+    // Shared selections for dashboard counts and their filtered destinations.
+    const activeGardenStatuses = ['Gezaaid', 'Groeit', 'Geoogst'];
+    const getActiveGardenPlants = () => seeds.filter(seed => activeGardenStatuses.includes(seed.status));
+    function getDashboardSelection(today = new Date()) {
+        const reminderGroups = classifyDashboardReminders(reminders, today);
+        const currentMonth = today.getMonth();
+        const nextMonth = (currentMonth + 1) % 12;
+        const monthPrefix = reminderGroups.todayKey.slice(0, 7);
+        const sowing = seeds.filter(seed => seed.status === 'Voorraad' && !reminders.some(reminder =>
+            reminder.title.toLowerCase().includes(seed.naam.toLowerCase()) && reminder.date.startsWith(monthPrefix)
+        )).map(seed => {
+            const months = getActiveMonths(seed);
+            const category = months.has(currentMonth) ? 'now' : months.has(nextMonth) ? 'soon' : months.size ? 'missed' : '';
+            return { ...seed, category };
+        }).filter(seed => seed.category);
+        return { reminderGroups, sowing, now: sowing.filter(seed => seed.category === 'now'), soon: sowing.filter(seed => seed.category === 'soon') };
+    }
+
+    function focusInsightDestination(id) {
+        const destination = document.getElementById(id);
+        destination?.setAttribute('tabindex', '-1');
+        destination?.focus({ preventScroll: true });
+    }
+
+    function openGardenList(status) {
+        activePlantStatus = status; activeCategory = 'Alles'; activeMonthFilter = null;
+        localStorage.removeItem('activeMonthFilter'); searchInput.value = '';
+        filterChips.forEach(chip => chip.classList.toggle('active', chip.dataset.filter === 'Alles'));
+        switchView('list');
+    }
+
     // Home Logic - MIJN TUIN DASHBOARD
     function renderHome() {
+        window.KweekServices?.updateDashboardProvider?.();
+        const homeIconPaths = {
+            sprout: 'M12 20V10m0 3c-4.5 0-7-2.2-7-6 4.8 0 7 2 7 6Zm0 1c4.3 0 7-2.3 7-6-4.6 0-7 2.2-7 6Z',
+            calendar: 'M7 3v3m10-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13H4V6a1 1 0 0 1 1-1Zm2 8h3m2 0h3m-8 4h3',
+            check: 'm5 12 4 4L19 6',
+            star: 'm12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9Z',
+            leaf: 'M19.5 4.5C10 4 5 8 5 13.5A5.5 5.5 0 0 0 10.5 19C16 19 20 14 19.5 4.5ZM5 20c2.5-4 6-7.5 11-10',
+            bulb: 'M12 3.5a7 7 0 0 0-4.2 12.6c.9.7 1.2 1.5 1.2 2.4h6c0-.9.3-1.7 1.2-2.4A7 7 0 0 0 12 3.5ZM9.5 21h5m-4.5-4h4'
+        };
+        const makeHomeIcon = (name) => {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('aria-hidden', 'true');
+            svg.classList.add('home-inline-icon');
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', homeIconPaths[name] || homeIconPaths.sprout);
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', 'currentColor');
+            path.setAttribute('stroke-width', '1.6');
+            path.setAttribute('stroke-linecap', 'round');
+            path.setAttribute('stroke-linejoin', 'round');
+            svg.appendChild(path);
+            return svg;
+        };
+
         const homeTitle = document.getElementById('home-title');
         if (homeTitle) {
-            homeTitle.innerHTML = `
-                <span style="font-weight: 700;">Tuinjaar – </span>
-                <span id="header-year-select" style="cursor: pointer; font-weight: 700; transition: all 0.2s; padding: 0 4px; border-radius: 4px;" 
-                      onmouseover="this.style.background='var(--surface-alt)';" 
-                      onmouseout="this.style.background='transparent';"
-                      onclick="console.log('jaar selector openen')">
-                    ${new Date().getFullYear()}
-                </span>
-
-            `;
+            homeTitle.replaceChildren();
+            const titleText = document.createElement('span');
+            titleText.className = 'home-heading-name';
+            titleText.textContent = 'Mijn tuin';
+            homeTitle.append(titleText);
         }
+        const today = new Date();
+        const selection = getDashboardSelection(today);
+        const { reminderGroups } = selection;
+        const dateLabel = document.getElementById('home-current-date');
+        if (dateLabel) {
+            const dateText = today.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+            dateLabel.textContent = dateText.charAt(0).toUpperCase() + dateText.slice(1);
+        }
+        const yearLabel = document.getElementById('header-year-select');
+        if (yearLabel) yearLabel.textContent = String(today.getFullYear());
 
         // Rustige start: Verberg AI output bij render indien niet actief gezocht
         const aiOutput = document.getElementById('ai-assistant-output');
@@ -2721,37 +4251,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const monthsNames = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"];
-        const currentMonth = new Date().getMonth();
-        const nextMonth = (currentMonth + 1) % 12;
+        const currentMonth = today.getMonth();
 
         // 2. NU DOEN (Smart Action List)
-        // EXPLICIT: Only seeds in 'Voorraad' state can be 'Now' or 'Missed'. 
+        // EXPLICIT: Only seeds in 'Voorraad' state can be 'Now' or 'Missed'.
         // Once sown (Gezaaid), they move out of this list entirely.
-        const currentMonthPrefix = new Date().toISOString().substring(0, 7);
-        const nuDoenRaw = seeds.filter(s => {
-            if (s.status !== 'Voorraad') return false;
-            // IF scheduled this month -> Remove from Nu Doen (Requirement 16.3)
-            const isScheduled = (reminders || []).some(r => 
-                r.title.toLowerCase().includes(s.naam.toLowerCase()) && 
-                r.date.startsWith(currentMonthPrefix)
-            );
-            return !isScheduled;
-        });
+        const nuDoenRaw = selection.sowing;
         const nuDoenAnnotated = nuDoenRaw.map(s => {
-            const monthsArr = getActiveMonths(s); // Set of month indices
-            const months = Array.from(monthsArr).sort((a,b) => a - b);
-            
-            let urgency = 10; 
+            let urgency = 10;
             let label = "";
-            let category = "";
+            const category = s.category;
             let context = "";
 
             let suggestion = "";
             let suggestDate = null;
             let calendarStatus = "";
 
-            if (monthsArr.has(currentMonth)) {
-                category = "now";
+            if (category === 'now') {
                 label = "Nu zaaien";
                 urgency = 1;
                 context = ""; // We use suggestion instead for 'now'
@@ -2760,24 +4276,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Suggestion/Calendar logic
     const today = new Date();
     const hasReminder = (reminders || []).some(r => r.title.toLowerCase().includes(s.naam.toLowerCase()) && r.date.startsWith(today.toISOString().substring(0, 7)));
-    
+
     if (hasReminder) {
         calendarStatus = "Staat in je kalender";
     } else {
         suggestion = "Laatste kans — plan vandaag";
         suggestDate = today;
     }
-} else if (months.some(m => m < currentMonth)) {
-
-    category = "missed";
-    label = "Volgend jaar";
-    urgency = 20; 
-    context = "Voor volgend seizoen";
-} else if (monthsArr.has(nextMonth)) {
-    category = "soon";
+} else if (category === 'soon') {
     label = "Binnenkort";
     urgency = 5;
                 context = "Binnenkort ideaal moment";
+            } else if (category === 'missed') {
+                label = 'Later / volgend seizoen';
+                urgency = 20;
+                context = 'Voor een volgend zaaimoment';
             }
 
             return { ...s, urgency, label, category, context, suggestion, suggestDate, calendarStatus };
@@ -2785,88 +4298,178 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const nuDoenContainer = document.getElementById('dashboard-nu-doen');
         if (nuDoenContainer) {
-            nuDoenContainer.innerHTML = '';
-            
-            if (nuDoenAnnotated.length === 0) {
-                nuDoenContainer.innerHTML = `
-                    <div class="empty-state" style="padding: 24px 0; text-align: center;">
-                        <span style="font-size: 32px; display: block; margin-bottom: 8px;">👍</span>
-                        <p style="color: var(--text-muted); font-weight: 600;">Alles op schema</p>
-                    </div>`;
-            } else {
+            nuDoenContainer.replaceChildren();
+            const { current: currentReminders, future: futureReminders, overdue } = reminderGroups;
+            const appendReminders = (items, container) => items.sort((a, b) => a.date.localeCompare(b.date)).forEach(reminder => {
+                const row = document.createElement('div');
+                row.className = 'mini-card home-reminder-task';
+                const copy = document.createElement('div');
+                copy.className = 'mini-card-content';
+                const name = document.createElement('strong');
+                name.textContent = reminder.title;
+                const date = document.createElement('span');
+                date.className = 'mini-card-context';
+                date.textContent = `Gepland: ${new Date(`${reminder.date}T00:00:00`).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+                copy.append(name, date);
+                const done = document.createElement('button');
+                done.type = 'button'; done.className = 'btn-mini-action';
+                done.setAttribute('aria-label', `Voltooi ${reminder.title}`);
+                done.append(makeHomeIcon('check'));
+                done.addEventListener('click', () => { reminder.done = true; saveReminders(); incrementDailyProgress(); renderHome(); });
+                row.append(copy, done); container.append(row);
+            });
+            appendReminders(currentReminders, nuDoenContainer);
+            let overdueSection = null;
+            if (overdue.length) {
+                const section = document.createElement('section');
+                section.className = 'home-overdue-tasks';
+                section.setAttribute('aria-label', 'Achterstallige taken');
+                const heading = document.createElement('h4');
+                heading.textContent = `Achterstallig (${overdue.length})`;
+                section.append(heading);
+                appendReminders(overdue, section);
+                overdueSection = section;
+            }
+            if (!nuDoenAnnotated.some(s => s.category === 'now') && !currentReminders.length) {
+                const empty = document.createElement('div');
+                empty.className = 'empty-state home-task-empty';
+                const icon = makeHomeIcon('sprout');
+                const message = document.createElement('p');
+                message.textContent = 'Je bent bij voor deze week.';
+                const detail = document.createElement('p');
+                detail.className = 'home-task-empty-detail';
+                detail.textContent = 'Bekijk je planning of bereid het volgende seizoen voor.';
+                const calendar = document.createElement('button');
+                calendar.type = 'button'; calendar.className = 'btn-primary home-calendar-link';
+                calendar.append(makeHomeIcon('calendar'), document.createTextNode('Bekijk kalender'));
+                calendar.addEventListener('click', () => switchView('calendar'));
+                empty.append(icon, message, detail, calendar);
+                nuDoenContainer.appendChild(empty);
+            }
+            {
+                const laterItems = nuDoenAnnotated.filter(s => s.category !== 'now');
+                const later = document.createElement('details');
+                later.className = 'home-later-tasks';
+                const summary = document.createElement('summary');
+                summary.textContent = `Later / volgend seizoen · ${laterItems.length + futureReminders.length}`;
+                later.append(summary);
+                appendReminders(futureReminders, later);
                 const groups = [
-                    { id: 'now', label: 'Nu zaaien', icon: '🌱', urgency: 0 },
-                    { id: 'soon', label: 'Binnenkort', icon: '⌛', urgency: 5 },
-                    { id: 'missed', label: 'Volgend jaar', icon: '📅', urgency: 20 }
+                    { id: 'now', label: 'Nu doen', icon: 'sprout', urgency: 0 },
+                    { id: 'soon', label: 'Binnenkort', icon: 'calendar', urgency: 5 },
+                    { id: 'missed', label: 'Later / volgend seizoen', icon: 'leaf', urgency: 20 }
                 ].sort((a,b) => a.urgency - b.urgency);
 
-                const initialLimitNow = 5;
-                const initialLimitOthers = 3;
-                const expandedLimit = 10;
 
                 groups.forEach(group => {
                     const groupItems = nuDoenAnnotated.filter(s => s.category === group.id);
                     if (groupItems.length === 0) return;
 
-                    const isExpanded = localStorage.getItem(`dashboard_nu_doen_expanded_${group.id}`) === 'true';
-                    const initialLimit = group.id === 'now' ? initialLimitNow : initialLimitOthers;
-                    const currentLimit = isExpanded ? expandedLimit : initialLimit;
+                    const currentLimit = groupItems.length;
 
                     const groupDiv = document.createElement('div');
                     groupDiv.className = 'status-group';
-                    groupDiv.innerHTML = `<div class="status-group-title ${group.id}">${group.icon} ${group.label} <span style="font-size:10px; margin-left:4px; opacity:0.6; font-weight:400;">(${groupItems.length})</span></div>`;
+                    const groupTitle = document.createElement('div');
+                    groupTitle.className = `status-group-title ${safeClassToken(group.id)}`;
+                    groupTitle.append(makeHomeIcon(group.icon), document.createTextNode(group.label));
+                    const groupCount = document.createElement('span');
+                    groupCount.style.cssText = 'font-size:10px; margin-left:4px; opacity:0.6; font-weight:400;';
+                    groupCount.textContent = `(${groupItems.length})`;
+                    groupTitle.appendChild(groupCount);
+                    groupDiv.appendChild(groupTitle);
 
                     const grid = document.createElement('div');
                     grid.className = 'mini-cards-grid';
-                    
+
                     let itemsInGroup = 0;
                     groupItems.forEach(s => {
                         if (itemsInGroup >= currentLimit) return;
 
                         const mini = document.createElement('div');
                         mini.className = 'mini-card';
-                        if (s.category === 'missed') mini.style.opacity = '0.6';
-                        
+                        mini.tabIndex = 0;
+                        mini.setAttribute('role', 'group');
+                        mini.setAttribute('aria-label', `Open ${String(s.naam || 'plant')}`);
 
 
-                        mini.innerHTML = `
-                            <div class="mini-card-content">
-                                <div class="mini-card-name">
-                                    ${s.isFavorite ? '⭐' : ''} ${s.naam}
-                                </div>
-                                ${ (s.calendarStatus || s.suggestion) ? '' : `<div class="mini-card-context">${s.context}</div>` }
-                                ${s.calendarStatus ? `<div class="mini-card-suggestion done" style="opacity:0.5; cursor:default;">📅 ${s.calendarStatus}</div>` : (s.suggestion ? `<div class="mini-card-suggestion" data-type="suggest">${s.suggestion}</div>` : '')}
-                            </div>
 
-                            <div class="mini-card-actions">
-                                <button class="btn-mini-action" title="Zet in Kalender" data-type="cal">📅</button>
-                                <button class="btn-mini-action" title="Markeer als gezaaid" data-type="sown">✔</button>
-                            </div>
-                        `;
-                        
+                        const miniContent = document.createElement('div');
+                        miniContent.className = 'mini-card-content';
+                        const miniName = document.createElement('div');
+                        miniName.className = 'mini-card-name';
+                        if (s.isFavorite) miniName.appendChild(document.createTextNode('Favoriet · '));
+                        miniName.appendChild(document.createTextNode(typeof s.naam === 'string' ? s.naam : ''));
+                        miniContent.appendChild(miniName);
+                        if (!s.calendarStatus && !s.suggestion) {
+                            const context = document.createElement('div');
+                            context.className = 'mini-card-context';
+                            context.textContent = typeof s.context === 'string' ? s.context : '';
+                            miniContent.appendChild(context);
+                        } else if (s.calendarStatus) {
+                            const calendarStatus = document.createElement('div');
+                            calendarStatus.className = 'mini-card-suggestion done';
+                            calendarStatus.style.cssText = 'opacity:0.5; cursor:default;';
+                            calendarStatus.textContent = s.calendarStatus;
+                            miniContent.appendChild(calendarStatus);
+                        } else if (s.suggestion) {
+                            const suggestion = document.createElement('div');
+                            suggestion.className = 'mini-card-suggestion';
+                            suggestion.dataset.type = 'suggest';
+                            suggestion.textContent = s.suggestion;
+                            miniContent.appendChild(suggestion);
+                        }
+                        mini.appendChild(miniContent);
+
+                        const miniActions = document.createElement('div');
+                        miniActions.className = 'mini-card-actions';
+                        const calendarButton = document.createElement('button');
+                        calendarButton.type = 'button';
+                        calendarButton.className = 'btn-mini-action';
+                        calendarButton.title = 'Zet in Kalender';
+                        calendarButton.setAttribute('aria-label', `Plan ${String(s.naam || 'plant')} in de kalender`);
+                        calendarButton.dataset.type = 'cal';
+                        calendarButton.appendChild(makeHomeIcon('calendar'));
+                        const sownButton = document.createElement('button');
+                        sownButton.type = 'button';
+                        sownButton.className = 'btn-mini-action';
+                        sownButton.title = 'Markeer als gezaaid';
+                        sownButton.setAttribute('aria-label', `Markeer ${String(s.naam || 'plant')} als gezaaid`);
+                        sownButton.dataset.type = 'sown';
+                        sownButton.appendChild(makeHomeIcon('check'));
+                        miniActions.append(calendarButton, sownButton);
+                        mini.appendChild(miniActions);
+
                         // Main click -> Direct to Detail (New requirement)
                         mini.onclick = (e) => {
                             if (e.target.closest('.btn-mini-action')) return;
                             window.openDetailView(s);
                         };
+                        mini.addEventListener('keydown', (event) => {
+                            if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('.btn-mini-action')) {
+                                event.preventDefault();
+                                window.openDetailView(s);
+                            }
+                        });
 
                         // Action Buttons
                         mini.querySelectorAll('.btn-mini-action').forEach(btn => {
                             btn.onclick = async (e) => {
                                 e.stopPropagation();
                                 const type = btn.dataset.type;
-                                
+
                                 if (type === 'sown') {
                                     mini.classList.add('removing');
                                     const targetId = s.id;
                                     setTimeout(async () => {
-                                        s.fase_gezaaid = true;
-                                        s.status = deriveMainStatus(s);
-                                        s.lastSownYear = new Date().getFullYear();
+                                        const plant = seeds.find(seed => String(seed.id) === String(targetId));
+                                        if (!plant) return;
+                                        plant.fase_gezaaid = true;
+                                        plant.status = deriveMainStatus(plant);
+                                        plant.lastSownYear = new Date().getFullYear();
 
-                                        await saveSeed(s);
+                                        await saveSeed(plant);
                                         incrementDailyProgress();
-                                        showToast(`Toegevoegd aan <button class="toast-link" onclick="switchView('home')">je tuin</button> 🌱`);
+                                        showToastWithHomeLink('Toegevoegd aan ', ' 🌱');
                                         renderHome();
                                         // Optional: Scroll to it in the garden list for feedback (5.17)
                                         setTimeout(() => window.scrollToGardenItem(targetId), 100);
@@ -2881,7 +4484,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     picker.style.opacity = '0';
                                     picker.style.pointerEvents = 'none';
                                     document.body.appendChild(picker);
-                                    
+
                                     // Default to suggested date if it exists
                                     if (s.suggestDate) {
                                         picker.value = (s.suggestDate instanceof Date) ? s.suggestDate.toISOString().split('T')[0] : s.suggestDate;
@@ -2894,20 +4497,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     } else {
                                         picker.click();
                                     }
-                                    
+
                                     picker.onchange = () => {
                                         if (picker.value) {
                                             const selectedDate = new Date(picker.value);
                                             const day = selectedDate.getDate();
                                             const month = selectedDate.toLocaleDateString('nl-NL', { month: 'short' });
-                                            
+
                                             // Visual confirmation: Requirement 17.2
-                                            mini.innerHTML = `
-                                                <div style="display:flex; align-items:center; justify-content:center; width:100%; height:100%; color:var(--primary-color); background:var(--bg-alt); border-radius:12px; font-size:12px;">
-                                                    <span style="font-weight:700;">✅ Gepland op ${day} ${month}</span>
-                                                </div>
-                                            `;
-                                            
+                                            mini.replaceChildren();
+                                            const confirmation = document.createElement('div');
+                                            confirmation.style.cssText = 'display:flex; align-items:center; justify-content:center; width:100%; height:100%; color:var(--primary-color); background:var(--bg-alt); border-radius:12px; font-size:12px;';
+                                            const confirmationText = document.createElement('span');
+                                            confirmationText.style.fontWeight = '700';
+                                            confirmationText.textContent = `Gepland op ${day} ${month}`;
+                                            confirmation.appendChild(confirmationText);
+                                            mini.appendChild(confirmation);
+
                                             mini.classList.add('removing');
                                             setTimeout(() => {
                                                 addQuickReminder(s, selectedDate);
@@ -2938,124 +4544,130 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     groupDiv.appendChild(grid);
 
-                    // Section-specific toggle
-                    if (groupItems.length > initialLimit) {
-                         const toggleBtn = document.createElement('button');
-                         toggleBtn.className = 'btn-footer-toggle';
-                         toggleBtn.style.display = 'block';
-                         toggleBtn.style.margin = '12px auto 0';
-                         
-                         if (isExpanded) {
-                             toggleBtn.textContent = '▴ Minder weergeven';
-                             toggleBtn.onclick = () => {
-                                 localStorage.setItem(`dashboard_nu_doen_expanded_${group.id}`, 'false');
-                                 renderHome();
-                             };
-                         } else {
-                             const extra = groupItems.length - initialLimit;
-                             toggleBtn.textContent = `▾ Meer weergeven (${extra})`;
-                             toggleBtn.onclick = () => {
-                                 localStorage.setItem(`dashboard_nu_doen_expanded_${group.id}`, 'true');
-                                 renderHome();
-                             };
-                         }
-                         groupDiv.appendChild(toggleBtn);
-                    }
-
-                    nuDoenContainer.appendChild(groupDiv);
+                    (group.id === 'now' ? nuDoenContainer : later).appendChild(groupDiv);
                 });
+                if (overdueSection) nuDoenContainer.append(overdueSection);
+                nuDoenContainer.append(later);
             }
         }
 
         // 3. MIJN PLANTEN (Mini-cards grouped by status)
-        const gardenPlants = seeds.filter(s => s.status === 'Gezaaid' || s.status === 'Groeit' || s.status === 'Geoogst');
+        const gardenPlants = getActiveGardenPlants();
+        const insightsContainer = document.getElementById('home-insights');
+        if (insightsContainer) {
+            insightsContainer.replaceChildren();
+            const remindersThisWeek = reminderGroups.current.length + selection.now.length;
+            const insightItems = [
+                { icon: 'sprout', label: 'Actieve planten', value: gardenPlants.length, open: () => {
+                    openGardenList('Actief'); focusInsightDestination('seeds-context-banner');
+                } },
+                { icon: 'calendar', label: 'Taken deze week', value: remindersThisWeek, open: () => {
+                    curCalDate = new Date(); selectedDateStr = formatDate(curCalDate);
+                    switchView('calendar', { taskWeek: true }); focusInsightDestination('selected-date-label');
+                } },
+                { icon: 'leaf', label: 'Binnenkort zaaien', value: selection.soon.length, open: () => {
+                    plannerSoonDate = new Date(today);
+                    plannerSelectedMonth = (plannerSoonDate.getMonth() + 1) % 12;
+                    plannerSelectedYear = new Date(today.getFullYear(), today.getMonth() + 1, 1).getFullYear();
+                    switchView('sowing-grid'); focusInsightDestination('planner-active-month-title');
+                } }
+            ];
+            insightItems.slice(0, 3).forEach(item => {
+                const insight = document.createElement('button');
+                insight.type = 'button';
+                insight.className = 'home-insight-card';
+                insight.addEventListener('click', item.open);
+                const copy = document.createElement('span');
+                copy.className = 'home-insight-copy';
+                const label = document.createElement('span');
+                label.textContent = item.label;
+                const value = document.createElement('strong');
+                value.textContent = String(item.value);
+                copy.append(label, value);
+                insight.append(makeHomeIcon(item.icon), copy);
+                const arrow = document.createElement('span');
+                arrow.className = 'home-insight-arrow'; arrow.textContent = '→';
+                arrow.setAttribute('aria-hidden', 'true'); insight.append(arrow);
+                insightsContainer.appendChild(insight);
+            });
+        }
+
         const groupedContainer = document.getElementById('dashboard-mijn-planten-grouped');
         if (groupedContainer) {
-            groupedContainer.innerHTML = '';
-            const statuses = [
-                { id: 'Gezaaid', label: 'Gezaaid', icon: '🌱', colorClass: 'green' },
-                { id: 'Groeit', label: 'Groeit', icon: '🌿', colorClass: 'green' },
-                { id: 'Geoogst', label: 'Geoogst', icon: '📦', colorClass: 'neutral' }
-            ];
-
-            if (gardenPlants.length === 0) {
-                groupedContainer.innerHTML = `
-                    <div class="empty-state" style="padding: 20px 0;">
-                        <p>Je hebt nog niets gezaaid</p>
-                        <button class="empty-state-btn" onclick="switchView('list')">Bekijk je zaden</button>
-                    </div>`;
-            } else {
-                const expandedLimit = 10;
-
-                statuses.forEach(status => {
-                    const plants = gardenPlants.filter(s => s.status === status.id);
-                    if (plants.length === 0) return;
-
-                    const showAllGroup = localStorage.getItem(`garden_group_${status.id}_show_all`) === 'true';
-                    const groupInitialLimit = status.id === 'Gezaaid' ? 6 : 3;
-                    const currentLimit = showAllGroup ? expandedLimit : groupInitialLimit;
-
-                    let itemsInGroupDisplayed = 0;
-
-                    const group = document.createElement('div');
-                    group.className = 'status-group';
-                    group.innerHTML = `<div class="status-group-title ${status.colorClass}">${status.icon} ${status.label} <span style="font-size:10px; margin-left:4px; opacity:0.6; font-weight:400;">(${plants.length})</span></div>`;
-
-                    const grid = document.createElement('div');
-                    grid.className = 'mini-cards-grid';
-
-                    plants.sort((a, b) => (b.isFavorite ? 1 : 0) - (a.isFavorite ? 1 : 0) || a.naam.localeCompare(b.naam));
-
-                    plants.forEach(s => {
-                        if (itemsInGroupDisplayed >= currentLimit) return;
-
-                        const mini = document.createElement('div');
-                        mini.className = 'mini-card';
-                        mini.id = `garden-card-${s.id}`;
-                        mini.innerHTML = `
-                            <div class="mini-card-name">${s.isFavorite ? '⭐' : ''} ${s.naam}</div>
-                            <div style="display:flex; gap:4px; align-items:center;">
-                                <span class="badge ${s.type.toLowerCase()}" style="font-size:9px; padding:2px 6px;">${s.type}</span>
-                                <span class="badge ${s.status.toLowerCase()}" style="font-size:9px; padding:2px 6px;">${getStatusLabel(s.status)}</span>
-                            </div>
-                        `;
-
-                        mini.onclick = () => openDetailView(s);
-                        grid.appendChild(mini);
-                        itemsInGroupDisplayed++;
-                    });
-                    
-                    group.appendChild(grid);
-
-                    // Per-group toggles
-                    if (plants.length > groupInitialLimit) {
-                        const toggleBtn = document.createElement('button');
-                        toggleBtn.className = 'btn-footer-toggle';
-                        toggleBtn.style.display = 'block';
-                        toggleBtn.style.margin = '12px auto 0';
-                        
-                        if (showAllGroup) {
-                            toggleBtn.textContent = '▴ Minder weergeven';
-                            toggleBtn.onclick = () => {
-                                localStorage.setItem(`garden_group_${status.id}_show_all`, 'false');
-                                renderHome();
-                            };
-                        } else {
-                            const extra = plants.length - groupInitialLimit;
-                            toggleBtn.textContent = `▾ Meer weergeven (${extra})`;
-                            toggleBtn.onclick = () => {
-                                localStorage.setItem(`garden_group_${status.id}_show_all`, 'true');
-                                renderHome();
-                            };
-                        }
-                        group.appendChild(toggleBtn);
-                    }
-
-                    groupedContainer.appendChild(group);
+            groupedContainer.replaceChildren();
+            const statuses = ['Gezaaid', 'Groeit', 'Geoogst'];
+            const tabs = document.createElement('div');
+            tabs.className = 'home-plant-tabs';
+            tabs.setAttribute('role', 'tablist');
+            tabs.setAttribute('aria-label', 'Plantstatus');
+            statuses.forEach(status => {
+                const tab = document.createElement('button');
+                tab.type = 'button'; tab.id = 'home-tab-' + status;
+                tab.setAttribute('role', 'tab');
+                tab.setAttribute('aria-selected', String(status === dashboardPlantStatus));
+                tab.setAttribute('aria-controls', 'home-plant-panel');
+                tab.tabIndex = status === dashboardPlantStatus ? 0 : -1;
+                const count = document.createElement('span');
+                count.textContent = String(gardenPlants.filter(s => s.status === status).length);
+                tab.append(document.createTextNode(status + ' '), count);
+                const select = next => { dashboardPlantStatus = next; renderHome(); document.getElementById('home-tab-' + next)?.focus(); };
+                tab.addEventListener('click', () => select(status));
+                tab.addEventListener('keydown', event => {
+                    const index = statuses.indexOf(status);
+                    const next = event.key === 'ArrowRight' ? statuses[(index+1)%statuses.length] : event.key === 'ArrowLeft' ? statuses[(index+statuses.length-1)%statuses.length] : event.key === 'Home' ? statuses[0] : event.key === 'End' ? statuses[statuses.length-1] : null;
+                    if (next) { event.preventDefault(); select(next); }
                 });
+                tabs.append(tab);
+            });
+            const panel = document.createElement('div');
+            panel.id = 'home-plant-panel'; panel.className = 'home-plants-grid mini-cards-grid';
+            panel.setAttribute('role', 'tabpanel');
+            panel.setAttribute('aria-labelledby', 'home-tab-' + dashboardPlantStatus);
+            const plants = gardenPlants.filter(s => s.status === dashboardPlantStatus)
+                .sort((a,b) => Number(Boolean(b.isFavorite)) - Number(Boolean(a.isFavorite)) || a.naam.localeCompare(b.naam));
+            plants.slice(0,4).forEach(s => {
+                const row = document.createElement('div');
+                row.className = 'mini-card'; row.id = 'garden-card-' + s.id;
+                const open = document.createElement('button');
+                open.type = 'button'; open.className = 'home-plant-open';
+                open.setAttribute('aria-label', 'Open ' + s.naam);
+                open.title = s.naam;
+                const thumb = document.createElement('div'); thumb.className = 'home-plant-thumb';
+                const fallback = () => { thumb.replaceChildren(makeHomeIcon('sprout')); thumb.classList.add('is-placeholder'); };
+                const imageUrl = safeWishlistImageUrl(s.featuredImageUrl || s.image || s.images?.[0]?.url);
+                if (imageUrl) {
+                    const image = document.createElement('img'); image.src = imageUrl; image.alt = ''; image.loading = 'lazy';
+                    image.addEventListener('error', fallback, { once: true }); thumb.append(image);
+                } else fallback();
+                const name = document.createElement('span'); name.className = 'mini-card-name';
+                name.textContent = s.naam;
+                open.append(thumb, name);
+                open.addEventListener('click', () => openDetailView(s));
+                const favorite = document.createElement('button');
+                favorite.type = 'button'; favorite.className = 'home-plant-favorite';
+                favorite.setAttribute('aria-label', 'Favoriet: ' + s.naam);
+                favorite.setAttribute('aria-pressed', String(Boolean(s.isFavorite)));
+                const star = makeHomeIcon('star');
+                if (s.isFavorite) star.querySelector('path').setAttribute('fill', 'currentColor');
+                favorite.append(star);
+                favorite.addEventListener('click', () => toggleQuickFavorite(s, { openDetail: false }));
+                row.append(open, favorite); panel.append(row);
+            });
+            if (!plants.length) {
+                const empty = document.createElement('p'); empty.className = 'empty-state';
+                empty.textContent = 'Geen planten met status ' + dashboardPlantStatus.toLowerCase() + '.';
+                panel.append(empty);
             }
+            const all = document.createElement('button');
+            all.type = 'button'; all.className = 'home-view-all-plants';
+            const statusDescription = { Gezaaid: 'gezaaide', Groeit: 'groeiende', Geoogst: 'geoogste' };
+            all.textContent = 'Bekijk alle ' + statusDescription[dashboardPlantStatus] + ' planten (' + plants.length + ') →';
+            all.addEventListener('click', () => {
+                openGardenList(dashboardPlantStatus);
+            });
+            groupedContainer.append(tabs, panel, all);
         }
-        
+
         updateProgressUI();
     }
 
@@ -3126,7 +4738,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         Array.from(files).forEach(file => {
             const reader = new FileReader();
             reader.onload = (re) => {
-                const url = re.target.result;
+                const url = safeWishlistImageUrl(re.target.result);
+                if (!url) return;
                 if (!pendingImages.some(p => p.url === url)) {
                     pendingImages.push({ url: url, source: 'upload' });
                     if (!inputNaam.dataset.featuredUrl) {
@@ -3151,7 +4764,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             btnSearchPexelsUnified.textContent = "Zoeken...";
             const results = await searchPlantImage(query);
             if (results && results.length > 0) {
-                photoSearchResults = results.map(r => ({ url: r.url, source: 'web', id: r.id }));
+                photoSearchResults = results.map(r => r && typeof r === 'object' ? ({ ...r, url: r.url, source: 'web', id: r.id }) : null).filter(Boolean);
             }
             renderUnifiedGallery();
             btnSearchPexelsUnified.disabled = false;
@@ -3166,6 +4779,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function applyFilters() {
         const q = searchInput.value.toLowerCase();
         let filtered = seeds;
+        if (activePlantStatus) filtered = activePlantStatus === 'Actief' ? getActiveGardenPlants() : filtered.filter(s => s.status === activePlantStatus);
         const currentMonth = new Date().getMonth();
 
         // 1. Filter by Category
@@ -3188,6 +4802,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         renderSeeds(filtered);
+        const statusBanner = document.getElementById('seeds-context-banner');
+        if (activePlantStatus && statusBanner) {
+            statusBanner.replaceChildren();
+            const banner = document.createElement('div'); banner.className = 'seeds-month-context';
+            const label = document.createElement('span');
+            label.textContent = `${activePlantStatus === 'Actief' ? 'Actieve planten (Gezaaid, Groeit, Geoogst)' : activePlantStatus} · ${filtered.length} planten`;
+            const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'context-reset-btn';
+            reset.textContent = 'Alle planten';
+            reset.addEventListener('click', () => { activePlantStatus = null; applyFilters(); });
+            banner.append(label, reset); statusBanner.replaceChildren(banner);
+            statusBanner.dataset.plantStatus = 'true'; statusBanner.classList.remove('hidden');
+        } else if (statusBanner?.dataset.plantStatus) {
+            delete statusBanner.dataset.plantStatus;
+            statusBanner.replaceChildren(); statusBanner.classList.add('hidden');
+        }
 
         // Update sown count (always on the Gezaaid chip)
         const sownCount = document.getElementById('sown-count');
@@ -3205,64 +4834,313 @@ document.addEventListener('DOMContentLoaded', async () => {
     searchInput.oninput = applyFilters;
 
     window._resetAllFilters = () => {
+        activePlantStatus = null;
         activeCategory = 'Alles';
         activeMonthFilter = null;
         localStorage.removeItem('activeMonthFilter');
         if (searchInput) searchInput.value = '';
-        
+
         // Reset filter chip UI
         document.querySelectorAll('.filter-chip').forEach(c => {
             c.classList.remove('active');
             if (c.textContent.includes('Alle Zaden')) c.classList.add('active');
         });
-        
+
         applyFilters();
     };
 
-    // Sowing Grid Overhaul
-    async function renderSowingGrid() {
-        const grid = document.getElementById('sowing-month-grid');
-        if (!grid) return;
-        grid.innerHTML = '';
-        const currentMonth = new Date().getMonth();
-        const currentYear = new Date().getFullYear();
+    // Sowing planner overview: all month and activity values come from saved seed/reminder data.
+    let plannerSelectedMonth = new Date().getMonth();
+    let plannerSelectedYear = new Date().getFullYear();
+    let plannerSoonDate = null;
 
-        // Seasonal icons mapping
-        const monthIcons = [
-            '❄️', '❄️', '🌸', '🌸', '🌸', '☀️', '☀️', '☀️', '🍂', '🍂', '🍂', '❄️'
+    function getPlannerReminders(monthIndex, year) {
+        return (Array.isArray(reminders) ? reminders : []).filter(reminder => {
+            const date = parseCalendarDate(reminder?.date);
+            return date && date.getFullYear() === year && date.getMonth() === monthIndex;
+        }).sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    function selectPlannerPeriod(year, month) {
+        if (!Number.isInteger(year) || year < 1000 || year > 9999 || !Number.isInteger(month)) return;
+        const date = new Date(year, month, 1);
+        if (date.getFullYear() < 1000 || date.getFullYear() > 9999) return;
+        if (!plannerSoonDate && plannerSelectedYear === date.getFullYear() && plannerSelectedMonth === date.getMonth()) return;
+        plannerSoonDate = null;
+        plannerSelectedYear = date.getFullYear();
+        plannerSelectedMonth = date.getMonth();
+        renderSowingGrid();
+    }
+
+    function getPlannerActivities(monthIndex, soonDate = null) {
+        if (soonDate) {
+            const plants = monthIndex === (soonDate.getMonth() + 1) % 12 ? getDashboardSelection(soonDate).soon : [];
+            return plants.length ? [{ id: 'sow', label: 'Binnenkort zaaien', icon: 'seed', period: 'zaaitijd', plants }] : [];
+        }
+        const groups = [
+            { id: 'indoor-sow', label: 'Binnen voorzaaien', icon: 'sprout', period: 'zaaitijd', plants: [] },
+            { id: 'outdoor-sow', label: 'Buiten zaaien', icon: 'sun', period: 'zaaitijd', plants: [] },
+            { id: 'sow', label: 'Zaaien', icon: 'seed', period: 'zaaitijd', plants: [] },
+            { id: 'transplant', label: 'Uitplanten', icon: 'plant', period: 'plant_months', plants: [] },
+            { id: 'harvest', label: 'Oogsten', icon: 'basket', period: 'oogsttijd', plants: [] }
         ];
 
-        for (let m = 0; m < 12; m++) {
-            const count = seeds.filter(s => getActiveMonths(s).has(m)).length;
+        seeds.forEach(seed => {
+            const sowMonths = getActiveMonths(seed);
+            const harvestMonths = getActiveMonths(seed.oogsttijd || seed.harvest_months || seed.harvestMonths);
+            const plantMonths = getActiveMonths(seed.plant_months || seed.plantMonths || seed.planttijd || seed.uitplanttijd || seed.uitplanten);
+            const tags = Array.isArray(seed.tags) ? seed.tags : (typeof seed.tags === 'string' ? [seed.tags] : []);
+            const hasPreseedTag = tags.some(tag => typeof tag === 'string' && tag.toLowerCase().includes('voorzaaien'));
+            const hasDirectSowTag = tags.some(tag => typeof tag === 'string' && tag.toLowerCase().includes('direct zaaien'));
 
-            // Robust check for reminders
-            const hasReminders = (reminders || []).some(r => {
-                if (!r.date) return false;
-                const parts = r.date.split('-');
-                if (parts.length < 3) return false;
-                const ry = parseInt(parts[0]);
-                const rm = parseInt(parts[1]) - 1;
-                return rm === m && ry === currentYear;
-            });
+            if (sowMonths.has(monthIndex)) {
+                if (hasPreseedTag) groups.find(group => group.id === 'indoor-sow').plants.push(seed);
+                if (hasDirectSowTag) groups.find(group => group.id === 'outdoor-sow').plants.push(seed);
+                if (!hasPreseedTag && !hasDirectSowTag) groups.find(group => group.id === 'sow').plants.push(seed);
+            }
+            if (plantMonths.has(monthIndex)) groups.find(group => group.id === 'transplant').plants.push(seed);
+            if (harvestMonths.has(monthIndex)) groups.find(group => group.id === 'harvest').plants.push(seed);
+        });
 
-            const card = document.createElement('div');
+        return groups.filter(group => group.plants.length > 0);
+    }
+
+    async function renderSowingGrid() {
+        const grid = document.getElementById('sowing-month-grid');
+        const activityContent = document.getElementById('planner-activities-content');
+        if (!grid || !activityContent) return;
+
+        const currentMonth = new Date().getMonth();
+        const currentYear = plannerSelectedYear;
+        const isCurrentYear = currentYear === new Date().getFullYear();
+        const focusId = document.activeElement?.id || '';
+        const yearLabel = document.getElementById('sowing-current-year');
+        if (yearLabel) yearLabel.textContent = String(currentYear);
+
+        const createIcon = (name) => {
+            const paths = {
+                calendar: 'M7 3v3m10-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13H4V6a1 1 0 0 1 1-1Zm2 8h3m2 0h3',
+                sprout: 'M12 20V10m0 3c-4.5 0-7-2.2-7-6 4.8 0 7 2 7 6Zm0 1c4.3 0 7-2.3 7-6-4.6 0-7 2.2-7 6Z',
+                sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0-5v2m0 14v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M3 12h2m14 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
+                seed: 'M12 20v-7m0 1c-4 0-6-2-6-5 4 0 6 1.7 6 5Zm0-2c0-3.5 2-5.5 6-5.5 0 3.5-2 5.5-6 5.5Z',
+                plant: 'M5 20h14M8 20v-4m8 4v-4M12 16V7m0 4c-3.5 0-5.5-1.8-5.5-5 3.8 0 5.5 1.8 5.5 5Zm0 1c3.5 0 5.5-1.8 5.5-5-3.8 0-5.5 1.8-5.5 5Z',
+                basket: 'M4 10h16l-2 10H6L4 10Zm3-1 5-5 5 5m-8 4v4m4-4v4m4-4v4'
+            };
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('aria-hidden', 'true');
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', paths[name] || paths.calendar);
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', 'currentColor');
+            path.setAttribute('stroke-width', '1.7');
+            path.setAttribute('stroke-linecap', 'round');
+            path.setAttribute('stroke-linejoin', 'round');
+            svg.appendChild(path);
+            return svg;
+        };
+
+        const reminderCountForMonth = monthIndex => getPlannerReminders(monthIndex, currentYear).length;
+
+        grid.replaceChildren();
+        for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
+            const monthGroups = getPlannerActivities(monthIndex, plannerSoonDate);
+            const actionCount = monthGroups.reduce((total, group) => total + group.plants.length, 0);
+            const reminderCount = plannerSoonDate ? 0 : reminderCountForMonth(monthIndex);
+            const card = document.createElement('button');
+            card.type = 'button';
+            card.id = `planner-month-${monthIndex}`;
             card.className = 'month-card';
-            if (m === currentMonth) card.classList.add('current');
-            if (count > 0) card.classList.add('has-items');
+            card.setAttribute('aria-pressed', String(monthIndex === plannerSelectedMonth));
+            card.setAttribute('aria-label', `${calMonthNames[monthIndex]} ${currentYear}: ${actionCount} plantactiviteiten${reminderCount ? `, ${reminderCount} kalenderitems` : ''}${monthIndex === currentMonth && isCurrentYear ? ', huidige maand' : ''}`);
+            if (monthIndex === currentMonth && isCurrentYear) {
+                card.classList.add('current');
+                card.setAttribute('aria-current', 'date');
+            }
+            if (monthIndex === plannerSelectedMonth) card.classList.add('selected');
+            if (actionCount > 0) card.classList.add('has-items');
 
-            const label = count === 0 ? 'Geen actie' : (count === 1 ? '1 plant' : `${count} planten`);
-            const badge = m === currentMonth ? '<div class="month-badge">Nu</div>' : '';
-
-            card.innerHTML = `
-                ${badge}
-                <div class="month-icon">${monthIcons[m]}</div>
-                <div class="month-name">${calMonthNames[m]}</div>
-                ${count > 0 ? `<div class="month-indicator-badge">🌱 ${count}</div>` : '<div class="month-count">Geen actie</div>'}
-            `;
-
-            card.onclick = () => openPlannerMonthModal(m);
+            const monthTop = document.createElement('span');
+            monthTop.className = 'planner-month-card-top';
+            monthTop.append(createIcon('calendar'));
+            if (monthIndex === currentMonth && isCurrentYear) {
+                const badge = document.createElement('span');
+                badge.className = 'planner-current-badge';
+                badge.textContent = 'Nu';
+                monthTop.appendChild(badge);
+            }
+            const monthName = document.createElement('span');
+            monthName.className = 'month-name';
+            monthName.textContent = calMonthNames[monthIndex];
+            const summary = document.createElement('span');
+            summary.className = 'month-count';
+            summary.textContent = actionCount === 0 ? 'Geen activiteiten' : `${actionCount} ${actionCount === 1 ? 'activiteit' : 'activiteiten'}`;
+            card.append(monthTop, monthName, summary);
+            if (reminderCount > 0) {
+                const reminderBadge = document.createElement('span');
+                reminderBadge.className = 'planner-reminder-count';
+                reminderBadge.textContent = `${reminderCount} kalenderitems`;
+                card.appendChild(reminderBadge);
+            }
+            card.addEventListener('click', () => {
+                plannerSoonDate = null;
+                plannerSelectedMonth = monthIndex;
+                renderSowingGrid();
+            });
             grid.appendChild(card);
         }
+
+        const selectedMonthTitle = document.getElementById('planner-active-month-title');
+        const selectedMonthSummary = document.getElementById('planner-active-month-summary');
+        const selectedMonthSelect = document.getElementById('planner-month-select');
+        const activityCount = document.getElementById('planner-activity-count');
+        const monthGroups = getPlannerActivities(plannerSelectedMonth, plannerSoonDate);
+        const actionsForMonth = monthGroups.reduce((total, group) => total + group.plants.length, 0);
+        const uniquePlants = new Set(monthGroups.flatMap(group => group.plants.map(seed => seed.id)));
+        const reminderCount = plannerSoonDate ? 0 : reminderCountForMonth(plannerSelectedMonth);
+        const summaryParts = [];
+        if (uniquePlants.size) summaryParts.push(`${uniquePlants.size} ${uniquePlants.size === 1 ? 'plant' : 'planten'}`);
+        if (actionsForMonth) summaryParts.push(`${actionsForMonth} ${actionsForMonth === 1 ? 'activiteit' : 'activiteiten'}`);
+        if (reminderCount) summaryParts.push(`${reminderCount} ${reminderCount === 1 ? 'kalenderitem' : 'kalenderitems'}`);
+        if (selectedMonthTitle) selectedMonthTitle.textContent = `${calMonthNames[plannerSelectedMonth]} ${currentYear}`;
+        if (selectedMonthSummary) selectedMonthSummary.textContent = summaryParts.join(' · ') || 'Geen activiteiten uit je opgeslagen plantgegevens';
+        if (selectedMonthSelect) selectedMonthSelect.value = String(plannerSelectedMonth);
+        if (activityCount) activityCount.textContent = `${actionsForMonth} ${actionsForMonth === 1 ? 'activiteit' : 'activiteiten'}`;
+        const soonFilter = document.getElementById('planner-soon-filter');
+        soonFilter?.classList.toggle('hidden', !plannerSoonDate);
+        const clearSoonFilter = document.getElementById('planner-clear-soon-filter');
+        if (clearSoonFilter) clearSoonFilter.onclick = () => { plannerSoonDate = null; renderSowingGrid(); };
+
+        activityContent.replaceChildren();
+        if (monthGroups.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'planner-empty-state';
+            empty.append(createIcon('sprout'));
+            const emptyText = document.createElement('p');
+            emptyText.textContent = plannerSoonDate ? 'Geen voorraadplanten om binnenkort te zaaien in deze periode.' : 'Voor deze maand zijn geen zaai-, uitplant- of oogstperiodes opgeslagen bij je planten.';
+            empty.appendChild(emptyText);
+            activityContent.appendChild(empty);
+        } else {
+            monthGroups.forEach(group => {
+                const groupElement = document.createElement('section');
+                groupElement.className = `planner-activity-group planner-activity-${safeClassToken(group.id)}`;
+                const heading = document.createElement('div');
+                heading.className = 'planner-activity-group-heading';
+                heading.append(createIcon(group.icon));
+                const headingText = document.createElement('h4');
+                headingText.textContent = group.label;
+                const groupCount = document.createElement('span');
+                groupCount.textContent = String(group.plants.length);
+                heading.append(headingText, groupCount);
+                const list = document.createElement('div');
+                list.className = 'planner-plant-list';
+
+                group.plants
+                    .sort((a, b) => String(a.naam || '').localeCompare(String(b.naam || ''), 'nl'))
+                    .forEach(seed => {
+                        const row = document.createElement('button');
+                        row.type = 'button';
+                        row.className = 'planner-plant-row';
+                        row.setAttribute('aria-label', `Open ${String(seed.naam || 'plant')}, ${group.label}`);
+                        const name = document.createElement('span');
+                        name.className = 'planner-plant-name';
+                        name.textContent = typeof seed.naam === 'string' ? seed.naam : '';
+                        const meta = document.createElement('span');
+                        meta.className = 'planner-plant-meta';
+                        const periodValue = group.period === 'plant_months'
+                            ? (seed.plant_months || seed.plantMonths || seed.planttijd || seed.uitplanttijd || seed.uitplanten)
+                            : (group.period === 'oogsttijd' ? (seed.oogsttijd || seed.harvest_months || seed.harvestMonths) : seed);
+                        const period = document.createElement('span');
+                        const periodLabel = group.period === 'plant_months' ? 'Uitplantperiode' : (group.period === 'oogsttijd' ? 'Oogstperiode' : 'Zaaitijd');
+                        period.textContent = `${periodLabel}: ${formatMonthRanges(getActiveMonths(periodValue)) || calMonthNames[plannerSelectedMonth]}`;
+                        const status = document.createElement('span');
+                        status.className = `badge ${safeClassToken(seed.status)}`;
+                        status.textContent = getStatusLabel(seed.status);
+                        meta.append(period, status);
+                        row.append(name, meta);
+                        row.addEventListener('click', () => openDetailView(seed));
+                        list.appendChild(row);
+                    });
+
+                groupElement.append(heading, list);
+                activityContent.appendChild(groupElement);
+            });
+        }
+
+        // Dated tasks stay in their saved month/year; recurring periods above
+        // are displayed independently and never become copied reminders.
+        const selectedReminders = plannerSoonDate ? [] : getPlannerReminders(plannerSelectedMonth, currentYear);
+        if (selectedReminders.length) {
+            const planning = document.createElement('section');
+            planning.className = 'planner-activity-group planner-saved-planning';
+            const heading = document.createElement('div');
+            heading.className = 'planner-activity-group-heading';
+            const headingText = document.createElement('h4'); headingText.textContent = 'Ingeplande kalenderitems';
+            const count = document.createElement('span'); count.textContent = String(selectedReminders.length);
+            heading.append(createIcon('calendar'), headingText, count);
+            const list = document.createElement('div'); list.className = 'planner-plant-list';
+            selectedReminders.forEach(reminder => {
+                const row = document.createElement('button'); row.type = 'button'; row.className = 'planner-plant-row';
+                const name = document.createElement('span'); name.className = 'planner-plant-name'; name.textContent = reminder.title;
+                const meta = document.createElement('span'); meta.className = 'planner-plant-meta';
+                const date = document.createElement('span');
+                date.textContent = parseCalendarDate(reminder.date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+                meta.append(date);
+                if (reminder.done) {
+                    const done = document.createElement('span'); done.className = 'badge'; done.textContent = 'Afgerond'; meta.append(done);
+                }
+                row.append(name, meta);
+                row.addEventListener('click', () => {
+                    selectedDateStr = reminder.date;
+                    curCalDate = new Date(currentYear, plannerSelectedMonth, 1);
+                    switchView('calendar');
+                });
+                list.append(row);
+            });
+            planning.append(heading, list); activityContent.append(planning);
+        }
+
+        const previousButton = document.getElementById('planner-prev-month');
+        const nextButton = document.getElementById('planner-next-month');
+        const thisMonthButton = document.getElementById('planner-this-month');
+        const openCalendarButton = document.getElementById('planner-open-calendar');
+        const openSeedsButton = document.getElementById('planner-open-seeds');
+        if (previousButton) previousButton.onclick = () => selectPlannerPeriod(currentYear, plannerSelectedMonth - 1);
+        if (nextButton) nextButton.onclick = () => selectPlannerPeriod(currentYear, plannerSelectedMonth + 1);
+        if (thisMonthButton) thisMonthButton.onclick = () => {
+            const today = new Date();
+            selectPlannerPeriod(today.getFullYear(), today.getMonth());
+        };
+        if (selectedMonthSelect) selectedMonthSelect.onchange = () => {
+            selectPlannerPeriod(currentYear, Number(selectedMonthSelect.value));
+        };
+        const yearInput = document.getElementById('planner-year-input');
+        if (yearInput) {
+            yearInput.value = String(currentYear);
+            yearInput.onchange = () => {
+                if (yearInput.checkValidity() && Number.isInteger(Number(yearInput.value))) selectPlannerPeriod(Number(yearInput.value), plannerSelectedMonth);
+                else yearInput.value = String(currentYear);
+            };
+            yearInput.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); yearInput.onchange(); } };
+        }
+        const previousYear = document.getElementById('planner-prev-year');
+        const nextYear = document.getElementById('planner-next-year');
+        if (previousYear) { previousYear.disabled = currentYear === 1000; previousYear.onclick = () => selectPlannerPeriod(currentYear - 1, plannerSelectedMonth); }
+        if (nextYear) { nextYear.disabled = currentYear === 9999; nextYear.onclick = () => selectPlannerPeriod(currentYear + 1, plannerSelectedMonth); }
+        if (previousButton) previousButton.disabled = currentYear === 1000 && plannerSelectedMonth === 0;
+        if (nextButton) nextButton.disabled = currentYear === 9999 && plannerSelectedMonth === 11;
+        if (openCalendarButton) openCalendarButton.onclick = () => {
+            calendarTaskWeek = false; selectedDateStr = null;
+            curCalDate = new Date(currentYear, plannerSelectedMonth, 1);
+            switchView('calendar');
+            renderCalendar();
+        };
+        if (openSeedsButton) openSeedsButton.onclick = () => {
+            localStorage.setItem('activeMonthFilter', calMonthNames[plannerSelectedMonth]);
+            switchView('list');
+        };
+
+        if (focusId.startsWith('planner-')) document.getElementById(focusId)?.focus();
     }
 
     const plannerSeasonalAdvice = [
@@ -3280,7 +5158,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         { title: "December - Winterrust", sub: "Reflecteer op het jaar en plan alvast vooruit", focus: "Gereedschap onderhoud en olie", alert: "Sneeuwdruk op structuren", tip: "Vergeet de vogels niet bij te voeren", icon: "❄️" }
     ];
 
-    function openPlannerMonthModal(mIndex) {
+    function openPlannerMonthModal(mIndex, year = plannerSelectedYear) {
         const modal = document.getElementById('planner-month-modal');
         const title = document.getElementById('planner-month-title');
         const subtitle = document.getElementById('planner-month-subtitle');
@@ -3295,7 +5173,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!modal) return;
 
         const advice = plannerSeasonalAdvice[mIndex];
-        title.textContent = advice.title;
+        title.textContent = `${advice.title} · ${year}`;
         subtitle.textContent = advice.sub;
         icon.textContent = advice.icon;
         focusText.textContent = advice.focus;
@@ -3306,58 +5184,67 @@ document.addEventListener('DOMContentLoaded', async () => {
         const plants = seeds.filter(s => getActiveMonths(s).has(mIndex));
         count.textContent = `${plants.length} planten`;
 
-        list.innerHTML = '';
+        list.replaceChildren();
         if (plants.length === 0) {
-            list.innerHTML = '<p style="text-align:center; padding:20px; color:#999; font-size:13px;">Geen zaaiplannen voor deze maand.</p>';
+            const empty = document.createElement('p');
+            empty.style.cssText = 'text-align:center; padding:20px; color:#999; font-size:13px;';
+            empty.textContent = 'Geen zaaiplannen voor deze maand.';
+            list.appendChild(empty);
         } else {
-            plants.sort((a, b) => a.naam.localeCompare(b.naam)).forEach(p => {
+            plants.sort((a, b) => a.naam.localeCompare(b.naam)).forEach(plant => {
                 const item = document.createElement('div');
                 item.className = 'planner-seed-item';
-                item.innerHTML = `
-                    <div class="planner-seed-info">
-                        <div class="planner-seed-name">${p.naam}</div>
-                        <div style="display:flex; gap:4px; margin-top:2px;">
-                            <span class="badge ${p.type.toLowerCase()}" style="font-size:9px; padding:1px 6px; font-weight:700;">${p.type}</span>
-                            <span class="badge ${p.status.toLowerCase()}" style="font-size:9px; padding:1px 6px; opacity:0.8;">${getStatusLabel(p.status)}</span>
-                        </div>
-                    </div>
-                `;
-                item.onclick = () => { closePlannerModal(); openDetailView(p); };
+                const info = document.createElement('div');
+                info.className = 'planner-seed-info';
+                const name = document.createElement('div');
+                name.className = 'planner-seed-name';
+                name.textContent = typeof plant.naam === 'string' ? plant.naam : '';
+                const badges = document.createElement('div');
+                badges.style.cssText = 'display:flex; gap:4px; margin-top:2px;';
+                const typeBadge = document.createElement('span');
+                typeBadge.className = `badge ${safeClassToken(plant.type)}`;
+                typeBadge.style.cssText = 'font-size:9px; padding:1px 6px; font-weight:700;';
+                typeBadge.textContent = typeof plant.type === 'string' ? plant.type : '';
+                const statusBadge = document.createElement('span');
+                statusBadge.className = `badge ${safeClassToken(plant.status)}`;
+                statusBadge.style.cssText = 'font-size:9px; padding:1px 6px; opacity:0.8;';
+                statusBadge.textContent = getStatusLabel(plant.status);
+                badges.append(typeBadge, statusBadge);
+                info.append(name, badges);
+                item.appendChild(info);
+                item.addEventListener('click', () => { closePlannerModal(); openDetailView(plant); });
                 list.appendChild(item);
             });
         }
 
         modal.classList.remove('hidden');
 
-        // Update footer CTA
         const footer = modal.querySelector('.planner-modal-footer');
         if (footer) {
-            // Remove old CTAs to avoid duplicates
-            footer.innerHTML = '';
-
+            footer.replaceChildren();
             const ctaCalendar = document.createElement('button');
+            ctaCalendar.type = 'button';
             ctaCalendar.className = 'planner-btn-primary btn-goto-calendar';
-            ctaCalendar.innerHTML = `Bekijk Kalender 🗓️`;
-            ctaCalendar.onclick = () => {
-                const currentYear = new Date().getFullYear();
-                curCalDate = new Date(currentYear, mIndex, 1);
+            ctaCalendar.textContent = 'Bekijk Kalender \u{1F5D3}\uFE0F';
+            ctaCalendar.addEventListener('click', () => {
+                selectedDateStr = null;
+                curCalDate = new Date(year, mIndex, 1);
                 closePlannerModal();
                 switchView('calendar');
                 renderCalendar();
-            };
+            });
             footer.appendChild(ctaCalendar);
 
             const ctaSeeds = document.createElement('button');
+            ctaSeeds.type = 'button';
             ctaSeeds.className = 'planner-btn-secondary';
-            ctaSeeds.innerHTML = `Bekijk Zaden 📦`;
-            ctaSeeds.onclick = () => {
+            ctaSeeds.textContent = 'Bekijk Zaden \u{1F4E6}';
+            ctaSeeds.addEventListener('click', () => {
                 localStorage.setItem('activeMonthFilter', calMonthNames[mIndex]);
                 closePlannerModal();
                 switchView('list');
-            };
+            });
             footer.appendChild(ctaSeeds);
-
-            // ctaClose removed based on user request
         }
     }
 
@@ -3373,10 +5260,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
     // Form logic simple
-    seedForm.onsubmit = async (e) => { 
-        e.preventDefault(); 
-        await saveCurrentForm(); 
-        switchView('list'); 
+    seedForm.onsubmit = async (e) => {
+        e.preventDefault();
+        await saveCurrentForm();
+        switchView('list');
     };
 
     // Initial load
@@ -3392,34 +5279,506 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('info-modal')?.classList.add('hidden');
     };
 
+    // --- IMPORT / EXPORT SAFETY ---
+    const BACKUP_VERSION = 1;
+    const ACTIVE_REMINDERS_STORAGE_KEY = 'moestuin_reminders';
+    const LEGACY_CALENDAR_STORAGE_KEY = 'moestuin_calendar';
+    const BACKUP_DATASET_KEYS = [
+        'seeds', 'calendar', 'wishlist', 'settings', 'userProfile',
+        'reminders', 'dailyProgress', 'theme', 'onboardingDone', 'uiState'
+    ];
+    const BACKUP_STORAGE_KEYS = [
+        LEGACY_CALENDAR_STORAGE_KEY, 'moestuin_wishlist', 'moestuin_settings',
+        'userProfile', 'moestuin_user_profile', ACTIVE_REMINDERS_STORAGE_KEY,
+        'daily_progress', 'theme', 'onboarding_done'
+    ];
+    const BACKUP_UI_STATE_KEYS = [
+        'expanded_extra-section', 'activeMonthFilter', 'layout_width',
+        'onboarding_sun', 'onboarding_type', 'onboarding_level'
+    ];
+    const BACKUP_DATASET_LABELS = {
+        seeds: 'zaden',
+        calendar: 'kalender',
+        wishlist: 'wishlist',
+        settings: 'instellingen',
+        userProfile: 'profiel',
+        reminders: 'herinneringen',
+        dailyProgress: 'dagelijkse voortgang',
+        theme: 'thema',
+        onboardingDone: 'onboarding',
+        uiState: 'interface-instellingen'
+    };
+
+    function isBackupObject(value) {
+        return value !== null && typeof value === 'object' && !Array.isArray(value);
+    }
+
+    function cloneBackupData(value) {
+        return JSON.parse(JSON.stringify(value));
+    }
+
+    function backupValidationError(message = 'Ongeldige backup') {
+        const error = new Error(message);
+        error.name = 'BackupValidationError';
+        return error;
+    }
+
+    function hasBackupKey(value, key) {
+        return Object.prototype.hasOwnProperty.call(value, key);
+    }
+
+    function isValidBackupId(value) {
+        if (typeof value === 'number') return Number.isFinite(value);
+        return typeof value === 'string' && value.trim() !== '';
+    }
+
+    const BACKUP_SEED_TYPES = new Set([
+        'Groente', 'Fruit', 'Kruid', 'Bloem', 'Bloembol', 'Boom', 'Struik', 'Sierplant', 'Overig'
+    ]);
+    const BACKUP_SEED_STANDPLAATSEN = new Set(['Zon', 'Halfschaduw', 'Schaduw', 'Kas', 'Binnen', 'Onbekend']);
+    const BACKUP_SEED_WATERBEHOEFTES = new Set(['Laag', 'Gemiddeld', 'Hoog', 'Weinig', 'Veel', 'Onbekend']);
+    const BACKUP_SEED_STATUSES = new Set(['Voorraad', 'Gezaaid', 'Groeit', 'Geoogst', 'Wishlist']);
+
+    function seedValidationError(index, field) {
+        return backupValidationError(`Ongeldige backup: zaad ${index + 1} heeft een ongeldig of ontbrekend veld "${field}".`);
+    }
+
+    function isValidMonthField(value) {
+        return typeof value === 'string' ||
+            (Array.isArray(value) && value.every(item =>
+                (typeof item === 'string') || (typeof item === 'number' && Number.isFinite(item))));
+    }
+
+    function normalizeBackupSeed(seed, index) {
+        if (!isBackupObject(seed)) throw seedValidationError(index, 'record');
+        if (!isValidBackupId(seed.id)) throw seedValidationError(index, 'id');
+        if (typeof seed.naam !== 'string' || seed.naam.trim() === '') throw seedValidationError(index, 'naam');
+        if (!BACKUP_SEED_TYPES.has(seed.type)) throw seedValidationError(index, 'type');
+        if (!BACKUP_SEED_STATUSES.has(seed.status)) throw seedValidationError(index, 'status');
+
+        const normalized = cloneBackupData(seed);
+        if (!hasBackupKey(seed, 'standplaats')) {
+            normalized.standplaats = 'Zon';
+        } else {
+            const standplaats = normalizeStandplaatsValue(seed.standplaats);
+            if (typeof seed.standplaats !== 'string' || !BACKUP_SEED_STANDPLAATSEN.has(standplaats)) {
+                throw seedValidationError(index, 'standplaats');
+            }
+            normalized.standplaats = standplaats;
+        }
+        const optionalStrings = [
+            ['water', 'Gemiddeld', BACKUP_SEED_WATERBEHOEFTES],
+            ['code', '', null],
+            ['beschrijving', '', null],
+            ['ervaringen', '', null],
+            ['featuredImageUrl', '', null],
+            ['image', '', null],
+            ['shopLink', '', null]
+        ];
+        for (const [field, fallback, allowedValues] of optionalStrings) {
+            if (!hasBackupKey(seed, field)) normalized[field] = fallback;
+            else if (typeof seed[field] !== 'string' || (allowedValues && !allowedValues.has(seed[field]))) {
+                throw seedValidationError(index, field);
+            }
+        }
+
+        for (const field of ['zaaitijd', 'oogsttijd']) {
+            if (!hasBackupKey(seed, field)) normalized[field] = '';
+            else if (!isValidMonthField(seed[field])) throw seedValidationError(index, field);
+        }
+
+        if (!hasBackupKey(seed, 'tags')) normalized.tags = [];
+        else if (!Array.isArray(seed.tags) || !seed.tags.every(tag => typeof tag === 'string')) {
+            throw seedValidationError(index, 'tags');
+        }
+
+        if (!hasBackupKey(seed, 'images')) normalized.images = [];
+        else if (!Array.isArray(seed.images) || !seed.images.every(image =>
+            isBackupObject(image) && typeof image.url === 'string' && image.url.trim() !== '')) {
+            throw seedValidationError(index, 'images');
+        }
+
+        for (const field of ['isFavorite', 'fase_gezaaid', 'fase_groeit', 'fase_geoogst']) {
+            if (!hasBackupKey(seed, field)) normalized[field] = false;
+            else if (typeof seed[field] !== 'boolean') throw seedValidationError(index, field);
+        }
+
+        if (!hasBackupKey(seed, 'ervaringScore')) normalized.ervaringScore = 0;
+        else if (typeof seed.ervaringScore !== 'number' || !Number.isFinite(seed.ervaringScore) ||
+            seed.ervaringScore < 0 || seed.ervaringScore > 5) throw seedValidationError(index, 'ervaringScore');
+
+        for (const field of ['purchaseYear', 'lastSownYear']) {
+            if (!hasBackupKey(seed, field)) normalized[field] = null;
+            else if (seed[field] !== null && (typeof seed[field] !== 'number' || !Number.isFinite(seed[field]))) {
+                throw seedValidationError(index, field);
+            }
+        }
+
+        return normalized;
+    }
+
+    function normalizeBackupSeeds(value) {
+        if (!Array.isArray(value)) throw backupValidationError();
+
+        const ids = new Set();
+        return value.map((seed, index) => {
+            const normalizedSeed = normalizeBackupSeed(seed, index);
+            const idKey = String(normalizedSeed.id);
+            if (ids.has(idKey)) throw seedValidationError(index, 'id (dubbel)');
+            ids.add(idKey);
+            return normalizedSeed;
+        });
+    }
+
+    function normalizeBackupArray(value, itemValidator) {
+        if (!Array.isArray(value)) throw backupValidationError();
+        return value.map(item => {
+            if (!isBackupObject(item) || !itemValidator(item)) throw backupValidationError();
+            return cloneBackupData(item);
+        });
+    }
+
+    function reminderValidationError(index, field = 'record') {
+        return backupValidationError(`Ongeldige backup: herinnering ${index + 1} heeft een ongeldig of ontbrekend veld "${field}".`);
+    }
+
+    function normalizeBackupReminders(value) {
+        if (!Array.isArray(value)) throw backupValidationError();
+
+        return value.map((reminder, index) => {
+            if (!isBackupObject(reminder)) throw reminderValidationError(index);
+            if (typeof reminder.title !== 'string' || reminder.title.trim() === '') {
+                throw reminderValidationError(index, 'title');
+            }
+            if (typeof reminder.date !== 'string' || reminder.date.trim() === '') {
+                throw reminderValidationError(index, 'date');
+            }
+            if (hasBackupKey(reminder, 'id') && !isValidBackupId(reminder.id)) {
+                throw reminderValidationError(index, 'id');
+            }
+            if (hasBackupKey(reminder, 'done') && typeof reminder.done !== 'boolean') {
+                throw reminderValidationError(index, 'done');
+            }
+
+            // Keep optional notes and unknown future fields intact.
+            return cloneBackupData(reminder);
+        });
+    }
+
+    function isBackupUIStateKey(key) {
+        return BACKUP_UI_STATE_KEYS.includes(key) ||
+            key.startsWith('dashboard_nu_doen_expanded_') ||
+            key.startsWith('garden_group_');
+    }
+
+    function normalizeBackupUIState(value) {
+        if (!isBackupObject(value)) throw backupValidationError();
+
+        const normalized = {};
+        for (const [key, item] of Object.entries(value)) {
+            if (!isBackupUIStateKey(key)) continue;
+            if (typeof item !== 'string' && typeof item !== 'number' && typeof item !== 'boolean') {
+                throw backupValidationError();
+            }
+            normalized[key] = String(item);
+        }
+        return normalized;
+    }
+
+    function normalizeImportedBackup(input) {
+        // Older exports could be a plain seed array; keep that format readable.
+        if (Array.isArray(input) && input.length === 0) throw backupValidationError();
+        const root = Array.isArray(input) ? { seeds: input } : input;
+        if (!isBackupObject(root)) throw backupValidationError();
+
+        const version = hasBackupKey(root, 'backupVersion') ? root.backupVersion : BACKUP_VERSION;
+        if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
+            throw backupValidationError();
+        }
+        if (version > BACKUP_VERSION) {
+            throw backupValidationError(`Deze backup is nieuwer dan deze app ondersteunt (versie ${version}).`);
+        }
+        if (version !== BACKUP_VERSION) throw backupValidationError();
+
+        const hasLegacyCalendarDataset = hasBackupKey(root, LEGACY_CALENDAR_STORAGE_KEY);
+        const hasDataset = BACKUP_DATASET_KEYS.some(key => hasBackupKey(root, key)) || hasLegacyCalendarDataset;
+        if (!hasDataset) throw backupValidationError();
+
+        const normalized = {
+            backupVersion: BACKUP_VERSION,
+            seeds: [],
+            calendar: {},
+            wishlist: [],
+            settings: {},
+            userProfile: {},
+            reminders: [],
+            dailyProgress: {},
+            theme: 'light',
+            onboardingDone: 'false',
+            uiState: {},
+            providedDatasets: []
+        };
+
+        if (hasBackupKey(root, 'seeds')) {
+            normalized.seeds = normalizeBackupSeeds(root.seeds);
+            normalized.providedDatasets.push('seeds');
+        }
+        if (hasBackupKey(root, 'calendar') || hasLegacyCalendarDataset) {
+            const calendarData = hasBackupKey(root, 'calendar')
+                ? root.calendar
+                : root[LEGACY_CALENDAR_STORAGE_KEY];
+            if (!isBackupObject(calendarData)) throw backupValidationError();
+            normalized.calendar = cloneBackupData(calendarData);
+            normalized.providedDatasets.push('calendar');
+        }
+        if (hasBackupKey(root, 'wishlist')) {
+            normalized.wishlist = normalizeBackupArray(root.wishlist, item => typeof item.name === 'string' && item.name.trim() !== '');
+            normalized.providedDatasets.push('wishlist');
+        }
+        if (hasBackupKey(root, 'settings')) {
+            if (!isBackupObject(root.settings)) throw backupValidationError();
+            normalized.settings = cloneBackupData(root.settings);
+            normalized.providedDatasets.push('settings');
+        }
+        if (hasBackupKey(root, 'userProfile')) {
+            if (!isBackupObject(root.userProfile)) throw backupValidationError();
+            const importedProfile = normalizeUserProfile(root.userProfile) || { ...DEFAULT_USER_PROFILE };
+            normalized.userProfile = cloneBackupData(importedProfile);
+            normalized.providedDatasets.push('userProfile');
+        }
+        if (hasBackupKey(root, 'reminders')) {
+            normalized.reminders = normalizeBackupReminders(root.reminders);
+            normalized.providedDatasets.push('reminders');
+        }
+        if (hasBackupKey(root, 'dailyProgress')) {
+            if (!isBackupObject(root.dailyProgress)) throw backupValidationError();
+            normalized.dailyProgress = cloneBackupData(root.dailyProgress);
+            normalized.providedDatasets.push('dailyProgress');
+        }
+        if (hasBackupKey(root, 'theme')) {
+            if (typeof root.theme !== 'string') throw backupValidationError();
+            normalized.theme = typeof normalizeAppTheme === 'function'
+                ? normalizeAppTheme(root.theme)
+                : (root.theme === 'dark' || root.theme === 'playful' ? root.theme : 'light');
+            normalized.providedDatasets.push('theme');
+        }
+        if (hasBackupKey(root, 'onboardingDone')) {
+            if (typeof root.onboardingDone !== 'string') throw backupValidationError();
+            normalized.onboardingDone = root.onboardingDone;
+            normalized.providedDatasets.push('onboardingDone');
+        }
+        if (hasBackupKey(root, 'uiState')) {
+            normalized.uiState = normalizeBackupUIState(root.uiState);
+            normalized.providedDatasets.push('uiState');
+        }
+
+        return normalized;
+    }
+
+    function parseAndNormalizeBackup(rawText) {
+        let parsed;
+        try {
+            parsed = JSON.parse(rawText);
+        } catch (error) {
+            throw backupValidationError();
+        }
+        return normalizeImportedBackup(parsed);
+    }
+
+    function buildBackupPayload(seedData) {
+        return {
+            backupVersion: BACKUP_VERSION,
+            seeds: cloneBackupData(seedData),
+            calendar: readStoredJSON(LEGACY_CALENDAR_STORAGE_KEY, {}, normalizeStoredObject),
+            wishlist: readStoredJSON('moestuin_wishlist', [], normalizeStoredArray),
+            settings: readStoredJSON('moestuin_settings', {}, normalizeStoredObject),
+            userProfile: cloneBackupData(loadUserProfile()),
+            reminders: readStoredJSON(ACTIVE_REMINDERS_STORAGE_KEY, [], normalizeReminders),
+            dailyProgress: readStoredJSON('daily_progress', {}, normalizeStoredObject),
+            theme: typeof getStoredAppTheme === 'function'
+                ? getStoredAppTheme()
+                : (localStorage.getItem('theme') === 'dark' || localStorage.getItem('theme') === 'playful'
+                    ? localStorage.getItem('theme')
+                    : 'light'),
+            onboardingDone: localStorage.getItem('onboarding_done') || 'false',
+            uiState: {}
+        };
+    }
+
+    function isRestoredUIStateKey(key) {
+        return isBackupUIStateKey(key);
+    }
+
+    function isRestoredStorageKey(key) {
+        return BACKUP_STORAGE_KEYS.includes(key) || isRestoredUIStateKey(key);
+    }
+
+    function hasProvidedDataset(backup, dataset) {
+        return Array.isArray(backup.providedDatasets) && backup.providedDatasets.includes(dataset);
+    }
+
+    function getProvidedDatasetLabels(backup) {
+        return backup.providedDatasets
+            .map(dataset => BACKUP_DATASET_LABELS[dataset] || dataset)
+            .join(', ');
+    }
+
+    function confirmBackupRestore(backup, confirmFn) {
+        const ask = confirmFn || window.confirm;
+        return ask(`Deze backup vervangt: ${getProvidedDatasetLabels(backup)}. Doorgaan?`);
+    }
+
+    function captureLocalStorageSnapshot() {
+        const snapshot = {};
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key !== null) snapshot[key] = localStorage.getItem(key);
+        }
+        return snapshot;
+    }
+
+    function restoreLocalStorageSnapshot(snapshot) {
+        const currentKeys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key !== null) currentKeys.push(key);
+        }
+        for (const key of currentKeys) {
+            if (!Object.prototype.hasOwnProperty.call(snapshot, key)) localStorage.removeItem(key);
+        }
+        for (const [key, value] of Object.entries(snapshot)) localStorage.setItem(key, value);
+    }
+
+    function buildRestoreStorageWrites(backup) {
+        const writes = [];
+        if (hasProvidedDataset(backup, 'calendar')) writes.push([LEGACY_CALENDAR_STORAGE_KEY, JSON.stringify(backup.calendar)]);
+        if (hasProvidedDataset(backup, 'wishlist')) writes.push(['moestuin_wishlist', JSON.stringify(backup.wishlist)]);
+        if (hasProvidedDataset(backup, 'settings')) writes.push(['moestuin_settings', JSON.stringify(backup.settings)]);
+        if (hasProvidedDataset(backup, 'userProfile')) {
+            const profile = normalizeUserProfile(backup.userProfile) || { ...DEFAULT_USER_PROFILE };
+            writes.push([CANONICAL_PROFILE_STORAGE_KEY, JSON.stringify(profile)]);
+            writes.push([LEGACY_PROFILE_STORAGE_KEY, JSON.stringify(buildLegacyProfileMirror(profile))]);
+            if (hasMeaningfulProfileValue(profile.gardenType)) writes.push(['onboarding_type', profile.gardenType]);
+            if (hasMeaningfulProfileValue(profile.light)) writes.push(['onboarding_sun', profile.light]);
+            if (hasMeaningfulProfileValue(profile.experience)) writes.push(['onboarding_level', profile.experience]);
+        }
+        if (hasProvidedDataset(backup, 'reminders')) writes.push([ACTIVE_REMINDERS_STORAGE_KEY, JSON.stringify(backup.reminders)]);
+        if (hasProvidedDataset(backup, 'dailyProgress')) writes.push(['daily_progress', JSON.stringify(backup.dailyProgress)]);
+        if (hasProvidedDataset(backup, 'theme')) writes.push(['theme', backup.theme]);
+        if (hasProvidedDataset(backup, 'onboardingDone')) writes.push(['onboarding_done', backup.onboardingDone]);
+        if (hasProvidedDataset(backup, 'uiState')) writes.push(...Object.entries(backup.uiState));
+        return writes;
+    }
+
+    function applyRestoreToLocalStorage(backup) {
+        const storageKeysToReplace = new Set(buildRestoreStorageWrites(backup).map(([key]) => key));
+        const currentKeys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key !== null && (storageKeysToReplace.has(key) ||
+                (hasProvidedDataset(backup, 'uiState') && isRestoredUIStateKey(key)))) {
+                currentKeys.push(key);
+            }
+        }
+        for (const key of currentKeys) localStorage.removeItem(key);
+        for (const [key, value] of buildRestoreStorageWrites(backup)) localStorage.setItem(key, String(value));
+    }
+
+    async function captureRestoreSafetyBackup(backup) {
+        return {
+            seeds: hasProvidedDataset(backup, 'seeds') ? cloneBackupData(await getAllSeeds()) : null,
+            storage: captureLocalStorageSnapshot()
+        };
+    }
+
+    async function restoreBackupData(backup) {
+        const safetyBackup = await captureRestoreSafetyBackup(backup);
+        let seedsReplaced = false;
+        try {
+            applyRestoreToLocalStorage(backup);
+            if (hasProvidedDataset(backup, 'seeds')) {
+                await replaceAllSeedsAtomic(backup.seeds);
+                seeds = cloneBackupData(backup.seeds);
+                seedsReplaced = true;
+            }
+        } catch (error) {
+            try {
+                restoreLocalStorageSnapshot(safetyBackup.storage);
+                if (seedsReplaced || safetyBackup.seeds) {
+                    await replaceAllSeedsAtomic(safetyBackup.seeds);
+                    seeds = cloneBackupData(safetyBackup.seeds);
+                }
+            } catch (rollbackError) {
+                console.warn('[KweekKompas] Veilig terugzetten van de vorige backup is mislukt.');
+            }
+            throw error;
+        }
+    }
+
+    window.KweekLocalData = {
+        capture: async () => {
+            const payload = buildBackupPayload(await getAllSeeds());
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && isBackupUIStateKey(key)) payload.uiState[key] = localStorage.getItem(key);
+            }
+            return payload;
+        },
+        restore: async payload => {
+            const normalized = normalizeImportedBackup(payload);
+            await restoreBackupData(normalized);
+        }
+    };
+
     // --- DATA MANAGEMENT LOGIC ---
+    let exampleGardenLoading = false;
+    window.loadExampleGarden = async function(button) {
+        if (exampleGardenLoading) return;
+        exampleGardenLoading = true;
+        if (button) button.disabled = true;
+        const status = message => {
+            const element = document.getElementById('example-garden-status');
+            if (element) element.textContent = message;
+        };
+        try {
+            status('Voorbeeldtuin laden…');
+            const response = await fetch('assets/example-garden/voorbeeldtuin.json');
+            if (!response.ok) throw new Error('Voorbeeldtuin kan nu niet worden geladen. Probeer later opnieuw.');
+            // Reuse the complete backup validation, but import plants only.
+            const input = await response.json();
+            const examples = normalizeImportedBackup({ backupVersion: input.backupVersion, seeds: input.seeds }).seeds;
+            if (!confirm(`${examples.length} voorbeeldplanten aan je tuin toevoegen? Je eigen planten blijven bewaard. Planten die er al staan worden overgeslagen.`)) {
+                status('Voorbeeldtuin laden geannuleerd.');
+                return;
+            }
+            const added = await addExampleSeedsAtomic(examples);
+            seeds = await getAllSeeds();
+            renderHome();
+            status(`${added} voorbeeldplanten toegevoegd.${added === 0 ? ' Deze planten staan al in je tuin.' : ''}`);
+        } catch (error) {
+            status(error?.name === 'BackupValidationError' ? 'Het voorbeeldbestand is niet geldig. Er is niets toegevoegd.' : error.message || 'Voorbeeldtuin laden is mislukt.');
+        } finally {
+            exampleGardenLoading = false;
+            if (button?.isConnected) button.disabled = false;
+        }
+    };
+
     window.exportData = async function() {
         try {
             const data = await getAllSeeds();
-            const fullBackup = {
-                seeds: data,
-                calendar: JSON.parse(localStorage.getItem('moestuin_calendar')) || {},
-                wishlist: JSON.parse(localStorage.getItem('moestuin_wishlist')) || [],
-                settings: JSON.parse(localStorage.getItem('moestuin_settings')) || {},
-                userProfile: JSON.parse(localStorage.getItem('userProfile')) || JSON.parse(localStorage.getItem('moestuin_user_profile')) || {},
-                reminders: JSON.parse(localStorage.getItem('moestuin_reminders')) || [],
-                dailyProgress: JSON.parse(localStorage.getItem('daily_progress')) || {},
-                theme: localStorage.getItem('theme') || 'dark',
-                onboardingDone: localStorage.getItem('onboarding_done') || 'false',
-                uiState: {}
-            };
+            const fullBackup = buildBackupPayload(data);
 
             // Collect dynamic UI states and preferences
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key.startsWith('dashboard_nu_doen_expanded_') || 
-                    key.startsWith('garden_group_') || 
+                if (key.startsWith('dashboard_nu_doen_expanded_') ||
+                    key.startsWith('garden_group_') ||
                     [
-                        'expanded_extra-section', 
-                        'activeMonthFilter', 
-                        'layout_width', 
-                        'onboarding_sun', 
-                        'onboarding_type', 
+                        'expanded_extra-section',
+                        'activeMonthFilter',
+                        'layout_width',
+                        'onboarding_sun',
+                        'onboarding_type',
                         'onboarding_level'
                     ].includes(key)) {
                     fullBackup.uiState[key] = localStorage.getItem(key);
@@ -3446,17 +5805,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             input.click();
         }
     };
+    // Beide zichtbare acties valideren eerst alle aangeleverde datasets en
+    // vervangen daarna alleen die datasets.
     window.restoreBackup = window.importData;
 
 
-    window.resetApp = function() {
+    window.resetApp = async function() {
         if (confirm("WEET JE HET ZEKER? Dit verwijdert alle zaden en instellingen. Dit kan niet ongedaan worden.")) {
+            try { await window.KweekServices?.removeSafetyBackup(); }
+            catch (error) { showToast(error.message); return; }
             localStorage.clear();
+            if (db) { db.close(); db = null; }
             const request = indexedDB.deleteDatabase("MoestuinDB");
             request.onsuccess = () => {
                 showToast("App gereset. Herstarten...");
                 setTimeout(() => location.reload(), 1500);
             };
+            request.onblocked = () => showToast('Sluit andere KweekKompas-tabbladen om de lokale database te wissen.');
+            request.onerror = () => showToast('Wissen van de lokale database is mislukt.');
         }
     };
 
@@ -3468,36 +5834,34 @@ document.addEventListener('DOMContentLoaded', async () => {
             const r = new FileReader();
             r.onload = async (evt) => {
                 try {
-                    const imported = JSON.parse(evt.target.result);
-                    let count = 0;
-                    const seedsToImport = Array.isArray(imported) ? imported : (imported.seeds || []);
-                    for (const s of seedsToImport) { await saveSeed(s); count++; }
-
-                    if (imported.calendar) localStorage.setItem('moestuin_calendar', JSON.stringify(imported.calendar));
-                    if (imported.wishlist) localStorage.setItem('moestuin_wishlist', JSON.stringify(imported.wishlist));
-                    if (imported.settings) localStorage.setItem('moestuin_settings', JSON.stringify(imported.settings));
-                    
-                    // Nieuwe velden herstellen
-                    if (imported.userProfile) {
-                        localStorage.setItem('userProfile', JSON.stringify(imported.userProfile));
-                        localStorage.setItem('moestuin_user_profile', JSON.stringify(imported.userProfile));
+                    const normalizedBackup = parseAndNormalizeBackup(evt.target.result);
+                    if (!confirmBackupRestore(normalizedBackup)) {
+                        showToast('Herstellen geannuleerd.');
+                        inputImportRelocated.value = '';
+                        return;
                     }
-                    if (imported.reminders) localStorage.setItem('moestuin_reminders', JSON.stringify(imported.reminders));
-                    if (imported.dailyProgress) localStorage.setItem('daily_progress', JSON.stringify(imported.dailyProgress));
-                    if (imported.theme) localStorage.setItem('theme', imported.theme);
-                    if (imported.onboardingDone) localStorage.setItem('onboarding_done', imported.onboardingDone);
+                    await restoreBackupData(normalizedBackup);
 
-                    // Herstel UI state en overige voorkeuren
-                    if (imported.uiState) {
-                        for (const key in imported.uiState) {
-                            localStorage.setItem(key, imported.uiState[key]);
-                        }
-                    }
+                    showToast(`${normalizedBackup.seeds.length} zaden en alle instellingen hersteld!`);
+                    setTimeout(() => location.reload(), 1500);
+                    inputImportRelocated.value = '';
+                    return;
+
+                    /* Legacy restore code is intentionally unreachable after validation.
+
 
                     showToast(`${count} zaden en alle instellingen hersteld! 🌿`);
 
                     setTimeout(() => location.reload(), 1500);
-                } catch (err) { alert("Ongeldig bestand!"); console.error(err); }
+                    */
+                } catch (err) {
+                    if (err?.name === 'BackupValidationError') {
+                        showToast(`${err.message || 'Ongeldige backup'} Er is niets gewijzigd.`);
+                    } else {
+                        showToast('Herstellen mislukt. Er is niets gewijzigd.');
+                    }
+                    console.warn('[KweekKompas] Backup kon niet worden hersteld.');
+                }
                 inputImportRelocated.value = '';
             };
             r.readAsText(file);
@@ -3506,14 +5870,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- WISHLIST LOGIC (Redesigned) ---
 
-    let wishlist = JSON.parse(localStorage.getItem('moestuin_wishlist')) || [];
+    let wishlist = readStoredJSON('moestuin_wishlist', [], normalizeWishlist);
     let editingWishId = null;
     let activeWishFilter = 'all';
+    let activeWishSearch = '';
 
     const bekendeZaden = [
-        'tomaat', 'sla', 'courgette', 'pompoen', 'wortel', 'boon', 'erwt', 'radijs', 
-        'paprika', 'peper', 'spinazie', 'kool', 'ui', 'knoflook', 'prei', 'biet', 
-        'aardappel', 'aardbei', 'framboos', 'bes', 'munt', 'rozemarijn', 'tijm', 
+        'tomaat', 'sla', 'courgette', 'pompoen', 'wortel', 'boon', 'erwt', 'radijs',
+        'paprika', 'peper', 'spinazie', 'kool', 'ui', 'knoflook', 'prei', 'biet',
+        'aardappel', 'aardbei', 'framboos', 'bes', 'munt', 'rozemarijn', 'tijm',
         'peterselie', 'basilicum', 'komkommer', 'augurk', 'melano', 'aubergine',
         'bloemkool', 'broccoli', 'spruitjes', 'boerenkool', 'rode kool', 'witte kool',
         'savooiekool', 'andijvie', 'rucola', 'veldsla', 'raapsteel', 'postelein',
@@ -3534,71 +5899,75 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderWishlist() {
         const container = document.getElementById('wishlist-items');
         const emptyState = document.getElementById('wishlist-empty-state');
-        const fastAdd = document.getElementById('wishlist-fast-add');
         if (!container) return;
 
-        // 7.1 Empty state logic
+        const seedCount = wishlist.filter(item => item.type === 'seed').length;
+        const totalCount = document.getElementById('wishlist-count-total');
+        const seedCountLabel = document.getElementById('wishlist-count-seeds');
+        const itemCountLabel = document.getElementById('wishlist-count-items');
+        if (totalCount) totalCount.textContent = String(wishlist.length);
+        if (seedCountLabel) seedCountLabel.textContent = String(seedCount);
+        if (itemCountLabel) itemCountLabel.textContent = String(wishlist.length - seedCount);
+
+        container.replaceChildren();
         if (wishlist.length === 0) {
-            container.innerHTML = '';
+            activeWishFilter = 'all';
+            activeWishSearch = '';
+            const searchInput = document.getElementById('wishlist-search-input');
+            if (searchInput) searchInput.value = '';
+            document.querySelectorAll('[data-wish-filter]').forEach(tab => {
+                const isActive = tab.dataset.wishFilter === 'all';
+                tab.classList.toggle('active', isActive);
+                tab.setAttribute('aria-pressed', String(isActive));
+            });
             if (emptyState) emptyState.classList.remove('hidden');
-            if (fastAdd) fastAdd.classList.add('hidden');
             return;
-        } else {
-            if (emptyState) emptyState.classList.add('hidden');
-            if (fastAdd) fastAdd.classList.remove('hidden');
         }
 
-        // 7.2 Filtering logic
-        const filtered = wishlist.filter(item => {
-            if (activeWishFilter === 'all') return true;
-            return item.type === activeWishFilter;
-        });
+        if (emptyState) emptyState.classList.add('hidden');
 
-        container.innerHTML = filtered.length === 0
-            ? `<p class="wishlist-empty-msg" style="grid-column: 1/-1; text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 14px; opacity: 0.7;">Niets gevonden in deze categorie. ✨</p>`
-            : '';
+        const filtered = filterWishlistItems(wishlist, activeWishFilter, activeWishSearch);
+        if (filtered.length === 0) {
+            const emptyMessage = document.createElement('p');
+            emptyMessage.className = 'wishlist-empty-msg';
+            emptyMessage.textContent = activeWishSearch
+                ? 'Geen items gevonden. Pas je zoekopdracht of filter aan.'
+                : 'Geen items in deze categorie.';
+            container.appendChild(emptyMessage);
+            return;
+        }
 
         filtered.forEach(item => {
-            const el = document.createElement('div');
-            el.className = 'wish-item-card';
-
-            const thumbSrc = item.image || '';
-            const thumbContent = thumbSrc
-                ? `<img src="${thumbSrc}" alt="${item.name}" loading="lazy">`
-                : `<span class="wish-img-placeholder">${item.type === 'item' ? '📦' : '🌱'}</span>`;
-
-            el.innerHTML = `
-                <div class="wish-img-box">${thumbContent}</div>
-                <div class="wish-content-box" style="flex: 1;">
-                    <div style="display: flex; flex-direction: column;">
-                        <h4 class="wish-title">${item.name}</h4>
-                        <div style="display:flex; gap: 4px; align-items:center; margin-top: 4px;">
-                            <span class="badge ${item.type === 'seed' ? 'groente' : 'overige'}" style="font-size: 10px; padding: 2px 10px; border-radius: 6px; border:none; background: ${item.type === 'seed' ? 'rgba(95, 122, 97, 0.1)' : 'rgba(0,0,0,0.05)'}; font-weight: 700;">${item.type === 'seed' ? 'Zaad' : 'Item'}</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="wish-card-actions">
-                    ${item.type === 'seed' ? `<button class="btn-convert-seed" onclick="event.stopPropagation(); window._convertToSeed('${item.id}', this)">Naar zaden</button>` : ''}
-                    ${(item.link && item.link.startsWith('http')) ? `<button class="btn-wish-icon" onclick="event.stopPropagation(); window.open('${item.link}', '_blank')" title="Bekijk online">🔗</button>` : ''}
-                    <button class="btn-wish-icon" onclick="event.stopPropagation(); window._editWish('${item.id}')" title="Bewerk">✏️</button>
-                    <button class="btn-wish-icon" onclick="event.stopPropagation(); window._deleteWish('${item.id}')" title="Verwijder">🗑️</button>
-                </div>
-            `;
-
-            el.onclick = () => openWishModal(item.id);
-            container.appendChild(el);
+            const card = buildWishlistCard(item, {
+                onOpen: id => openWishModal(id),
+                onConvert: (id, button) => window._convertToSeed(id, button),
+                onLink: link => window.open(link, '_blank', 'noopener,noreferrer'),
+                onEdit: id => window._editWish(id),
+                onDelete: id => window._deleteWish(id)
+            });
+            container.appendChild(card);
         });
     }
-
     // Wishlist Tab handling (7.2)
     document.querySelectorAll('[data-wish-filter]').forEach(tab => {
         tab.onclick = () => {
-            document.querySelectorAll('[data-wish-filter]').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
+            document.querySelectorAll('[data-wish-filter]').forEach(t => {
+                const isActive = t === tab;
+                t.classList.toggle('active', isActive);
+                t.setAttribute('aria-pressed', String(isActive));
+            });
             activeWishFilter = tab.dataset.wishFilter;
             renderWishlist();
         };
     });
+
+    const wishlistSearchInput = document.getElementById('wishlist-search-input');
+    if (wishlistSearchInput) {
+        wishlistSearchInput.addEventListener('input', () => {
+            activeWishSearch = wishlistSearchInput.value;
+            renderWishlist();
+        });
+    }
 
     // Exposed Helpers for Wishlist Cards
     window._deleteWish = (id) => {
@@ -3662,11 +6031,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         await saveSeed(newSeed);
         seeds = await getAllSeeds();
-        
+
         // Remove from wishlist
         wishlist = wishlist.filter(i => String(i.id) !== String(id));
         saveWish();
-        
+
         showToast("Toegevoegd aan je zaden 🌱");
         if (!viewList.classList.contains('hidden')) applyFilters();
     };
@@ -3680,6 +6049,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const wishModal = document.getElementById('wishlist-detail-modal');
     const wishInputQuick = document.getElementById('wishlist-quick-input');
     const btnAddWishQuick = document.getElementById('btn-add-wish-quick');
+    let wishImageDraft = null; // null keeps the stored image unchanged until Save.
+    let wishImageReadVersion = 0;
+    let wishReturnFocus = null;
 
     function openWishModal(id) {
         editingWishId = id;
@@ -3694,19 +6066,53 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('edit-wish-name').value = item.name || '';
         document.getElementById('edit-wish-type').value = item.type || 'seed';
         document.getElementById('edit-wish-link').value = item.link || '';
-        document.getElementById('edit-wish-img-url').value = item.image && item.image.startsWith('http') ? item.image : '';
+        wishImageDraft = null;
+        wishImageReadVersion++;
+        document.getElementById('btn-wish-save').disabled = false;
+        document.getElementById('edit-wish-img-file').value = '';
+        document.getElementById('wish-image-link').open = false;
+        document.getElementById('edit-wish-img-url').value = safeHttpUrl(item.image);
+        document.getElementById('edit-wish-img-url').setCustomValidity('');
         document.getElementById('edit-wish-note').value = item.note || '';
 
-        delete wishModal.dataset.tempPastedImg;
         updateWishImgPreview(item.image);
         updateVisitLink(item.link);
 
+        wishReturnFocus = document.activeElement;
         wishModal.classList.remove('hidden');
+        document.getElementById('edit-wish-name').focus();
     }
 
     function closeWishModal() {
         wishModal.classList.add('hidden');
         editingWishId = null;
+        wishImageDraft = null;
+        wishImageReadVersion++;
+        (wishReturnFocus?.isConnected ? wishReturnFocus : wishInputQuick)?.focus();
+    }
+
+    function readWishImage(file) {
+        if (!file || !file.type.startsWith('image/')) return;
+        const version = ++wishImageReadVersion;
+        const saveButton = document.getElementById('btn-wish-save');
+        saveButton.disabled = true;
+        const reader = new FileReader();
+        reader.onload = () => {
+            if (version !== wishImageReadVersion || !editingWishId) return;
+            const safeImage = safeWishlistImageUrl(reader.result);
+            if (safeImage) {
+                wishImageDraft = safeImage;
+                const urlField = document.getElementById('edit-wish-img-url');
+                urlField.value = ''; urlField.setCustomValidity('');
+                updateWishImgPreview(safeImage);
+            } else showToast('Gebruik een PNG-, JPG-, GIF-, WebP- of AVIF-afbeelding.');
+            saveButton.disabled = false;
+        };
+        reader.onerror = () => {
+            if (version !== wishImageReadVersion) return;
+            saveButton.disabled = false; showToast('Deze afbeelding kon niet worden gelezen.');
+        };
+        reader.readAsDataURL(file);
     }
 
     function updateWishImgPreview(src) {
@@ -3714,9 +6120,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const placeholder = document.getElementById('wish-img-placeholder');
         if (!preview || !placeholder) return;
 
-        const isValid = src && (src.startsWith('http') || src.startsWith('data:image'));
-        if (isValid) {
-            preview.src = src;
+        const safeSrc = safeWishlistImageUrl(src);
+        if (safeSrc) {
+            preview.src = safeSrc;
             preview.style.display = 'block';
             placeholder.style.display = 'none';
         } else {
@@ -3728,8 +6134,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     function updateVisitLink(url) {
         const btn = document.getElementById('btn-visit-link');
         if (!btn) return;
-        if (url && url.startsWith('http')) {
-            btn.href = url;
+        const safeUrl = safeHttpUrl(url);
+        if (safeUrl) {
+            btn.href = safeUrl;
             btn.style.opacity = '1';
             btn.style.pointerEvents = 'auto';
         } else {
@@ -3762,46 +6169,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             saveWish();
             inputEl.value = '';
 
-            // UX Pass: Feedback
-            if (inputEl.id === 'wishlist-quick-input') {
-                inputEl.focus();
-                // Subtiele flash feedback op input
-                const originalBg = inputEl.style.background;
-                inputEl.style.background = '#F0FDF4'; 
-                setTimeout(() => { inputEl.style.background = originalBg; }, 300);
-            } else {
-                switchView('wishlist'); // Ensure view is updated if added from empty state
-            }
+            inputEl.focus();
         };
 
         btnAddWishQuick.onclick = () => handleAdd(wishInputQuick);
         wishInputQuick.onkeydown = (e) => { if (e.key === 'Enter') handleAdd(wishInputQuick); };
 
-        const btnAddWishEmpty = document.getElementById('btn-add-wish-empty');
-        const wishInputEmpty = document.getElementById('wishlist-empty-input');
-        if (btnAddWishEmpty && wishInputEmpty) {
-            btnAddWishEmpty.onclick = () => handleAdd(wishInputEmpty);
-            wishInputEmpty.onkeydown = (e) => { if (e.key === 'Enter') handleAdd(wishInputEmpty); };
-        }
     }
 
     // --- PASTE SUPPORT (Ctrl+V) ---
     wishModal?.addEventListener('paste', (e) => {
-        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        for (let index in items) {
-            const item = items[index];
-            if (item.kind === 'file' && item.type.match(/^image\//)) {
-                const blob = item.getAsFile();
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const base64 = event.target.result;
-                    document.getElementById('edit-wish-img-url').value = 'Pasted Image';
-                    updateWishImgPreview(base64);
-                    // Temporarily store in a way the save button can pick up
-                    wishModal.dataset.tempPastedImg = base64;
-                    showToast("Afbeelding geplakt! 📸");
-                };
-                reader.readAsDataURL(blob);
+        for (const item of Array.from(e.clipboardData?.items || [])) {
+            if (item.kind === 'file' && item.type.startsWith('image/')) {
+                e.preventDefault(); readWishImage(item.getAsFile()); break;
             }
         }
     });
@@ -3822,24 +6202,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('btn-wish-save')?.addEventListener('click', () => {
         if (!editingWishId) return;
-        const index = wishlist.findIndex(i => i.id === editingWishId);
+        const index = wishlist.findIndex(i => String(i.id) === String(editingWishId));
         if (index === -1) return;
+
+        const nameField = document.getElementById('edit-wish-name');
+        const imgUrlField = document.getElementById('edit-wish-img-url');
+        if (!nameField.reportValidity() || !imgUrlField.reportValidity()) return;
 
         wishlist[index].name = document.getElementById('edit-wish-name').value;
         wishlist[index].type = document.getElementById('edit-wish-type').value;
         wishlist[index].link = document.getElementById('edit-wish-link').value;
         wishlist[index].note = document.getElementById('edit-wish-note').value;
 
-        const imgUrlField = document.getElementById('edit-wish-img-url');
-        const imgUrl = imgUrlField.value;
-
-        if (wishModal.dataset.tempPastedImg && imgUrl === 'Pasted Image') {
-            wishlist[index].image = wishModal.dataset.tempPastedImg;
-        } else if (imgUrl && imgUrl.startsWith('http')) {
-            wishlist[index].image = imgUrl;
-        }
-
-        delete wishModal.dataset.tempPastedImg;
+        if (wishImageDraft !== null) wishlist[index].image = wishImageDraft;
         saveWish();
         closeWishModal();
     });
@@ -3865,149 +6240,209 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.getElementById('edit-wish-img-url')?.addEventListener('input', (e) => {
-        updateWishImgPreview(e.target.value);
+        const rawUrl = e.target.value.trim();
+        const safeUrl = safeHttpUrl(rawUrl);
+        e.target.setCustomValidity(rawUrl && !safeUrl ? 'Gebruik een afbeeldingslink die begint met https:// of http://.' : '');
+        wishImageReadVersion++;
+        document.getElementById('btn-wish-save').disabled = false;
+        wishImageDraft = safeUrl || null;
+        const storedImage = wishlist.find(item => String(item.id) === String(editingWishId))?.image;
+        updateWishImgPreview(safeUrl || storedImage);
     });
 
+    document.getElementById('btn-wish-upload')?.addEventListener('click', () => document.getElementById('edit-wish-img-file').click());
     document.getElementById('edit-wish-img-file')?.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const base64 = event.target.result;
-            updateWishImgPreview(base64);
-            if (editingWishId) {
-                const index = wishlist.findIndex(i => i.id === editingWishId);
-                if (index !== -1) wishlist[index].image = base64;
-            }
-        };
-        reader.readAsDataURL(file);
+        readWishImage(e.target.files[0]);
     });
 
-    // --- STANDALONE CALENDAR LOGIC (Minimalist) ---
-    // State moved to top for dashboard access
-
+    // --- CALENDAR VIEW ---
     function renderCalendar() {
         const grid = document.getElementById('calendar-grid');
-        const title = document.getElementById('cal-month-title');
-        const tipsBadge = document.getElementById('btn-cal-sow-tips');
         if (!grid) return;
 
-        grid.innerHTML = '';
-        const y = curCalDate.getFullYear(), m = curCalDate.getMonth();
-        title.textContent = `${calMonthNames[m]} ${y}`;
+        const year = curCalDate.getFullYear();
+        const month = curCalDate.getMonth();
+        const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+        const today = new Date();
+        const todayStr = formatDate(today);
+        const title = document.getElementById('cal-month-title');
+        const currentMonthLabel = document.getElementById('cal-current-month-indicator');
+        const currentYearLabel = document.getElementById('cal-current-year-indicator');
+        const tipsBadge = document.getElementById('btn-cal-sow-tips');
 
-        // Update badge
+        if (!aiPlanningDraft && !calendarHasRendered && !selectedDateStr && year === today.getFullYear() && month === today.getMonth()) {
+            selectedDateStr = todayStr;
+        }
+        calendarHasRendered = true;
+
+        if (title) title.textContent = `${calMonthNames[month]} ${year}`;
+        if (currentMonthLabel) currentMonthLabel.textContent = calMonthNames[today.getMonth()];
+        if (currentYearLabel) currentYearLabel.textContent = `Tuinjaar ${today.getFullYear()}`;
+
         if (tipsBadge) {
-            const plants = seeds.filter(s => getActiveMonths(s).has(m));
+            const plants = seeds.filter(seed => getActiveMonths(seed).has(month));
             if (plants.length > 0) {
                 tipsBadge.classList.remove('hidden');
-                tipsBadge.onclick = (e) => {
-                    e.stopPropagation();
-                    openPlannerMonthModal(m);
+                tipsBadge.onclick = event => {
+                    event.stopPropagation();
+                    openPlannerMonthModal(month, year);
                 };
             } else {
                 tipsBadge.classList.add('hidden');
             }
         }
 
-        const firstDay = new Date(y, m, 1).getDay();
-        const daysInMonth = new Date(y, m + 1, 0).getDate();
+        grid.replaceChildren();
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
         const offset = (firstDay === 0 ? 7 : firstDay) - 1;
-
-        for (let i = 0; i < offset; i++) {
+        for (let index = 0; index < offset; index += 1) {
             const empty = document.createElement('div');
             empty.className = 'calendar-day other-month';
+            empty.setAttribute('aria-hidden', 'true');
             grid.appendChild(empty);
         }
 
-        const today = new Date();
-        const todayStr = formatDate(today);
+        for (let day = 1; day <= daysInMonth; day += 1) {
+            const dateStr = `${monthKey}-${String(day).padStart(2, '0')}`;
+            const dayReminders = reminders.filter(reminder => reminder.date === dateStr);
+            const dayButton = document.createElement('button');
+            dayButton.type = 'button';
+            dayButton.className = 'calendar-day';
+            if (dateStr === todayStr) {
+                dayButton.classList.add('today');
+                dayButton.setAttribute('aria-current', 'date');
+            }
+            if (dateStr === selectedDateStr) dayButton.classList.add('selected');
+            dayButton.setAttribute('aria-pressed', String(dateStr === selectedDateStr));
+            dayButton.setAttribute('aria-label', `${day} ${calMonthNames[month]} ${year}${dayReminders.length ? `, ${dayReminders.length} ${dayReminders.length === 1 ? 'herinnering' : 'herinneringen'}` : ''}`);
 
-        for (let d = 1; d <= daysInMonth; d++) {
-            const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-            const dayReminders = reminders.filter(r => r.date === dateStr);
-
-            const dayEl = document.createElement('div');
-            dayEl.className = 'calendar-day';
-            if (dateStr === todayStr) dayEl.classList.add('today');
-            if (dateStr === selectedDateStr) dayEl.classList.add('selected');
-
-            dayEl.innerHTML = `<span class="day-num">${d}</span>`;
-
-            dayEl.innerHTML = `<span class="day-num">${d}</span>`;
-
-            dayEl.innerHTML = `<span class="day-num">${d}</span>`;
+            const dayNumber = document.createElement('span');
+            dayNumber.className = 'day-num';
+            dayNumber.textContent = String(day);
+            dayButton.appendChild(dayNumber);
 
             if (dayReminders.length > 0) {
-                const count = dayReminders.length;
-                let pillsHtml = '<div class="cal-pills-container">';
-                const visibleCount = Math.min(count, 2);
-                
-                for (let j = 0; j < visibleCount; j++) {
-                    const r = dayReminders[j];
-                    // Clean label: take first word or max 10 chars
-                    let label = r.title.split(' ')[0];
-                    if (label.length > 10) label = label.substring(0, 9) + '…';
-                    
-                    pillsHtml += `<div class="cal-reminder-pill">${label}</div>`;
-                }
-                
-                if (count > 2) {
-                    pillsHtml += `<div class="cal-pill-more">+${count - 2}</div>`;
-                }
-                pillsHtml += '</div>';
-                dayEl.innerHTML += pillsHtml;
+                const marker = document.createElement('span');
+                marker.className = 'calendar-activity-marker';
+                marker.setAttribute('aria-hidden', 'true');
+                marker.textContent = dayReminders.length > 1 ? String(Math.min(dayReminders.length, 9)) : '';
+                dayButton.appendChild(marker);
             }
 
-            dayEl.onclick = () => selectDay(dateStr, d);
-            grid.appendChild(dayEl);
+            dayButton.addEventListener('click', () => selectDay(dateStr, day));
+            grid.appendChild(dayButton);
         }
+
+        const panel = document.getElementById('day-details');
+        const selectedDate = parseCalendarDate(selectedDateStr);
+        document.getElementById('ai-planning-review')?.classList.toggle('hidden', !aiPlanningDraft);
+        document.getElementById('ai-planning-cancel')?.classList.toggle('hidden', !aiPlanningDraft);
+        const addButton = document.getElementById('btn-add-reminder');
+        if (addButton) addButton.textContent = aiPlanningDraft ? 'Inplannen' : 'Toevoegen';
+        document.querySelector('.calendar-upcoming-panel')?.classList.toggle('hidden', calendarTaskWeek);
+        document.querySelector('#day-details .day-input-area')?.classList.toggle('hidden', calendarTaskWeek);
+        const agendaEyebrow = document.querySelector('#day-details .calendar-panel-eyebrow');
+        if (agendaEyebrow) agendaEyebrow.textContent = calendarTaskWeek ? 'Weekagenda' : 'Dagagenda';
+        const periodsHeading = document.getElementById('calendar-periods-heading');
+        if (periodsHeading) periodsHeading.textContent = calendarTaskWeek ? 'Zaaitaken deze week' : 'Plantperiodes deze maand';
+        const periodNote = document.querySelector('#day-details .calendar-period-note');
+        if (periodNote) periodNote.textContent = calendarTaskWeek ? 'Voorraadplanten die je nu kunt zaaien; nog niet ingepland deze maand.' : 'Deze plantgegevens hebben een maandperiode, geen ingeplande dag.';
+        if (panel && aiPlanningDraft) {
+            panel.classList.remove('hidden');
+            const label = document.getElementById('selected-date-label');
+            if (label) label.textContent = 'Voorgestelde planning';
+            const context = document.getElementById('reminder-context-line');
+            if (context) context.textContent = 'Pas het voorstel hieronder aan. Er is nog niets toegevoegd.';
+            renderReminderList(aiPlanningDraft.date);
+            renderCalendarPlantPeriods(month);
+        } else if (panel && calendarTaskWeek) {
+            panel.classList.remove('hidden');
+            const selection = getDashboardSelection(today);
+            const label = document.getElementById('selected-date-label');
+            const weekEnd = parseCalendarDate(selection.reminderGroups.weekEndKey);
+            weekEnd.setDate(weekEnd.getDate() - 1);
+            if (label) label.textContent = `Taken deze week · ${today.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })} – ${weekEnd.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+            updateCalendarContext(panel);
+            renderReminderList(selectedDateStr);
+            const container = document.getElementById('calendar-plant-period-list');
+            container.replaceChildren();
+            selection.now.forEach(seed => {
+                const row = document.createElement('button');
+                row.type = 'button'; row.className = 'calendar-period-task';
+                row.textContent = `${seed.naam} zaaien`;
+                row.addEventListener('click', () => openDetailView(seed));
+                container.append(row);
+            });
+            if (!selection.now.length) {
+                const empty = document.createElement('p'); empty.className = 'calendar-empty-message';
+                empty.textContent = 'Geen zaaitaken voor deze week.'; container.append(empty);
+            }
+        } else if (panel && selectedDate && formatDate(selectedDate).slice(0, 7) === monthKey) {
+            panel.classList.remove('hidden');
+            const label = document.getElementById('selected-date-label');
+            if (label) label.textContent = selectedDate.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+            updateCalendarContext(panel);
+            renderReminderList(selectedDateStr);
+            renderCalendarPlantPeriods(selectedDate.getMonth());
+        } else if (panel) {
+            panel.classList.add('hidden');
+        }
+
+        renderUpcomingReminders(todayStr);
     }
 
     function formatDate(date) {
-        const d = date.getDate();
-        const m = date.getMonth() + 1;
-        const y = date.getFullYear();
-        return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const day = date.getDate();
+        const month = date.getMonth() + 1;
+        const year = date.getFullYear();
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
 
+    function parseCalendarDate(value) {
+        if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+        const [year, month, day] = value.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+    }
 
-
-    function selectDay(dateStr, d) {
-        selectedDateStr = dateStr;
-        const panel = document.getElementById('day-details');
-        const label = document.getElementById('selected-date-label');
+    function updateCalendarContext(panel) {
         const contextLine = document.getElementById('reminder-context-line');
-        if (!panel || !label) return;
+        if (!contextLine) return;
+        contextLine.replaceChildren();
+        contextLine.append(calendarTaskWeek ? 'Open taken vanaf vandaag tot en met zondag · ' : 'Geselecteerde dag · ');
+        const changeDayButton = document.createElement('button');
+        changeDayButton.type = 'button';
+        changeDayButton.id = 'btn-change-day';
+        changeDayButton.className = 'link-button';
+        changeDayButton.textContent = 'Dag kiezen';
+        changeDayButton.addEventListener('click', event => {
+            event.stopPropagation();
+            calendarTaskWeek = false;
+            selectedDateStr = null;
+            panel.classList.add('hidden');
+            renderCalendar();
+        });
+        contextLine.appendChild(changeDayButton);
+    }
 
-        panel.classList.remove('hidden');
-        const monthName = calMonthNames[curCalDate.getMonth()];
-        const year = curCalDate.getFullYear();
-        
-        label.innerHTML = `📅 ${d} ${monthName} ${year}`;
-        
-        if (contextLine) {
-            contextLine.className = 'day-context-line'; // Match CSS
-            contextLine.innerHTML = `Details op ${d} ${monthName.toLowerCase()} · <span id="btn-change-day">Wijzigen</span>`;
-            document.getElementById('btn-change-day').onclick = (e) => {
-                e.stopPropagation();
-                panel.classList.add('hidden');
-                selectedDateStr = null;
-                renderCalendar();
-            };
+    function selectDay(dateStr) {
+        if (!parseCalendarDate(dateStr)) return;
+        calendarTaskWeek = false;
+        selectedDateStr = dateStr;
+        if (aiPlanningDraft) {
+            aiPlanningDraft.date = dateStr;
+            document.getElementById('ai-planning-date').value = dateStr;
         }
-
-        renderReminderList(dateStr);
+        const selectedDate = parseCalendarDate(dateStr);
+        curCalDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
         renderCalendar();
 
         const input = document.getElementById('new-reminder-input');
         if (input) {
             input.focus();
-            // Enter key support for UX
-            input.onkeydown = (e) => {
-                if (e.key === 'Enter') {
-                    document.getElementById('btn-add-reminder')?.click();
-                }
+            input.onkeydown = event => {
+                if (event.key === 'Enter') document.getElementById('btn-add-reminder')?.click();
             };
         }
     }
@@ -4016,43 +6451,127 @@ document.addEventListener('DOMContentLoaded', async () => {
         const container = document.getElementById('reminder-list');
         if (!container) return;
 
-        const dayItems = reminders.filter(r => r.date === dateStr);
-        container.innerHTML = dayItems.length === 0
-            ? '<p style="color:var(--text-muted); font-size:14px; text-align:center; padding:20px; opacity:0.6;">Rustige dag vandaag.</p>'
-            : '';
+        const selection = calendarTaskWeek ? getDashboardSelection() : null;
+        const dayItems = selection ? selection.reminderGroups.current : reminders.filter(reminder => reminder.date === dateStr);
+        container.replaceChildren();
+        if (dayItems.length === 0) {
+            const emptyMessage = document.createElement('p');
+            emptyMessage.className = 'calendar-empty-message';
+            emptyMessage.textContent = selection ? (selection.now.length ? 'Geen open herinneringen meer deze week.' : 'Geen taken meer voor deze week.') : 'Geen herinneringen op deze dag.';
+            container.appendChild(emptyMessage);
+            return;
+        }
 
         dayItems.sort((a, b) => a.id - b.id).forEach(item => {
-            const el = document.createElement('div');
-            el.className = `reminder-row ${item.done ? 'done' : ''}`;
-            el.innerHTML = `
-                <div class="reminder-check-col">
-                  <div class="custom-checkbox ${item.done ? 'active' : ''}"></div>
-                </div>
-                <div class="reminder-text-col">
-                  <span>${item.title}</span>
-                </div>
-                <div class="reminder-actions-col">
-                  <button class="btn-delete-reminder" title="Verwijder">×</button>
-                </div>
-            `;
+            const row = buildReminderRow(item, {
+                onToggle: () => {
+                    item.done = !item.done;
+                    saveReminders();
+                    renderCalendar();
+                },
+                onDelete: () => {
+                    if (!window.confirm('Weet je zeker dat je deze herinnering wilt verwijderen?')) return;
+                    reminders = reminders.filter(reminder => reminder.id !== item.id);
+                    saveReminders();
+                    renderCalendar();
+                }
+            });
+            container.appendChild(row);
+        });
+    }
 
-            el.querySelector('.custom-checkbox').onclick = (e) => {
-                e.stopPropagation();
-                item.done = !item.done;
-                saveReminders();
-                renderReminderList(dateStr);
-                renderCalendar();
-            };
+    function renderCalendarPlantPeriods(monthIndex) {
+        const container = document.getElementById('calendar-plant-period-list');
+        if (!container) return;
+        container.replaceChildren();
 
-            el.querySelector('.btn-delete-reminder').onclick = (e) => {
-                e.stopPropagation();
-                reminders = reminders.filter(r => r.id !== item.id);
-                saveReminders();
-                renderReminderList(dateStr);
-                renderCalendar();
-            };
+        const activities = getPlannerActivities(monthIndex);
+        const sections = [
+            { label: 'Zaaien', ids: ['indoor-sow', 'outdoor-sow', 'sow'] },
+            { label: 'Uitplanten', ids: ['transplant'] },
+            { label: 'Oogsten', ids: ['harvest'] }
+        ];
+        let activityCount = 0;
 
-            container.appendChild(el);
+        sections.forEach(section => {
+            const sectionGroups = activities.filter(group => section.ids.includes(group.id));
+            if (!sectionGroups.length) return;
+            const block = document.createElement('div');
+            block.className = 'calendar-period-group';
+            const heading = document.createElement('h5');
+            heading.textContent = section.label;
+            block.appendChild(heading);
+
+            const list = document.createElement('ul');
+            sectionGroups.forEach(group => group.plants.forEach(seed => {
+                const name = typeof seed?.naam === 'string' ? seed.naam : (typeof seed?.name === 'string' ? seed.name : '');
+                if (!name) return;
+                const item = document.createElement('li');
+                const action = document.createElement('span');
+                action.className = 'calendar-period-action';
+                action.textContent = group.label;
+                const plantName = document.createElement('span');
+                plantName.className = 'calendar-period-plant';
+                plantName.textContent = name;
+                item.append(action, plantName);
+                list.appendChild(item);
+                activityCount += 1;
+            }));
+            if (list.childElementCount > 0) block.appendChild(list);
+            if (list.childElementCount > 0) container.appendChild(block);
+        });
+
+        if (activityCount === 0) {
+            const emptyMessage = document.createElement('p');
+            emptyMessage.className = 'calendar-empty-message';
+            emptyMessage.textContent = `Geen plantperiodes voor ${calMonthNames[monthIndex].toLowerCase()}.`;
+            container.appendChild(emptyMessage);
+        }
+    }
+
+    function renderUpcomingReminders(todayStr) {
+        const container = document.getElementById('calendar-upcoming-list');
+        if (!container) return;
+        container.replaceChildren();
+
+        const groups = groupUpcomingCalendarReminders(reminders, todayStr);
+
+        groups.forEach(group => {
+            const section = document.createElement('section');
+            section.className = 'calendar-upcoming-group';
+            const heading = document.createElement('h3');
+            heading.textContent = group.label;
+            section.appendChild(heading);
+            if (group.items.length === 0) {
+                const emptyMessage = document.createElement('p');
+                emptyMessage.className = 'calendar-upcoming-empty';
+                emptyMessage.textContent = 'Geen open herinneringen';
+                section.appendChild(emptyMessage);
+            } else {
+                group.items.forEach(reminder => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'calendar-upcoming-item';
+                    const title = document.createElement('span');
+                    title.className = 'calendar-upcoming-title';
+                    title.textContent = typeof reminder.title === 'string' ? reminder.title : '';
+                    const date = document.createElement('span');
+                    date.className = 'calendar-upcoming-date';
+                    const parsedDate = parseCalendarDate(reminder.date);
+                    date.textContent = parsedDate ? parsedDate.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' }) : reminder.date;
+                    button.append(title, date);
+                    button.setAttribute('aria-label', `${title.textContent}, ${date.textContent}. Open deze dag`);
+                    button.addEventListener('click', () => {
+                        const selectedDate = parseCalendarDate(reminder.date);
+                        if (!selectedDate) return;
+                        selectedDateStr = reminder.date;
+                        curCalDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+                        renderCalendar();
+                    });
+                    section.appendChild(button);
+                });
+            }
+            container.appendChild(section);
         });
     }
 
@@ -4061,20 +6580,93 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const btnCalPrev = document.getElementById('cal-prev');
     const btnCalNext = document.getElementById('cal-next');
-    if (btnCalPrev) btnCalPrev.onclick = () => { curCalDate.setMonth(curCalDate.getMonth() - 1); renderCalendar(); };
-    if (btnCalNext) btnCalNext.onclick = () => { curCalDate.setMonth(curCalDate.getMonth() + 1); renderCalendar(); };
+    if (btnCalPrev) btnCalPrev.onclick = () => { calendarTaskWeek = false; curCalDate = new Date(curCalDate.getFullYear(), curCalDate.getMonth() - 1, 1); selectedDateStr = null; renderCalendar(); };
+    if (btnCalNext) btnCalNext.onclick = () => { calendarTaskWeek = false; curCalDate = new Date(curCalDate.getFullYear(), curCalDate.getMonth() + 1, 1); selectedDateStr = null; renderCalendar(); };
+
+    const btnCalToday = document.getElementById('cal-today');
+    if (btnCalToday) btnCalToday.onclick = () => {
+        calendarTaskWeek = false;
+        const today = new Date();
+        curCalDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        selectedDateStr = formatDate(today);
+        renderCalendar();
+    };
 
     const btnAddReminder = document.getElementById('btn-add-reminder');
     const reminderInput = document.getElementById('new-reminder-input');
 
+    function cancelAIPlanning(returnHome = true) {
+        if (!aiPlanningDraft) return;
+        const draft = aiPlanningDraft;
+        aiPlanningDraft = null;
+        reminderInput.value = draft.previousTitle;
+        selectedDateStr = draft.previousDate;
+        curCalDate = draft.previousCalendar;
+        calendarTaskWeek = false;
+        renderCalendar();
+        if (returnHome) {
+            switchView('home');
+            draft.button?.focus();
+        }
+    }
+
+    window._planAssistantSuggestion = (action, button) => {
+        if (!action || action.destination !== 'todo' || button?.disabled) return;
+        if (aiPlanningDraft) {
+            switchView('calendar');
+            showAssistantFeedback('Er staat al een voorstel klaar.');
+            return;
+        }
+        aiPlanningDraft = { ...action, button, previousTitle: reminderInput.value,
+            previousDate: selectedDateStr, previousCalendar: new Date(curCalDate) };
+        calendarTaskWeek = false;
+        selectedDateStr = action.date || null;
+        const date = parseCalendarDate(action.date);
+        if (date) curCalDate = new Date(date.getFullYear(), date.getMonth(), 1);
+        document.getElementById('ai-planning-date').value = action.date;
+        reminderInput.value = action.title;
+        switchView('calendar');
+        reminderInput.scrollIntoView({ block: 'center' });
+        reminderInput.focus();
+        showAssistantFeedback('Voorstel klaar; nog niet ingepland.');
+    };
+    document.getElementById('ai-planning-cancel').onclick = () => cancelAIPlanning();
+    document.getElementById('ai-planning-date').onchange = event => {
+        if (!aiPlanningDraft) return;
+        aiPlanningDraft.date = isAIPlanningDate(event.target.value) ? event.target.value : '';
+        selectedDateStr = aiPlanningDraft.date || null;
+        const date = parseCalendarDate(aiPlanningDraft.date);
+        if (date) curCalDate = new Date(date.getFullYear(), date.getMonth(), 1);
+        renderCalendar();
+    };
+
     const handleAdd = () => {
+        if (aiPlanningDraft) {
+            const dateInput = document.getElementById('ai-planning-date');
+            const date = dateInput.value;
+            const title = reminderInput.value.trim();
+            if (!isAIPlanningDate(date)) { showAssistantFeedback('Kies een geldige datum.'); dateInput.focus(); return; }
+            if (!title) { showAssistantFeedback('Vul een activiteit in.'); reminderInput.focus(); return; }
+            const duplicate = reminders.some(item => item.date === date && item.title.trim().toLocaleLowerCase('nl-NL') === title.toLocaleLowerCase('nl-NL'));
+            if (!duplicate) {
+                reminders.push({ id: Date.now(), date, title, done: false });
+                saveReminders();
+            }
+            const button = aiPlanningDraft.button;
+            aiPlanningDraft = null;
+            selectedDateStr = date;
+            reminderInput.value = '';
+            if (button) { button.textContent = 'Ingepland'; button.disabled = true; }
+            renderCalendar();
+            showAssistantFeedback(duplicate ? 'Staat al in je planning.' : 'Ingepland.');
+            return;
+        }
         if (!selectedDateStr) return;
         const val = reminderInput.value.trim();
         if (!val) return;
         reminders.push({ id: Date.now(), date: selectedDateStr, title: val, done: false });
         saveReminders();
         reminderInput.value = '';
-        renderReminderList(selectedDateStr);
         renderCalendar();
         reminderInput.focus();
     };
@@ -4087,6 +6679,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnCloseDetails = document.getElementById('btn-close-details');
     if (btnCloseDetails) {
         btnCloseDetails.onclick = () => {
+            if (aiPlanningDraft) { cancelAIPlanning(); return; }
+            calendarTaskWeek = false;
             document.getElementById('day-details')?.classList.add('hidden');
             selectedDateStr = null;
             renderCalendar();
@@ -4154,10 +6748,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const p = document.getElementById('tag-picker');
         if (!p) return;
         p.innerHTML = '';
-        
+
         const selLow = selectedNames.map(s => s.toLowerCase());
         const allPredefined = [];
-        
+
         tagCategoryOrder.forEach(cat => {
             const g = document.createElement('div');
             g.innerHTML = `<h5>${cat}</h5><div class="tag-picker-list"></div>`;
@@ -4219,10 +6813,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!value) return active;
 
         // Common month abbreviations and their index
-        const mMap = { 
-            'jan': 0, 'feb': 1, 'mrt': 2, 'mar': 2, 'maa': 2, 'apr': 3, 
-            'mei': 4, 'may': 4, 'jun': 5, 'jul': 6, 'aug': 7, 
-            'sep': 8, 'okt': 9, 'oct': 9, 'nov': 10, 'dec': 11 
+        const mMap = {
+            'jan': 0, 'feb': 1, 'mrt': 2, 'mar': 2, 'maa': 2, 'apr': 3,
+            'mei': 4, 'may': 4, 'jun': 5, 'jul': 6, 'aug': 7,
+            'sep': 8, 'okt': 9, 'oct': 9, 'nov': 10, 'dec': 11
         };
 
         // Support array of numbers or strings
@@ -4265,8 +6859,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        Object.keys(mMap).forEach(k => { 
-            if (text.includes(k)) active.add(mMap[k]); 
+        Object.keys(mMap).forEach(k => {
+            if (text.includes(k)) active.add(mMap[k]);
         });
 
         // Robust numeric check (e.g. "1, 2, 3" or 0-indexed values)
@@ -4283,113 +6877,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     renderTagPicker();
 
-    // --- AI CONFIGURATIE (HYBRIDE ROUTE: LOKAAL OF ONLINE) ---
+    // All AI features use the same provider/model settings and backend.
     async function vraagAI(mode, input = '', month = '') {
-        const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-        
-        // --- PROMPT REGISTRY ---
-        let prompt = "";
-        const contextNL = "Je bent een nuchtere, ervaren Nederlandse moestuin-expert. Context: Gematigd zeeklimaat, klei/zandgrond. Geef praktisch advies.";
-
-        if (mode === "fill_seed_info") {
-            prompt = `Analyseer de plant '${input}'. Gebruik de maand ${month} als referentiekader. ${contextNL}
-            Geef EXACT deze JSON structuur terug:
-            {
-              "type": "Groente|Fruit|Kruid|Bloem|Bloembol|Boom|Struik|Sierplant",
-              "standplaats": "Zon|Halfschaduw|Schaduw",
-              "waterbehoefte": "Laag|Gemiddeld|Hoog",
-              "zaaitijd": ["jan", "feb", "etc"],
-              "oogsttijd": ["mei", "jun", "etc"],
-              "tags": ["minstens 5-8 diverse tags zoals: Beginner, Winterhard, Bijvriendelijk, Snelle groeier, etc"],
-              "teeltinformatie": "Verplicht veld! Geef 2-3 concrete zinnen met praktisch advies voor de moestuinier over succesvol kweken van deze plant."
-            }`;
-        } else if (mode === "garden_assistant") {
-            prompt = `Je bent de KweekKompas Moestuin-Expert.
-            Vraag: ${input}. 
-            Maand: ${month}. 
-            Context: ${contextNL} 
-
-            Regels:
-            - ANTWOORD ALTIJD IN HET NEDERLANDS.
-            - Maximaal 3 korte, krachtige bullet points.
-            - Gebruik gewone-mensentaal.
-            - Adviseer specifiek voor Nederland/België (klimaat).
-            - Geen intro of outro, begin direct met tekst.`;
-        } else {
-            prompt = `Geef 5 suggesties voor zaaien in ${month} in Nederland. Geef ALIEEN dit JSON formaat: { "planten": ["Naam"] }`;
-        }
-
-        // --- ROUTERING ---
-        try {
-            if (isLocal) {
-                // LOKAAL: Gebruik Ollama
-                const res = await fetch("http://localhost:11434/api/generate", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        model: "llama3",
-                        prompt: prompt,
-                        stream: false
-                    })
-                });
-                if (!res.ok) throw new Error(`Ollama niet bereikbaar (Status: ${res.status})`);
-                const data = await res.json();
-                return data.response || "";
-            } else {
-                // ONLINE: Gebruik de Netlify Backend
-                const res = await fetch("/api/gemini-ai", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ mode, input, month })
-                });
-                if (!res.ok) {
-                    const errorData = await res.json();
-                    throw new Error(errorData.error || `Backend Fout (${res.status})`);
-                }
-                const data = await res.json();
-                return data.text || "";
-            }
-        } catch (err) {
-            console.error("AI Request Failed:", err);
-            // No UI feedback here, let the caller handle it to prevent double toasts
-            throw err;
-        }
+        const data = await window.KweekServices.requestAI('gemini-ai', { mode, input, month });
+        return data.text || '';
     }
 
-    function buildAIPrompt(seedData) {
-        const months = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"];
-        const currentMonth = months[new Date().getMonth()];
-
-        return `
-Je bent een praktische moestuin assistent voor een moestuin app.
-
-Regels:
-- Alleen planten met status "Voorraad"
-- Gebruik de zaaitijd om te bepalen wat NU relevant is voor de maand ${currentMonth}
-- Max 5 acties
-- Kort en concreet
-- Geen intro
-- Geen uitleg onderaan
-- Elke actie op een nieuwe regel
-
-Gebruik labels:
-- 🟢 Nu zaaien
-- 🟡 Binnenkort
-- 🔴 Gemist
-
-Voorbeeld output:
-🟢 Zaai tomaten binnen
-🟡 Bereid courgette voor
-🔴 Papaver te laat om te zaaien
-
-Gebruik deze data:
-${JSON.stringify(seedData.filter(s => s.status === 'Voorraad').map(s => ({ naam: s.naam, zaaitijd: s.zaaitijd })))}
-
-Maand: ${currentMonth}
-`;
-    }
-
-    // --- AI ASSISTANT PANEL ---
     async function stelAIHulpVraag(vraag) {
         const input = document.getElementById('ai-question-input');
         const btn = document.getElementById('btn-ask-ai');
@@ -4427,24 +6920,9 @@ Maand: ${currentMonth}
 
         try {
             const activePlants = typeof seeds !== 'undefined' ? seeds.filter(s => s.status === 'Voorraad' || s.status === 'Gezaaid').map(s => s.naam) : [];
-            const response = await fetch('/api/tuinassistent', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    question: userInput,
-                    context: {
-                        month: currentMonth,
-                        plants: activePlants
-                    }
-                })
+            const data = await window.KweekServices.requestAI('tuinassistent', {
+                question: userInput, context: { month: currentMonth, plants: activePlants }
             });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `Backend fout (${response.status})`);
-            }
-
-            const data = await response.json();
             output.innerHTML = '';
 
             // Handle standard fallback for bad parsing
@@ -4456,7 +6934,7 @@ Maand: ${currentMonth}
             const answerCard = document.createElement('div');
             answerCard.className = 'ai-advies-card';
             answerCard.style.fontSize = '13px';
-            answerCard.innerText = data.answer;
+            answerCard.textContent = String(data.answer);
             output.appendChild(answerCard);
 
             // Display Actions
@@ -4467,46 +6945,35 @@ Maand: ${currentMonth}
                 actionsContainer.style.borderTop = '1px solid var(--border-color)';
                 actionsContainer.style.background = 'rgba(0,0,0,0.02)';
                 actionsContainer.style.borderRadius = '0 0 var(--radius-content) var(--radius-content)';
-                
-                actionsContainer.innerHTML = `
-                    <div style="font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; margin-top: 5px;">Voorgestelde Acties</div>
-                    <div style="display: flex; flex-direction: column; gap: 6px;">
-                        ${data.actions.slice(0, 3).map(action => {
-                            let icon = '⚡';
-                            if (action.type === 'sow') icon = '🌱';
-                            else if (action.type === 'harvest') icon = '🥗';
-                            else if (action.type === 'care') icon = '💧';
-                            else if (action.type === 'none') icon = '💡';
-                            
-                            const escapedPlant = action.plantName ? action.plantName.replace(/'/g, "\\'") : '';
-                            const plantArg = action.plantName ? "'" + escapedPlant + "'" : 'null';
-                            
-                            return `
-                                <div class="ai-suggestion-row">
-                                    <span style="font-size: 14px; font-weight: 600;">${action.label}</span>
-                                    <div class="ai-actions-group">
-                                        ${action.plantName ? `<button class="btn-ai-action ghost" onclick="window._addSuggestionToWishlist(${plantArg}, this)" title="Op wishlist">
-                                            <span class="icon">+</span> Wishlist
-                                        </button>
-                                        <button class="btn-ai-action secondary" onclick="window._addSuggestionToTodo(${plantArg}, this)" title="Nu doen">
-                                            <span class="icon">${icon}</span> Actie
-                                        </button>` : ''}
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                `;
-                output.appendChild(actionsContainer);
+                const heading = document.createElement('div');
+                heading.style.cssText = 'font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; margin-top: 5px;';
+                heading.textContent = 'Voorgestelde Acties';
+                actionsContainer.appendChild(heading);
+
+                const actionList = document.createElement('div');
+                actionList.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
+                data.actions.forEach(action => {
+                    if (actionList.children.length >= 3) return;
+                    const row = buildAISuggestionRow(action, {
+                        onWishlist: (name, button, proposal) => window._addSuggestionToWishlist(name, button, proposal.wishlistType),
+                        onPlan: (proposal, button) => window._planAssistantSuggestion(proposal, button)
+                    });
+                    if (row) actionList.appendChild(row);
+                });
+                if (actionList.children.length > 0) {
+                    actionsContainer.appendChild(actionList);
+                    output.appendChild(actionsContainer);
+                }
             }
 
         } catch (err) {
             console.error("Technical Assistant Error:", err);
-            output.innerHTML = `
-                <div class="ai-error-state" style="padding: 16px; border-radius: 8px; background: rgba(229, 62, 62, 0.1); border: 1px solid rgba(229, 62, 62, 0.2); color: #FEB2B2; font-size: 13px;">
-                    Fout: ${err.message}<br><small>Check je terminal of .env instellingen.</small>
-                </div>
-            `;
+            output.replaceChildren();
+            const errorCard = document.createElement('div');
+            errorCard.className = 'ai-advies-card ai-error';
+            errorCard.setAttribute('role', 'alert');
+            errorCard.textContent = err.message || 'AI is tijdelijk niet beschikbaar. Controleer Instellingen → AI.';
+            output.appendChild(errorCard);
         } finally {
             if (btn) {
                 btn.disabled = false;
@@ -4547,29 +7014,44 @@ function showMonthContextBanner(month, count) {
     const container = document.getElementById('seeds-context-banner');
     if (!container) return;
 
-    container.innerHTML = `
-            <div class="seeds-month-context">
-                <div class="context-info">
-                    <span class="context-icon">🌱</span>
-                    <span class="context-text"><strong>${month}</strong> &nbsp;•&nbsp; ${count} planten</span>
-                </div>
-                <button class="context-reset-btn" onclick="clearMonthFilter()" title="Filter herstellen">
-                    <span>✕</span>
-                </button>
+    container.replaceChildren();
+    const banner = document.createElement('div');
+    banner.className = 'seeds-month-context';
+    const info = document.createElement('div');
+    info.className = 'context-info';
+    const icon = document.createElement('span');
+    icon.className = 'context-icon';
+    icon.textContent = '\u{1F331}';
+    const text = document.createElement('span');
+    text.className = 'context-text';
+    const monthLabel = document.createElement('strong');
+    monthLabel.textContent = month === null || month === undefined ? '' : String(month);
+    text.append(monthLabel, document.createTextNode(` \u00A0\u2022\u00A0 ${Number.isFinite(Number(count)) ? Number(count) : 0} planten`));
+    info.append(icon, text);
 
-            </div>
-        `;
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'context-reset-btn';
+    reset.title = 'Filter herstellen';
+    reset.setAttribute('aria-label', 'Filter herstellen');
+    const resetIcon = document.createElement('span');
+    resetIcon.textContent = '\u2715';
+    reset.appendChild(resetIcon);
+    reset.addEventListener('click', () => window.clearMonthFilter());
+
+    banner.append(info, reset);
+    container.appendChild(banner);
     container.classList.remove('hidden');
 }
 
 window.revealInList = function (seedId) {
     // 1. Ensure any month filters are cleared so the item is definitely visible
     if (window.clearMonthFilter) window.clearMonthFilter();
-    activeCategory = 'Alles'; 
+    activeCategory = 'Alles';
     localStorage.removeItem('nu_doen_show_all'); // Small reset if needed
-    
+
     // 2. Refresh the list filters
-    applyFilters(); 
+    applyFilters();
     switchView('list');
 
     // 3. Scroll and Highlight (with a small delay for UI switch)
@@ -4601,7 +7083,7 @@ window.clearMonthFilter = function () {
     localStorage.removeItem('activeMonthFilter');
     const container = document.getElementById('seeds-context-banner');
     if (container) {
-        container.innerHTML = '';
+        container.replaceChildren();
         container.classList.add('hidden');
     }
     applyFilters(); // Re-apply current general filters/search
@@ -4613,48 +7095,51 @@ window._addToWishlistFromDetail = (id) => {
 };
 
 // 8.1b: Add Suggestion to Wishlist (Full Integration)
-window._addSuggestionToWishlist = (name, btn) => {
-    const lowerName = name.toLowerCase().trim();
+window._addSuggestionToWishlist = (name, btn, type = 'seed') => {
+    const safeName = typeof name === 'string' ? name.trim() : '';
+    const lowerName = safeName.toLowerCase();
     if (!lowerName || (btn && btn.disabled)) return;
 
     // Check for duplicates
     const exists = wishlist.some(item => item.name.toLowerCase() === lowerName);
-    
+
     if (exists) {
-        showToast("Staat al in je lijst"); 
+        showAssistantFeedback('Staat al op je verlanglijst.');
+        if (btn) { btn.textContent = 'Op verlanglijst'; btn.disabled = true; }
         return;
     }
 
     const newItem = {
         id: Date.now().toString(),
-        name: name.charAt(0).toUpperCase() + name.slice(1),
+        name: safeName,
         link: '',
         image: '',
         note: 'Gevonden via Tuinassistent',
-        type: 'seed',
+        type: type === 'item' ? 'item' : 'seed',
         bought: false
     };
 
     wishlist.unshift(newItem);
     saveWish();
-    
-    showToast("Toegevoegd aan wishlist ✨");
-    
+
+    showAssistantFeedback('Toegevoegd aan je verlanglijst.');
+
     if (btn) {
-        window._tempSuggestionFeedback(btn);
+        btn.textContent = 'Op verlanglijst';
+        btn.disabled = true;
     }
 };
 
 // Internal helper for temporary button feedback
 window._tempSuggestionFeedback = (btn) => {
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '✔';
+    const originalText = btn.textContent;
+    btn.textContent = '✔';
     btn.disabled = true;
     btn.style.borderColor = 'var(--primary-color)';
     btn.style.color = 'var(--primary-color)';
-    
+
     setTimeout(() => {
-        btn.innerHTML = originalText;
+        btn.textContent = originalText;
         btn.disabled = false;
         btn.style.borderColor = '';
         btn.style.color = '';
@@ -4669,7 +7154,7 @@ window._addSuggestionToSeeds = async (name, btn) => {
     // Check for duplicates in actual seeds
     const existingSeeds = await getAllSeeds();
     const exists = existingSeeds.some(s => s.naam.toLowerCase() === lowerName);
-    
+
     if (exists) {
         showToast("Staat al in je tuin");
         return;
@@ -4679,10 +7164,10 @@ window._addSuggestionToSeeds = async (name, btn) => {
     const newSeed = {
         id: Number(Date.now()),
         naam: name.charAt(0).toUpperCase() + name.slice(1),
-        type: 'Overig', 
+        type: 'Overig',
         standplaats: 'Zon',
         water: 'Gemiddeld',
-        status: 'Gezaaid', 
+        status: 'Gezaaid',
         zaaitijd: '',
         oogsttijd: '',
         tags: ['Gevonden via AI'],
@@ -4714,10 +7199,10 @@ window._addSuggestionToSeeds = async (name, btn) => {
             seeds.length = 0;
             seeds.push(...updatedSeeds);
         }
-        
+
         showToast("Toegevoegd aan je tuin 🌱");
         if (btn) window._tempSuggestionFeedback(btn);
-        
+
         // Refresh UI
         renderHome();
         if (!viewList.classList.contains('hidden')) applyFilters();
@@ -4729,13 +7214,14 @@ window._addSuggestionToSeeds = async (name, btn) => {
 
 // 8.2: Add Suggestion to 'Nu doen' (Quick Action)
 window._addSuggestionToTodo = async (name, btn) => {
-    const lowerName = name.toLowerCase().trim();
+    const safeName = typeof name === 'string' ? name.trim() : '';
+    const lowerName = safeName.toLowerCase();
     if (!lowerName || (btn && btn.disabled)) return;
 
     // Check for duplicates in actual seeds
     const existingSeeds = await getAllSeeds();
     const exists = existingSeeds.some(s => s.naam.toLowerCase() === lowerName);
-    
+
     if (exists) {
         showToast("Staat al in je lijst");
         return;
@@ -4747,11 +7233,11 @@ window._addSuggestionToTodo = async (name, btn) => {
 
     const newSeed = {
         id: Number(Date.now()),
-        naam: name.charAt(0).toUpperCase() + name.slice(1),
-        type: 'Overig', 
+        naam: safeName.charAt(0).toUpperCase() + safeName.slice(1),
+        type: 'Overig',
         standplaats: 'Zon',
         water: 'Gemiddeld',
-        status: 'Voorraad', 
+        status: 'Voorraad',
         zaaitijd: currentMonthCap, // Default to now
         oogsttijd: '',
         tags: ['Gevonden via AI', 'Nu doen'],
@@ -4786,10 +7272,10 @@ window._addSuggestionToTodo = async (name, btn) => {
             seeds.length = 0;
             seeds.push(...updatedSeeds);
         }
-        
+
         showToast("Toegevoegd aan je acties ⚡");
         if (btn) window._tempSuggestionFeedback(btn);
-        
+
         renderHome();
     } catch (err) {
         showToast("Fout bij opslaan");
@@ -4801,7 +7287,12 @@ window.applyMonthFilter = applyMonthFilter;
 
     // --- STARTUP LOGIC ---
     const doneOnb = localStorage.getItem('onboarding_done');
-    if (!doneOnb && seeds.length === 0) {
+    const hasProfile = hasStoredUserProfile();
+    if (!databaseAvailable) {
+        showToast("Lokale opslag is tijdelijk niet beschikbaar. Je gegevens zijn niet geladen.");
+    }
+
+    if (shouldStartOnboarding(doneOnb, hasProfile, seeds.length, databaseAvailable)) {
         switchView('onboarding');
     } else {
         switchView('home');
@@ -4845,7 +7336,11 @@ async function searchPlantImage(query) {
             return data.results.map(r => ({
                 url: r.urls?.regular || r.urls?.small,
                 source: 'web',
-                id: r.id
+                id: r.id,
+                title: r.alt_description || r.description || '',
+                description: r.description || '',
+                photographer: r.user?.name || '',
+                sourceLink: r.user?.links?.html || ''
             }));
         }
         return [];
@@ -4858,16 +7353,30 @@ async function searchPlantImage(query) {
 
 // --- SETTINGS PANEL HELPERS ---
 
-window.toggleThemeFromPanel = function(checkbox) {
-    const isDark = checkbox.checked;
-    if (isDark) {
-        document.documentElement.setAttribute('data-theme', 'dark');
-        localStorage.setItem('theme', 'dark');
-    } else {
-        document.documentElement.removeAttribute('data-theme');
-        localStorage.setItem('theme', 'light');
-    }
-    // Update the labels in the panel manually via re-render
-    renderSettingsPanel();
+window.setAppTheme = function(theme) {
+    saveAppTheme(theme);
+    if (isSettingsOpen) renderSettingsPanel();
 };
+
+window.toggleThemeFromPanel = function(checkbox) {
+    window.setAppTheme(checkbox?.checked ? 'dark' : 'light');
+};
+
+// Calendar-only classification: compare local dates, never alter stored reminders.
+function classifyDashboardReminders(items, today = new Date()) {
+    const dateKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const todayKey = dateKey(today);
+    const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    end.setDate(end.getDate() + 7 - ((end.getDay() + 6) % 7));
+    const weekEndKey = dateKey(end);
+    const open = (Array.isArray(items) ? items : []).filter(item => {
+        if (item?.done || typeof item?.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(item.date)) return false;
+        const date = new Date(`${item.date}T00:00:00`);
+        return Number.isFinite(date.getTime()) && dateKey(date) === item.date;
+    });
+    return { todayKey, weekEndKey,
+        overdue: open.filter(item => item.date < todayKey),
+        current: open.filter(item => item.date >= todayKey && item.date < weekEndKey),
+        future: open.filter(item => item.date >= weekEndKey) };
+}
 

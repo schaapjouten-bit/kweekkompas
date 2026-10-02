@@ -1,0 +1,37 @@
+{
+  "name": "kweekkompas",
+  "version": "2.0.0",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "description": "KweekKompas v2 — lokale tuinplanner met optionele cloud en AI",
+  "main": "app-v132.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "start": "node scripts/dev-server.cjs",
+    "build": "node scripts/build.cjs",
+    "test": "node --test tests/*.test.js",
+    "test:browser": "node tests/browser-check.cjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/schaapjouten-bit/kweekkompas.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/schaapjouten-bit/kweekkompas/issues"
+  },
+  "homepage": "https://github.com/schaapjouten-bit/kweekkompas#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "2.117.2"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "playwright": "1.63.0"
+  }
+}

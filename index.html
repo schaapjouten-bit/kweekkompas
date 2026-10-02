@@ -4,10 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>KweekKompas 🌱 - Jouw Moestuin Planner</title>
+  <script>
+    /* Apply the stored shell theme before the first paint. Unknown values are
+       deliberately treated as Light so a legacy preference cannot break the UI. */
+    (function () {
+      try {
+        var stored = localStorage.getItem('theme');
+        var theme = stored === 'dark' || stored === 'playful' ? stored : 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (error) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    }());
+  </script>
   <link rel="stylesheet" href="styles.css" charset="utf-8">
-  <link rel="stylesheet" href="calendar.css?v=3.2" charset="utf-8">
+  <link rel="stylesheet" href="calendar.css?v=7e3" charset="utf-8">
   <link rel="stylesheet" href="planner.css?v=3.2" charset="utf-8">
-  <link rel="stylesheet" href="onboarding.css?v=3.2" charset="utf-8">
+  <link rel="stylesheet" href="onboarding.css?v=7d" charset="utf-8">
+  <link rel="stylesheet" href="wishlist.css?v=7e4" charset="utf-8">
+  <link rel="stylesheet" href="services.css?v=2" charset="utf-8">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -36,6 +51,62 @@
   </nav>
 
   <div class="app-container">
+    <!-- SHARED PRODUCTION APP-SHELL (Fase 7A) -->
+    <aside class="app-sidebar" id="app-sidebar" aria-label="Hoofdnavigatie">
+      <button class="sidebar-brand" type="button" data-shell-view="home" data-shell-home aria-label="KweekKompas — naar Mijn tuin">
+        <span class="sidebar-brand-mark" aria-hidden="true">
+          <svg class="compass-logo" viewBox="0 0 32 32" focusable="false" aria-hidden="true">
+            <circle cx="16" cy="16" r="11.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+            <path d="M16 4.5v3M27.5 16h-3M16 27.5v-3M4.5 16h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4"/>
+            <path d="m12 20.5 3.2-8.3 4.9 5.1-8.1 3.2Z" fill="var(--logo-accent)" stroke="currentColor" stroke-linejoin="round" stroke-width="1.35"/>
+            <path d="M20.9 23.5c-.2-3.2-2.1-5.4-5.2-6.3 0 3.2 1.8 5.7 5.2 6.3Z" fill="var(--logo-leaf)" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/>
+          </svg>
+        </span>
+        <span class="sidebar-brand-copy"><strong>KweekKompas</strong><small>Jouw tuin, helder gepland</small></span>
+      </button>
+      <nav class="shell-nav" aria-label="Primaire navigatie">
+        <button class="shell-nav-item" data-shell-view="home" data-view="home" type="button" aria-label="Mijn tuin">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 11 8-7 8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8"/></svg><span>Mijn tuin</span>
+        </button>
+        <button class="shell-nav-item" data-shell-view="list" data-view="list" type="button" aria-label="Zaden">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h11a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Zm0 0v16M9 8h7M9 12h7M9 16h5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg><span>Zaden</span>
+        </button>
+        <button class="shell-nav-item" data-shell-view="sowing-grid" data-view="sowing-grid" type="button" aria-label="Zaaiplanner">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v4M18 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm2 8h3m2 0h3m-8 4h3m2 0h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg><span>Zaaiplanner</span>
+        </button>
+        <button class="shell-nav-item" data-shell-view="calendar" data-view="calendar" type="button" aria-label="Kalender">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v4M18 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm4 8h.01M14 13h.01M10 17h.01M14 17h.01" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg><span>Kalender</span>
+        </button>
+        <button class="shell-nav-item" data-shell-view="wishlist" data-view="wishlist" type="button" aria-label="Verlanglijst">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 8.8c0 5.2-8 10-8 10s-8-4.8-8-10A4.2 4.2 0 0 1 12 6a4.2 4.2 0 0 1 8 2.8Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg><span>Verlanglijst</span>
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <button class="shell-settings-item" id="shell-settings-button" type="button" aria-label="Open instellingen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8 3.5-1.8-.7a6.7 6.7 0 0 0-.6-1.5l.8-1.8-1.4-1.4-1.8.8a6.7 6.7 0 0 0-1.5-.6L13 5h-2l-.7 1.8a6.7 6.7 0 0 0-1.5.6L7 6.6 5.6 8l.8 1.8a6.7 6.7 0 0 0-.6 1.5L4 12v2l1.8.7a6.7 6.7 0 0 0 .6 1.5L5.6 18 7 19.4l1.8-.8a6.7 6.7 0 0 0 1.5.6L11 21h2l.7-1.8a6.7 6.7 0 0 0 1.5-.6l1.8.8 1.4-1.4-.8-1.8a6.7 6.7 0 0 0 .6-1.5L20 14Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"/></svg><span>Instellingen</span>
+        </button>
+      </div>
+    </aside>
+    <div class="shell-mobile-scrim" id="shell-mobile-scrim" hidden></div>
+    <header class="shell-mobile-header">
+      <button class="shell-mobile-menu" id="shell-mobile-menu" type="button" aria-controls="app-sidebar" aria-expanded="false" aria-label="Open navigatiemenu">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"/></svg>
+      </button>
+      <button class="shell-mobile-brand" type="button" data-shell-view="home" data-shell-home aria-label="KweekKompas — naar Mijn tuin">
+        <span class="shell-mobile-brand-mark" aria-hidden="true">
+          <svg class="compass-logo" viewBox="0 0 32 32" focusable="false" aria-hidden="true">
+            <circle cx="16" cy="16" r="11.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+            <path d="M16 4.5v3M27.5 16h-3M16 27.5v-3M4.5 16h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4"/>
+            <path d="m12 20.5 3.2-8.3 4.9 5.1-8.1 3.2Z" fill="var(--logo-accent)" stroke="currentColor" stroke-linejoin="round" stroke-width="1.35"/>
+            <path d="M20.9 23.5c-.2-3.2-2.1-5.4-5.2-6.3 0 3.2 1.8 5.7 5.2 6.3Z" fill="var(--logo-leaf)" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/>
+          </svg>
+        </span>
+        <span class="shell-mobile-title">KweekKompas</span>
+      </button>
+      <button class="shell-mobile-settings" type="button" aria-label="Open instellingen" onclick="toggleSettingsPanel_REPAIR_V131()">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8 3.5-1.8-.7a6.7 6.7 0 0 0-.6-1.5l.8-1.8-1.4-1.4-1.8.8a6.7 6.7 0 0 0-1.5-.6L13 5h-2l-.7 1.8a6.7 6.7 0 0 0-1.5.6L7 6.6 5.6 8l.8 1.8a6.7 6.7 0 0 0-.6 1.5L4 12v2l1.8.7a6.7 6.7 0 0 0 .6 1.5L5.6 18 7 19.4l1.8-.8a6.7 6.7 0 0 0 1.5.6L11 21h2l.7-1.8a6.7 6.7 0 0 0 1.5-.6l1.8.8 1.4-1.4-.8-1.8a6.7 6.7 0 0 0 .6-1.5L20 14Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"/></svg>
+      </button>
+    </header>
     <!-- SETTINGS PANEL SYSTEM -->
     <div id="settings-overlay" class="settings-overlay hidden" onclick="toggleSettingsPanel_REPAIR_V131()"></div>
     <div id="settings-panel" class="settings-panel"></div>
@@ -66,40 +137,47 @@
       <!-- DASHBOARD / HOME VIEW -->
       <section id="view-home" class="view">
         <div class="dashboard-header">
-          <h2 id="home-title" style="display:flex; align-items:center;">
-             <span>Mijn Tuin - 2026</span>
-          </h2>
+          <div class="home-heading-copy">
+            <h2 id="home-title"><span class="home-heading-name">Mijn tuin</span></h2>
+            <p class="home-subtitle"><span id="home-current-date"></span><span aria-hidden="true"> · </span><span class="home-season-tag">Tuinjaar <span id="header-year-select"></span></span></p>
+          </div>
+          <button id="btn-add-plant-home" class="btn-primary" type="button"><span aria-hidden="true">+</span> Plant toevoegen</button>
         </div>
+
+        <div id="home-insights" class="home-insights-list" aria-label="Snelle inzichten"></div>
 
         <div class="dashboard-grid-layout">
           <div class="dashboard-left">
-            <!-- AI ASSISTANT PANEL -->
-            <div class="dashboard-section" style="margin-bottom: 24px;">
-              <div class="section-header">
-                <h3>⚡ Tuinassistent</h3>
-              </div>
-              <div class="ai-assistant-panel" style="background: var(--surface-block); padding: 16px; border-radius: var(--radius-content); border: 1px solid var(--border-color); box-shadow: var(--shadow);">
-                <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                  <input type="text" id="ai-question-input" placeholder="Vraag iets over je tuin..." style="flex: 1; border-radius: var(--radius-main); padding: 10px 16px; font-size: 14px; border: 1px solid var(--border-color); outline: none; background: var(--bg-color); color: var(--text-main);">
-                  <button id="btn-ask-ai" class="btn-primary" style="width: auto; padding: 0 20px; border-radius: var(--radius-main); font-size: 13px; height: 40px;">Vraag AI</button>
-                </div>
-                <div class="quick-tips-ai" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
-                   <button class="filter-chip" style="font-size: 11px;" onclick="window._quickAskAI('Wat moet ik nu doen?')">⚡ Nu doen?</button>
-                   <button class="filter-chip" style="font-size: 11px;" onclick="window._quickAskAI('Waar ben ik te laat?')">⚠️ Te laat?</button>
-                   <button class="filter-chip" style="font-size: 11px;" onclick="window._quickAskAI('Wat kan ik nu zaaien?')">🌱 Zaaitips?</button>
-                </div>
-                <div id="ai-assistant-output" style="display: none; border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;"></div>
-              </div>
-            </div>
-
             <!-- 2. NU DOEN (Action List) -->
-            <div class="dashboard-section">
+            <div class="dashboard-section dashboard-priority-section">
               <div class="section-header">
-                <h3 id="nu-doen-title">⚡ Nu doen</h3>
-                <div id="daily-progress-hint" class="daily-progress-hint" style="font-size: 11px; font-weight: 600; color: var(--text-muted); opacity: 0.8; margin-top: 2px;"></div>
+                <div>
+                  <h3 id="nu-doen-title"><svg class="home-section-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5H5v16h14V5h-3M8 3h8v4H8Zm0 9h8m-8 4h5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg>Nu doen</h3>
+                  <div id="daily-progress-hint" class="daily-progress-hint"></div>
+                </div>
               </div>
               <div id="dashboard-nu-doen" class="action-list">
                 <!-- Dynamisch via JS (Rood > Groen > Geel) -->
+              </div>
+            </div>
+
+            <!-- TUINASSISTENT -->
+            <div class="dashboard-section dashboard-assistant-section">
+              <div class="section-header">
+                <h3><svg class="home-section-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 4.5 13h5l-1 7.5L19.5 10h-5l1-6.5Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.7"/></svg>Tuinassistent</h3>
+                <button id="home-ai-provider" class="home-ai-provider" type="button" aria-label="Open AI-instellingen">AI laden…</button>
+              </div>
+              <div class="ai-assistant-panel">
+                <div class="home-ai-input-row">
+                  <input type="text" id="ai-question-input" name="garden-question" value="" autocomplete="off" placeholder="Vraag iets over je tuin…" aria-label="Stel een vraag aan de tuinassistent">
+                  <button id="btn-ask-ai" class="btn-primary" type="button">Vraag AI</button>
+                </div>
+                <div class="quick-tips-ai">
+                   <button class="filter-chip" type="button" onclick="window._quickAskAI('Wat moet ik nu doen?')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M4 12h16M6.5 6.5l11 11m0-11-11 11" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"/></svg><span>Wat kan ik nu doen?</span></button>
+                   <button class="filter-chip" type="button" onclick="window._quickAskAI('Waar ben ik te laat?')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 7v5l3.5 2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"/></svg><span>Te laat?</span></button>
+                   <button class="filter-chip" type="button" onclick="window._quickAskAI('Wat kan ik nu zaaien?')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V10m0 3c-4.5 0-7-2.2-7-6 4.8 0 7 2 7 6Zm0 1c4.3 0 7-2.3 7-6-4.6 0-7 2.2-7 6Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"/></svg><span>Zaaitips?</span></button>
+                </div>
+                <div id="ai-assistant-output" style="display: none;"></div>
               </div>
             </div>
           </div>
@@ -108,143 +186,266 @@
             <!-- 3. MIJN PLANTEN (Mini-cards grouped) -->
             <div class="dashboard-section">
               <div class="section-header">
-                <h3>🌱 Mijn planten</h3>
+                <h3><svg class="home-section-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V10m0 3c-4.5 0-7-2.2-7-6 4.8 0 7 2 7 6Zm0 1c4.3 0 7-2.3 7-6-4.6 0-7 2.2-7 6Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"/></svg>Mijn planten</h3>
               </div>
               <div id="dashboard-mijn-planten-grouped" class="status-groups-container">
                 <!-- Dynamisch via JS (Gezaaid, Groeit, Geoogst) -->
               </div>
             </div>
+
           </div>
         </div>
       </section>
 
       <!-- CALENDAR VIEW -->
       <section id="view-calendar" class="view hidden">
-        <div class="calendar-container">
-          <header class="calendar-header">
-            <button id="cal-prev" class="cal-nav-btn" title="Vorige maand" aria-label="Vorige maand">❮</button>
-            <div class="calendar-title-group" style="display:flex; align-items:center; gap:12px;">
-              <h2 id="cal-month-title">Maand Jaar</h2>
-              <button id="btn-cal-sow-tips" class="cal-tips-badge" style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:15px; padding:4px 10px; font-size:11px; cursor:pointer; font-weight:700;">🌱 tips</button>
-            </div>
-            <button id="cal-next" class="cal-nav-btn" title="Volgende maand" aria-label="Volgende maand">❯</button>
-          </header>
-
-          <div class="calendar-grid-wrapper">
-            <div class="calendar-grid-header">
-              <span>Ma</span><span>Di</span><span>Wo</span><span>Do</span><span>Vr</span><span>Za</span><span>Zo</span>
-            </div>
-            <div id="calendar-grid" class="calendar-grid">
-              <!-- Dynamisch via JS -->
-            </div>
+        <header class="calendar-page-header">
+          <div>
+            <p class="calendar-page-eyebrow">Jouw tuinmomenten</p>
+            <h1>Kalender</h1>
+            <p class="calendar-page-intro">Bekijk herinneringen en plantperiodes voor vandaag en de komende tijd.</p>
           </div>
+          <div class="calendar-header-actions">
+            <div class="calendar-current-indicator" aria-live="polite">
+              <span id="cal-current-month-indicator">Deze maand</span>
+              <span id="cal-current-year-indicator">Tuinjaar</span>
+            </div>
+            <button id="btn-add-event-fab" class="calendar-add-reminder-button" type="button" title="Herinnering toevoegen">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/></svg>
+              <span>Herinnering toevoegen</span>
+            </button>
+          </div>
+        </header>
 
-          <div id="day-details" class="day-details-panel hidden">
-            <div class="day-panel-card">
-              <div class="day-panel-header">
-                <h3 id="selected-date-label">📅 Datum</h3>
-                <button id="btn-close-details" class="close-panel-btn" aria-label="Sluit details">×</button>
+        <div class="calendar-dashboard">
+          <section class="calendar-main-panel" aria-label="Maandkalender">
+            <div class="calendar-container">
+              <header class="calendar-header">
+                <button id="cal-prev" class="cal-nav-btn" type="button" title="Vorige maand" aria-label="Vorige maand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 5-7 7 7 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></button>
+                <div class="calendar-title-group">
+                  <h2 id="cal-month-title">Maand Jaar</h2>
+                  <button id="btn-cal-sow-tips" class="cal-tips-badge" type="button" aria-label="Bekijk plantperiodes in de zaaiplanner">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20v-8m0 3c-4 0-6-2.2-6-6 4 0 6 2 6 6Zm0-2c0-4 2.2-6 6-6 0 4-2 6-6 6Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg>
+                    <span>Plantperiodes</span>
+                  </button>
+                </div>
+                <button id="cal-today" class="calendar-today-button" type="button">Vandaag</button>
+                <button id="cal-next" class="cal-nav-btn" type="button" title="Volgende maand" aria-label="Volgende maand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 5 7 7-7 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></button>
+              </header>
+
+              <div class="calendar-grid-wrapper">
+                <div class="calendar-grid-header" aria-hidden="true">
+                  <span>Ma</span><span>Di</span><span>Wo</span><span>Do</span><span>Vr</span><span>Za</span><span>Zo</span>
+                </div>
+                <div id="calendar-grid" class="calendar-grid" role="group" aria-label="Dagen van de maand"></div>
               </div>
-              
-              <div id="reminder-list" class="reminder-list">
-                <!-- Herinneringen komen hier -->
-              </div>
-              
-              <div id="reminder-context-line" style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px; margin-left: 4px;"></div>
-              
-              <div class="day-input-area">
-                <div class="input-wrapper">
-                  <input type="text" id="new-reminder-input" placeholder="Typ je reminder...">
-                  <button id="btn-add-reminder" class="btn-add-inline">Toevoegen</button>
+            </div>
+          </section>
+
+          <aside class="calendar-side-column" aria-label="Dagagenda en herinneringen">
+            <section id="day-details" class="day-details-panel hidden" aria-labelledby="selected-date-label">
+              <div class="day-panel-card">
+                <div class="day-panel-header">
+                  <div>
+                    <p class="calendar-panel-eyebrow">Dagagenda</p>
+                    <h3 id="selected-date-label">Datum</h3>
+                  </div>
+                  <button id="btn-close-details" class="close-panel-btn" type="button" aria-label="Sluit dagagenda"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.7"/></svg></button>
+                </div>
+                <div id="reminder-context-line" class="day-context-line"></div>
+
+                <section class="calendar-agenda-section" aria-labelledby="calendar-reminders-heading">
+                  <h4 id="calendar-reminders-heading" class="calendar-section-heading">Herinneringen</h4>
+                  <div id="reminder-list" class="reminder-list"></div>
+                </section>
+
+                <section class="calendar-agenda-section calendar-plant-periods" aria-labelledby="calendar-periods-heading">
+                  <h4 id="calendar-periods-heading" class="calendar-section-heading">Plantperiodes deze maand</h4>
+                  <p class="calendar-period-note">Deze plantgegevens hebben een maandperiode, geen ingeplande dag.</p>
+                  <div id="calendar-plant-period-list" class="calendar-plant-period-list"></div>
+                </section>
+
+                <div class="day-input-area">
+                  <div id="ai-planning-review" class="hidden">
+                    <p class="calendar-period-note">Voorstel van de tuinassistent. Controleer de activiteit en kies een datum voordat je toevoegt.</p>
+                    <label for="ai-planning-date" class="calendar-section-heading">Datum</label>
+                    <input type="date" id="ai-planning-date" min="1000-01-01" max="9999-12-31">
+                  </div>
+                  <label for="new-reminder-input" class="calendar-section-heading">Herinnering toevoegen</label>
+                  <div class="input-wrapper">
+                    <input type="text" id="new-reminder-input" placeholder="Bijvoorbeeld: planten water geven" autocomplete="off">
+                    <button id="btn-add-reminder" class="btn-add-inline" type="button">Toevoegen</button>
+                  </div>
+                  <button id="ai-planning-cancel" class="calendar-today-button hidden" type="button">Annuleren</button>
                 </div>
               </div>
-            </div>
-          </div>
+            </section>
+
+            <section class="calendar-upcoming-panel" aria-labelledby="calendar-upcoming-heading">
+              <div class="calendar-upcoming-header">
+                <div>
+                  <p class="calendar-panel-eyebrow">Jouw planning</p>
+                  <h2 id="calendar-upcoming-heading">Vandaag, binnenkort en later</h2>
+                </div>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v3m10-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13H4V6a1 1 0 0 1 1-1Zm3 8h3m2 0h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg>
+              </div>
+              <div id="calendar-upcoming-list" class="calendar-upcoming-list"></div>
+            </section>
+          </aside>
         </div>
-        
-        <button id="btn-add-event-fab" class="fab-btn" title="Nieuwe herinnering" aria-label="Nieuwe herinnering">+</button>
       </section>
 
       <!-- ZAAI-PLANNER GRID VIEW -->
       <section id="view-sowing-grid" class="view hidden">
-        <div class="sowing-planner-header" style="text-align:center; margin-bottom:32px;">
-          <h2 style="font-size:28px; margin-bottom:8px;">Jaaroverzicht Zaaien 📅</h2>
-          <p style="color:var(--text-muted);">Plan je hele jaar vooruit. Wat moet nu, wat komt eraan?</p>
+        <div class="sowing-planner-header">
+          <div>
+            <p class="planner-eyebrow">Jaaroverzicht</p>
+            <h2>Zaaiplanner</h2>
+            <p>Bekijk per maand wanneer jouw planten gezaaid, uitgeplant of geoogst kunnen worden.</p>
+          </div>
+          <div class="planner-year-navigation" role="group" aria-label="Jaarnavigatie">
+            <button id="planner-prev-year" class="planner-month-arrow" type="button" aria-label="Vorig jaar">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+            </button>
+            <label class="planner-year-select-label" for="planner-year-input">Tuinjaar
+              <input id="planner-year-input" type="number" min="1000" max="9999" step="1" inputmode="numeric" aria-label="Kies jaar" required>
+            </label>
+            <button id="planner-next-year" class="planner-month-arrow" type="button" aria-label="Volgend jaar">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+            </button>
+            <span id="sowing-current-year" class="sr-only" aria-live="polite"></span>
+          </div>
         </div>
-        <div id="sowing-month-grid" class="sowing-month-grid">
-           <!-- Dynamisch via JS (12 maanden) -->
+
+        <div class="planner-month-navigation" aria-label="Maandnavigatie">
+          <div class="planner-month-context">
+            <div class="planner-month-controls">
+              <button id="planner-prev-month" class="planner-month-arrow" type="button" aria-label="Vorige maand">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+              </button>
+              <div class="planner-active-month-copy" aria-live="polite">
+                <h3 id="planner-active-month-title">Deze maand</h3>
+              </div>
+              <button id="planner-next-month" class="planner-month-arrow" type="button" aria-label="Volgende maand">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+              </button>
+            </div>
+            <p id="planner-active-month-summary"></p>
+          </div>
+          <div class="planner-month-tools">
+            <select id="planner-month-select" aria-label="Kies maand">
+              <option value="0">Januari</option><option value="1">Februari</option><option value="2">Maart</option>
+              <option value="3">April</option><option value="4">Mei</option><option value="5">Juni</option>
+              <option value="6">Juli</option><option value="7">Augustus</option><option value="8">September</option>
+              <option value="9">Oktober</option><option value="10">November</option><option value="11">December</option>
+            </select>
+            <button id="planner-this-month" class="planner-this-month-button" type="button">Deze maand</button>
+          </div>
         </div>
+
+        <div id="planner-soon-filter" class="seeds-month-context hidden">
+          <span>Binnenkort zaaien · voorraad, volgende maand, deze maand nog niet ingepland</span>
+          <button id="planner-clear-soon-filter" class="context-reset-btn" type="button">Alle activiteiten</button>
+        </div>
+        <div id="sowing-month-grid" class="sowing-month-grid" role="group" aria-label="Kies een maand">
+          <!-- Dynamisch via JS (12 maanden) -->
+        </div>
+
+        <section class="planner-activities-panel" aria-labelledby="planner-activities-title">
+          <div class="planner-activities-heading">
+            <div>
+              <p class="planner-eyebrow">Op basis van jouw plantgegevens</p>
+              <h3 id="planner-activities-title">Activiteiten</h3>
+            </div>
+            <span id="planner-activity-count" class="planner-activity-count"></span>
+          </div>
+          <div id="planner-activities-content" class="planner-activities-content"></div>
+          <div class="planner-month-actions">
+            <button id="planner-open-calendar" class="planner-btn-primary" type="button">Bekijk Kalender</button>
+            <button id="planner-open-seeds" class="planner-btn-secondary" type="button">Bekijk Zaden</button>
+          </div>
+        </section>
 
       </section>
 
       <!-- WISHLIST VIEW -->
       <section id="view-wishlist" class="view hidden">
-        <div class="wishlist-container-main" style="max-width: 600px; margin: 0 auto; padding-bottom: 40px;">
-          <div class="wishlist-header" style="margin-bottom: 30px; text-align: center;">
-            <h2 style="font-size: 24px; margin-bottom: 8px;">Mijn Wishlist +</h2>
-            <p style="color: var(--text-muted); font-size: 14px;">Snelle invoer: Wat heb je nog nodig?</p>
-          </div>
+        <div class="wishlist-page-shell">
+          <header class="wishlist-page-header">
+            <div class="wishlist-heading-copy">
+              <h1>Verlanglijst</h1>
+              <p>Bewaar zaden en planten die je later wilt kopen of aan Mijn zaden wilt toevoegen.</p>
+            </div>
+          </header>
 
-          <!-- Wishlist Filters (New 7.2) -->
-          <div class="wishlist-filters" style="display: flex; gap: 8px; margin-bottom: 24px; justify-content: center;">
-            <button class="filter-chip active" data-wish-filter="all">Alles</button>
-            <button class="filter-chip" data-wish-filter="seed">Zaden</button>
-            <button class="filter-chip" data-wish-filter="item">Spullen</button>
-          </div>
-
-          <!-- Quick Add Input (Visible when NOT empty) -->
-          <div id="wishlist-fast-add" class="wishlist-fast-add-container">
-            <input type="text" id="wishlist-quick-input" placeholder="Zaad of item toevoegen… (bijv. sla, schep)">
-            <button id="btn-add-wish-quick" class="btn-primary">Toevoegen</button>
-          </div>
-
-          <!-- Empty State (New 7.1) -->
-          <div id="wishlist-empty-state" class="wishlist-empty-state hidden">
-            <p class="empty-text">Bewaar hier zaden of spullen die je later wilt gebruiken</p>
-            <div class="empty-input-group">
-              <input type="text" id="wishlist-empty-input" placeholder="Zaad of item toevoegen… (bijv. sla, schep)">
-              <button id="btn-add-wish-empty" class="btn-primary">Toevoegen</button>
+          <div id="wishlist-controls" class="wishlist-controls">
+            <label class="wishlist-search-box">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m15.5 15.5 4.2 4.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.7"/></svg>
+              <input id="wishlist-search-input" type="search" aria-label="Zoek in je verlanglijst" placeholder="Zoek naam, notitie of link" autocomplete="off">
+            </label>
+            <div class="wishlist-filters" role="group" aria-label="Filter verlanglijst">
+              <button class="filter-chip active" type="button" data-wish-filter="all" aria-pressed="true">Alles</button>
+              <button class="filter-chip" type="button" data-wish-filter="seed" aria-pressed="false">Zaden</button>
+              <button class="filter-chip" type="button" data-wish-filter="item" aria-pressed="false">Spullen</button>
+            </div>
+            <div id="wishlist-fast-add" class="wishlist-fast-add-container">
+              <label class="sr-only" for="wishlist-quick-input">Naam van zaad, plant of item</label>
+              <input type="text" id="wishlist-quick-input" placeholder="Voeg een zaad of item toe..." autocomplete="off">
+              <button id="btn-add-wish-quick" class="btn-primary" type="button">Toevoegen</button>
             </div>
           </div>
 
-          <div id="wishlist-items" class="wishlist-list-grid" style="display: flex; flex-direction: column; gap: 10px;">
-            <!-- Dynamisch via JS -->
+          <div id="wishlist-empty-state" class="wishlist-empty-state hidden">
+            <div class="wishlist-empty-copy">
+              <span class="wishlist-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 20v-8m0 3c-4 0-6-2.2-6-6 4 0 6 2 6 6Zm0-2c0-4 2.2-6 6-6 0 4-2 6-6 6Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg></span>
+              <h2>Nog niets op je verlanglijst</h2>
+              <p class="empty-text">Voeg een zaad, plant of tuinitem toe om het later terug te vinden.</p>
+            </div>
           </div>
+
+          <div id="wishlist-items" class="wishlist-list-grid" aria-live="polite"></div>
         </div>
       </section>
       <!-- LIJST VIEW -->
       <section id="view-list" class="view hidden">
-        <!-- RECENT CAROUSEL -->
-        <div class="carousel-section" id="carousel-section" style="display:none;">
-           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-               <h2 style="font-size:18px;">Nieuwste Aanwinsten</h2>
-           </div>
-           <div class="carousel-container">
-               <div id="carousel-track" class="carousel-track"></div>
-               <div class="carousel-nav-wrapper">
-                   <button id="carousel-prev" class="carousel-nav" aria-label="Vorige">❮</button>
-                   <button id="carousel-next" class="carousel-nav" aria-label="Volgende">❯</button>
-               </div>
-           </div>
-        </div>
+        <div class="seed-list-shell">
+          <header class="seed-page-header">
+            <div>
+              <p class="seed-eyebrow">Collectie</p>
+              <h2>Mijn zaden</h2>
+              <p class="seed-page-intro">Een rustig overzicht van alles wat je wilt zaaien, verzorgen en oogsten.</p>
+            </div>
+            <button id="btn-add-zaden-top" class="btn-primary seed-add-button" type="button">Zaad toevoegen</button>
+          </header>
 
-        <div class="search-container" style="display: flex; gap: 8px;">
-          <input type="text" id="search-input" placeholder="🔍 Zoek zaden..." autocomplete="off" style="flex: 1;">
-          <button id="btn-scan-notes" class="btn-secondary-sm" title="Scan notities voor planten" style="padding: 0 12px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 16px;">✨</button>
-          <button id="btn-add-zaden-top" class="btn-primary-sm">+ Nieuw</button>
-        </div>
-        <div id="grid-header" class="grid-header"></div>
-        <div class="category-filters" id="category-filters">
-           <button class="filter-chip active" data-filter="Alles">Alle Zaden</button>
-           <button class="filter-chip" data-filter="Gezaaid">Gezaaid 🌱 <span id="sown-count"></span></button>
-           <button class="filter-chip" data-filter="Groente">🥦 Groente</button>
-           <button class="filter-chip" data-filter="Fruit">🍓 Fruit</button>
-           <button class="filter-chip" data-filter="Kruid">🌿 Kruid</button>
-           <button class="filter-chip" data-filter="Bloem">🌻 Bloem</button>
-           <button class="filter-chip" data-filter="Bloembol">🧅 Bloembol</button>
-           <button class="filter-chip" data-filter="Boom">🌳 Boom</button>
-           <button class="filter-chip" data-filter="Struik">🪴 Struik</button>
-           <button class="filter-chip" data-filter="Sierplant">🎋 Sierplant</button>
+          <div class="seed-summary" aria-label="Samenvatting van je zaden">
+            <article class="seed-summary-card"><span class="seed-summary-label">Totaal zaden</span><strong id="seed-summary-total">0</strong></article>
+            <article class="seed-summary-card"><span class="seed-summary-label">Favorieten</span><strong id="seed-summary-favorites">0</strong></article>
+            <article class="seed-summary-card"><span class="seed-summary-label">Deze maand zaaien</span><strong id="seed-summary-season">0</strong></article>
+          </div>
+
+          <div class="seed-toolbar">
+            <label class="seed-search-field" for="search-input">
+              <span class="seed-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/></svg></span>
+              <span class="sr-only">Zoek in Mijn zaden</span>
+              <input type="text" id="search-input" placeholder="Zoek op plantnaam..." autocomplete="off">
+            </label>
+            <button id="btn-scan-notes" class="btn-secondary seed-scan-button" type="button" title="Scan notities voor planten">Notities scannen</button>
+          </div>
+
+          <div id="grid-header" class="grid-header"></div>
+          <div class="category-filters seed-filter-chips" id="category-filters" aria-label="Filter je zaden">
+             <button class="filter-chip active" data-filter="Alles" type="button">Alle zaden</button>
+             <button class="filter-chip" data-filter="Gezaaid" type="button">Gezaaid <span id="sown-count"></span></button>
+             <button class="filter-chip" data-filter="Groente" type="button">Groente</button>
+             <button class="filter-chip" data-filter="Fruit" type="button">Fruit</button>
+             <button class="filter-chip" data-filter="Kruid" type="button">Kruid</button>
+             <button class="filter-chip" data-filter="Bloem" type="button">Bloem</button>
+             <button class="filter-chip" data-filter="Bloembol" type="button">Bloembol</button>
+             <button class="filter-chip" data-filter="Boom" type="button">Boom</button>
+             <button class="filter-chip" data-filter="Struik" type="button">Struik</button>
+             <button class="filter-chip" data-filter="Sierplant" type="button">Sierplant</button>
+          </div>
         </div>
         <div id="seeds-context-banner" class="hidden"></div>
         <div id="seed-grid" class="seed-grid">
@@ -410,50 +611,96 @@
       
       <!-- ONBOARDING VIEW -->
       <section id="view-onboarding" class="view hidden">
-        <div class="onboarding-container">
-          <div id="onboarding-step-1" class="onboarding-step">
-            <div class="onboarding-icon">🌱</div>
-            <h2>Welkom bij KweekKompas</h2>
-            <p>Laten we je tuin inrichten. In 3 korte vragen helpen we je op weg met je eerste zaden.</p>
-            <button class="btn-primary onboarding-next" data-next="2" style="width: 100%;">Start</button>
-            <button class="btn-text onboarding-skip" style="margin-top:20px; width: 100%;">Overslaan</button>
-          </div>
-
-          <div id="onboarding-step-2" class="onboarding-step hidden">
-            <span class="step-indicator">Stap 1 van 3</span>
-            <h3>Hoeveel zon krijgt je tuin?</h3>
-            <div class="onboarding-options">
-              <button class="onboarding-opt" data-val="Volle zon"><span>☀️</span>Volle zon</button>
-              <button class="onboarding-opt" data-val="Halfschaduw"><span>⛅</span>Halfschaduw</button>
-              <button class="onboarding-opt" data-val="Schaduw"><span>☁️</span>Schaduw</button>
+        <div class="onboarding-card">
+          <header class="onboarding-header">
+            <div class="onboarding-brand">
+              <span class="onboarding-brand-mark" aria-hidden="true">
+                <svg class="compass-logo" viewBox="0 0 32 32" focusable="false" aria-hidden="true">
+                  <circle cx="16" cy="16" r="11.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                  <path d="M16 4.5v3M27.5 16h-3M16 27.5v-3M4.5 16h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4"/>
+                  <path d="m12 20.5 3.2-8.3 4.9 5.1-8.1 3.2Z" fill="var(--logo-accent)" stroke="currentColor" stroke-linejoin="round" stroke-width="1.35"/>
+                  <path d="M20.9 23.5c-.2-3.2-2.1-5.4-5.2-6.3 0 3.2 1.8 5.7 5.2 6.3Z" fill="var(--logo-leaf)" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/>
+                </svg>
+              </span>
+              <span><strong>KweekKompas</strong><small>Een helder begin voor jouw tuin</small></span>
             </div>
-          </div>
-
-          <div id="onboarding-step-3" class="onboarding-step hidden">
-            <span class="step-indicator">Stap 2 van 3</span>
-            <h3>Wat voor tuin heb je?</h3>
-            <div class="onboarding-options">
-              <button class="onboarding-opt" data-val="Moestuin"><span>🏡</span>Moestuin</button>
-              <button class="onboarding-opt" data-val="Balkon"><span>🪴</span>Balkon</button>
-              <button class="onboarding-opt" data-val="Gemengd"><span>🍀</span>Gemengd</button>
+            <div class="onboarding-progress" role="progressbar" aria-labelledby="onboarding-progress-label" aria-valuemin="1" aria-valuemax="3" aria-valuenow="1">
+              <span class="onboarding-progress-label" id="onboarding-progress-label">Stap 1 van 3</span>
+              <span class="onboarding-progress-track" aria-hidden="true"><span id="onboarding-progress-fill"></span></span>
+              <span class="onboarding-progress-names" aria-hidden="true"><span data-progress-name="1" class="is-current">Opslag</span><span data-progress-name="2">Jouw tuin</span><span data-progress-name="3">Afronden</span></span>
             </div>
-          </div>
+          </header>
 
-          <div id="onboarding-step-4" class="onboarding-step hidden">
-            <span class="step-indicator">Stap 3 van 3</span>
-            <h3>Wat is je ervaring?</h3>
-            <div class="onboarding-options">
-              <button class="onboarding-opt" data-val="Beginner"><span>🐣</span>Beginner</button>
-              <button class="onboarding-opt" data-val="Gemiddeld"><span>🌿</span>Gemiddeld</button>
-              <button class="onboarding-opt" data-val="Ervaren"><span>👨‍🌾</span>Ervaren</button>
-            </div>
-          </div>
+          <div class="onboarding-content">
+            <section id="onboarding-step-1" class="onboarding-step" aria-labelledby="onboarding-storage-title">
+              <p class="onboarding-eyebrow">Fijn dat je er bent</p>
+              <h1 id="onboarding-storage-title">Jouw tuin, op jouw manier</h1>
+              <p class="onboarding-intro">Je gegevens worden lokaal in deze browser opgeslagen. Je hebt geen account nodig. Via Instellingen kun je later inloggen en handmatig synchroniseren.</p>
+              <div class="onboarding-storage-note"><span class="onboarding-note-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6l-7-3Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m9 12 2 2 4-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg></span><span>Jij houdt de controle over je gegevens. Een databaseoptie is later mogelijk.</span></div>
+              <div class="onboarding-actions onboarding-storage-actions">
+                <button class="onboarding-button onboarding-button-primary onboarding-next" type="button" data-next="2">Verder met lokale opslag</button>
+                <button class="onboarding-button onboarding-button-secondary" type="button" id="btn-onboarding-restore">Back-up herstellen</button>
+              </div>
+            </section>
 
-          <div id="onboarding-finish" class="onboarding-step hidden">
-            <div class="onboarding-icon">🌍</div>
-            <h2>Klaar voor de start!</h2>
-            <p>We hebben op basis van jouw keuzes alvast wat makkelijke planten klaargezet in je collectie.</p>
-            <button class="btn-primary" id="btn-onboarding-finish" style="width: 100%;">Bekijk mijn tuin</button>
+            <section id="onboarding-step-2" class="onboarding-step hidden" aria-labelledby="onboarding-garden-title" aria-hidden="true" inert>
+              <div class="onboarding-step-heading"><div><p class="onboarding-eyebrow">Stap 2 · jouw plek</p><h1 id="onboarding-garden-title">Jouw tuin</h1><p class="onboarding-intro">Kies de plekken waar je kweekt. Je kunt er meer dan één selecteren.</p></div></div>
+
+              <fieldset class="onboarding-choice-section onboarding-location-section">
+                <legend>Waar kweek je?</legend>
+                <p class="onboarding-section-hint">Selecteer alle plekken die bij jou passen.</p>
+                <div class="onboarding-choice-grid onboarding-location-grid" role="group" aria-label="Tuinplekken">
+                  <button class="onboarding-choice-card" type="button" data-choice-group="places" data-val="Volle grond" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M6 16h12M8 13h8M12 4v6m-4-3 4 3 4-3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/><path d="M5 19c1-2 2.3-3 4-3s3 1 3 3m0 0c1-2 2.3-3 4-3s3 1 3 3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span>Volle grond</span></button>
+                  <button class="onboarding-choice-card" type="button" data-choice-group="places" data-val="Bakken of potten" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11h14l-1.5 9h-11L5 11Zm-1-3h16v3H4zm8-4v7m0-7c-2.5 0-4 1.4-4 3.5M12 8c0-2 1.5-3 4-3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg><span>Bakken of potten</span></button>
+                  <button class="onboarding-choice-card" type="button" data-choice-group="places" data-val="Balkon of terras" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V5h14v15M3 10h18M8 10v10m8-10v10M8 5V3m8 2V3M4 14h16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/><path d="M9 13h2l-.3 3H9.3L9 13Zm4 0h2l-.3 3h-1.4l-.3-3Z" fill="currentColor"/></svg><span>Balkon of terras</span></button>
+                </div>
+                <div class="onboarding-primary-place" id="onboarding-primary-place-wrap" hidden>
+                  <label for="onboarding-primary-place">Hoofdplek</label>
+                  <select id="onboarding-primary-place" aria-describedby="onboarding-primary-hint"></select>
+                  <small id="onboarding-primary-hint">Deze plek staat bovenaan in jouw tuinprofiel.</small>
+                </div>
+                <button class="onboarding-later" type="button" data-later="places">Later invullen</button>
+              </fieldset>
+
+              <div class="onboarding-choice-columns">
+                <fieldset class="onboarding-choice-section">
+                  <legend>Hoeveel zon krijgt je tuin?</legend>
+                  <div class="onboarding-choice-grid onboarding-three-choice-grid" role="group" aria-label="Zonlicht">
+                    <button class="onboarding-choice-card onboarding-small-card" type="button" data-choice-group="light" data-val="Zon" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.7"/></svg><span>Volle zon</span></button>
+                    <button class="onboarding-choice-card onboarding-small-card" type="button" data-choice-group="light" data-val="Halfschaduw" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2m6.36.64-1.42 1.42M21 12h-2m-7 9v-2m-9-7h2m-1.36-6.36 1.42 1.42" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.7"/><path d="M16.5 16.5a5.5 5.5 0 1 1-7.8-7.8m3.3-2.7a6 6 0 0 1 6 6m-6 4.5h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg><span>Halfschaduw</span></button>
+                    <button class="onboarding-choice-card onboarding-small-card" type="button" data-choice-group="light" data-val="Schaduw" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .2-8A6 6 0 0 0 5.5 9a4.5 4.5 0 0 0 1.5 9Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/><path d="M9 21h6" stroke="currentColor" stroke-linecap="round" stroke-width="1.7"/></svg><span>Schaduw</span></button>
+                  </div>
+                  <button class="onboarding-later" type="button" data-later="light">Later invullen</button>
+                </fieldset>
+
+                <fieldset class="onboarding-choice-section">
+                  <legend>Hoeveel ervaring heb je?</legend>
+                  <div class="onboarding-choice-grid onboarding-three-choice-grid" role="group" aria-label="Ervaring">
+                    <button class="onboarding-choice-card onboarding-small-card" type="button" data-choice-group="level" data-val="Beginner" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20v-8m0 2c-4.5 0-7-2.5-7-6 4.5 0 7 2.5 7 6Zm0-2c0-4.5 2.5-7 7-7 0 4.5-2.5 7-7 7Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/><path d="M7 20h10" stroke="currentColor" stroke-linecap="round" stroke-width="1.7"/></svg><span>Beginner</span></button>
+                    <button class="onboarding-choice-card onboarding-small-card" type="button" data-choice-group="level" data-val="Gemiddeld" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V8m0 6c-5 0-8-3-8-8 5 0 8 3 8 8Zm0-3c0-5 3-8 8-8 0 5-3 8-8 8Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg><span>Gemiddeld</span></button>
+                    <button class="onboarding-choice-card onboarding-small-card" type="button" data-choice-group="level" data-val="Ervaren" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V9m0 4C7 13 4 10 4 5c5 0 8 3 8 8Zm0-4c0-5 3-8 8-8 0 5-3 8-8 8Zm-5 8h10" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg><span>Ervaren</span></button>
+                  </div>
+                  <button class="onboarding-later" type="button" data-later="level">Later invullen</button>
+                </fieldset>
+              </div>
+
+              <div class="onboarding-actions onboarding-step-actions">
+                <button class="onboarding-button onboarding-button-secondary onboarding-back" type="button" data-back="1">Terug</button>
+                <button class="onboarding-button onboarding-button-primary onboarding-next" type="button" data-next="3">Bekijk samenvatting</button>
+              </div>
+            </section>
+
+            <section id="onboarding-step-3" class="onboarding-step hidden" aria-labelledby="onboarding-finish-title" aria-hidden="true" inert>
+              <div class="onboarding-finish-mark" aria-hidden="true"><svg class="compass-logo" viewBox="0 0 32 32" focusable="false"><circle cx="16" cy="16" r="11.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M16 4.5v3M27.5 16h-3M16 27.5v-3M4.5 16h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.4"/><path d="m12 20.5 3.2-8.3 4.9 5.1-8.1 3.2Z" fill="var(--logo-accent)" stroke="currentColor" stroke-linejoin="round" stroke-width="1.35"/><path d="M20.9 23.5c-.2-3.2-2.1-5.4-5.2-6.3 0 3.2 1.8 5.7 5.2 6.3Z" fill="var(--logo-leaf)" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/></svg></div>
+              <p class="onboarding-eyebrow">Stap 3 · jouw startpunt</p>
+              <h1 id="onboarding-finish-title">Klaar voor jouw tuin</h1>
+              <p class="onboarding-intro">Dit zijn je keuzes. Je profiel en voorkeuren kun je later via Instellingen aanpassen.</p>
+              <dl id="onboarding-summary" class="onboarding-summary"></dl>
+              <div class="onboarding-actions onboarding-step-actions">
+                <button class="onboarding-button onboarding-button-secondary onboarding-back" type="button" data-back="2">Terug</button>
+                <button class="onboarding-button onboarding-button-primary" id="btn-onboarding-finish" type="button">Bekijk mijn tuin</button>
+              </div>
+            </section>
           </div>
         </div>
       </section>
@@ -462,8 +709,8 @@
       <!-- DETAILS VIEW -->
       <section id="view-detail" class="view hidden">
         <div class="detail-page-header">
-           <button id="btn-detail-back" class="btn-back">← Overzicht</button>
-           <button id="btn-detail-edit" class="btn-edit-detail">✏️ Bewerk</button>
+           <button id="btn-detail-back" class="btn-back" type="button"><svg class="plant-detail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 5-7 7 7 7M5 12h15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Overzicht</span></button>
+           <button id="btn-detail-edit" class="btn-edit-detail" type="button"><svg class="plant-detail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.8 4.3 4.3-.8L20 7.5 16.5 4 4 16.5Zm10.8-10.8 3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Bewerk</span></button>
         </div>
         <div id="detail-page-body" class="detail-page-body">
            <!-- Dynamisch via JS -->
@@ -485,21 +732,21 @@
   <div id="toast-container" class="toast-container"></div>
 
   <!-- WISHLIST DETAIL MODAL -->
-  <div id="wishlist-detail-modal" class="modal-overlay hidden">
-    <div class="modal-content" style="max-width: 450px;">
+  <div id="wishlist-detail-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="wish-modal-title">
+    <div class="modal-content">
       <div class="modal-header">
-        <h3>Product Details</h3>
-        <button id="btn-close-wish-modal" class="modal-close-btn" aria-label="Sluit venster">&times;</button>
+        <h3 id="wish-modal-title">Verlanglijstitem bewerken</h3>
+        <button id="btn-close-wish-modal" class="modal-close-btn" type="button" aria-label="Sluit venster">&times;</button>
       </div>
-      <div class="modal-body wishlist-modal-body" style="padding: 20px 24px 24px 24px !important; display: flex; flex-direction: column; gap: 16px;">
+      <div class="modal-body wishlist-modal-body">
         
-        <div class="form-row" style="display: flex; gap: 12px; align-items: flex-end;">
-          <div class="form-group" style="flex: 2; margin-bottom: 0;">
-            <label>Naam *</label>
-            <input type="text" id="edit-wish-name" placeholder="Item naam..." class="compact-input">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="edit-wish-name">Naam *</label>
+            <input type="text" id="edit-wish-name" placeholder="Item naam..." class="compact-input" required>
           </div>
-          <div class="form-group" style="flex: 1.2; margin-bottom: 0;">
-            <label>Type</label>
+          <div class="form-group">
+            <label for="edit-wish-type">Type</label>
             <select id="edit-wish-type" class="compact-input">
               <option value="seed">🌱 Zaad</option>
               <option value="item">📦 Spullen</option>
@@ -508,37 +755,39 @@
         </div>
 
         <div class="form-group">
-          <label>Link (webshop of info)</label>
-          <div style="display: flex; gap: 8px;">
-            <input type="text" id="edit-wish-link" placeholder="https://..." style="flex: 1;" class="compact-input">
-            <a id="btn-visit-link" href="#" target="_blank" class="btn-secondary" style="padding: 8px 16px; font-size: 13px; text-decoration: none; display: flex; align-items: center; justify-content: center; min-width: 60px;">Open</a>
+          <label for="edit-wish-link">Link (webshop of info)</label>
+          <div class="wishlist-link-row">
+            <input type="text" id="edit-wish-link" placeholder="https://..." class="compact-input">
+            <a id="btn-visit-link" href="#" target="_blank" rel="noopener noreferrer" class="btn-secondary">Open</a>
           </div>
+        </div>
+
+        <div class="wishlist-photo-section">
+          <div class="wishlist-photo-heading">
+            <span class="wishlist-field-label">Afbeelding</span>
+            <button id="btn-wish-upload" type="button" class="btn-secondary wishlist-upload-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16.5V20h16v-3.5M12 16V4m-5 7 5-5 5 5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg><span>Foto uploaden</span></button>
+            <input type="file" id="edit-wish-img-file" accept="image/*" hidden>
+          </div>
+          <div class="form-photo-preview">
+            <img id="edit-wish-img-preview" alt="Fotovoorbeeld van dit verlanglijstitem" style="display: none;">
+            <span id="wish-img-placeholder">Nog geen afbeelding</span>
+          </div>
+          <p class="wishlist-photo-hint">Upload een foto of plak een afbeelding met Ctrl+V.</p>
+          <details id="wish-image-link" class="wishlist-image-link">
+            <summary>Afbeeldingslink invoeren</summary>
+            <label for="edit-wish-img-url" class="sr-only">Afbeeldingslink</label>
+            <input type="url" id="edit-wish-img-url" placeholder="https://..." class="compact-input">
+          </details>
         </div>
 
         <div class="form-group">
-          <label>Afbeelding (plakken, upload of link)</label>
-          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-            <input type="text" id="edit-wish-img-url" placeholder="Plak URL..." style="flex: 1;" class="compact-input">
-            <label for="edit-wish-img-file" class="btn-secondary" style="cursor: pointer; padding: 8px 16px; display: flex; align-items: center; justify-content: center;">📷</label>
-            <input type="file" id="edit-wish-img-file" accept="image/*" style="display: none;">
-          </div>
+          <label for="edit-wish-note">Notities</label>
+          <textarea id="edit-wish-note" rows="3" placeholder="Bijv. Maat, winkel, merk..."></textarea>
         </div>
 
-        <div class="form-photo-preview" style="height: 180px; width: 100%; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); display: flex; align-items: center; justify-content: center; overflow: hidden; margin-top: 5px;">
-           <img id="edit-wish-img-preview" src="" style="width: 100%; height: 100%; object-fit: contain; display: none;">
-           <span id="wish-img-placeholder" style="color: var(--text-muted); opacity: 0.5; font-size: 13px;">Preview</span>
-        </div>
-
-        <div class="form-group" style="margin-top: 10px;">
-          <label>Notities</label>
-          <textarea id="edit-wish-note" rows="3" placeholder="Bijv. Maat, winkel, merk..." style="width: 100%; padding: 12px; font-size: 14px;"></textarea>
-        </div>
-
-        <div class="modal-footer-btns" style="display: flex; justify-content: flex-start; margin-top: 24px; align-items: center; padding-top: 20px; border-top: 1px solid var(--border-color);">
-            <button id="btn-wish-delete" class="btn-secondary" style="color: #E53E3E; margin-right: 12px; padding: 10px 18px; display: flex; align-items: center; gap: 8px; font-weight: 700;">
-               <span style="font-size: 14px;">🗑️</span> Verwijder
-            </button>
-            <button id="btn-wish-save" class="btn-primary" style="flex: 1; padding: 12px 28px; font-weight: 700; border-radius: 12px;">Opslaan</button>
+        <div class="modal-footer-btns">
+            <button id="btn-wish-delete" class="btn-secondary wishlist-delete-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16m-10 4v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg><span>Verwijder</span></button>
+            <button id="btn-wish-save" class="btn-primary" type="button">Opslaan</button>
         </div>
       </div>
     </div>
@@ -640,6 +889,8 @@
               <select id="profile-input-climate">
                 <option value="Nederland (Zeeklimaat)">Nederland (Zeeklimaat)</option>
                 <option value="België (Zeeklimaat)">België (Zeeklimaat)</option>
+                <option value="Warm (Subtropisch)">Warm / Kas (Subtropisch)</option>
+                <option value="Koud (Continentaal)">Koud (Continentaal)</option>
                 <option value="Zuid-Europa (Warm)">Zuid-Europa (Warm)</option>
                 <option value="Noord-Europa (Koud)">Noord-Europa (Koud)</option>
                 <option value="Anders">Anders</option>
@@ -649,8 +900,10 @@
             <div class="form-group-compact">
               <label>Type Tuin</label>
               <select id="profile-input-tuin">
+                <option value="Moestuin">Moestuin</option>
                 <option value="Achtertuin">Achtertuin</option>
                 <option value="Balkon">Balkon</option>
+                <option value="Gemengd">Gemengd</option>
                 <option value="Volkstuin">Volkstuin</option>
                 <option value="Geen">Geen (potten)</option>
               </select>
@@ -662,6 +915,7 @@
                 <option value="Beginner">Beginner</option>
                 <option value="Gemiddeld">Gemiddeld</option>
                 <option value="Expert">Expert</option>
+                <option value="Ervaren">Ervaren</option>
               </select>
             </div>
 
@@ -680,7 +934,7 @@
         <!-- View: Data & Storage -->
         <div id="info-view-data" class="info-view hidden">
           <div class="info-block" style="padding: 0;">
-            <p class="subtle" style="margin-bottom: 20px;">Beheer je gegevens eenvoudig en veilig. Alles blijft op dit apparaat.</p>
+            <p class="subtle" style="margin-bottom: 20px;">Je gegevens worden automatisch op dit apparaat opgeslagen. Een account is niet nodig.</p>
             
             <div class="settings-card">
               <div class="card-row">
@@ -695,15 +949,15 @@
             <div class="settings-card">
               <div class="card-row">
                 <div class="card-info">
-                  <strong>Herstellen & Import</strong>
-                  <p>Laad een eerdere backup of importeer data.</p>
+                  <strong>Backup herstellen</strong>
+                  <p>Gegevens in het bestand vervangen de bijbehorende gegevens in je tuin; de rest blijft bewaard. Je bevestigt dit eerst.</p>
                 </div>
-                <button class="btn-secondary" onclick="importData()">Import</button>
+                <button class="btn-secondary" onclick="importData()">Bestand kiezen</button>
               </div>
             </div>
 
             <div class="info-box" style="background: rgba(var(--primary-rgb), 0.05); padding: 12px; border-radius: 12px; font-size: 12px; margin: 20px 0; border: 1px solid rgba(var(--primary-rgb), 0.1); color: var(--primary-color);">
-              🔒 Jouw data verlaat dit apparaat nooit. KweekKompas verstuurt niets naar externe servers.
+              Je gebruikt de app zonder account. Een cloudkopie synchroniseer je alleen wanneer je daar zelf voor kiest.
             </div>
 
             <div class="danger-zone">
@@ -743,7 +997,7 @@
                 <strong>Worden mijn gegevens opgeslagen?</strong>
                 <span class="faq-chevron">❯</span>
               </div>
-              <p class="faq-answer">Ja, alles wordt 100% lokaal op jouw eigen apparaat opgeslagen. Wij hebben geen toegang tot je data.</p>
+              <p class="faq-answer">Ja. Je gegevens worden automatisch op dit apparaat opgeslagen. Een account is niet nodig.</p>
             </div>
             <div class="faq-item" onclick="toggleFAQ(this)">
               <div class="faq-question">
@@ -758,8 +1012,8 @@
         <div id="info-view-privacy" class="info-view hidden">
           <div class="info-block">
             <h3>🔒 Privacy & Veiligheid</h3>
-            <p><strong>Je gegevens blijven op jouw apparaat.</strong></p>
-            <p>KweekKompas verstuurt niets naar externe servers.</p>
+            <p><strong>Je gegevens worden automatisch op dit apparaat opgeslagen.</strong></p>
+            <p>Cloud-synchronisatie is optioneel en gebeurt alleen op jouw verzoek. Bij een AI-vraag worden de vraag en bijbehorende tuingegevens naar de gekozen provider gestuurd.</p>
           </div>
         </div>
 
@@ -797,7 +1051,8 @@
     </div>
   </div>
 
-  <script src="app-v132.js" charset="utf-8"></script>
+  <script src="services.js?v=2"></script>
+  <script src="app-v132.js?v=7d" charset="utf-8"></script>
 
 </body>
 </html>

@@ -1,0 +1,22 @@
+/* Fixes observed during desktop/mobile review; keep existing component styles. */
+.seed-search-field #search-input { padding-left: 44px; }
+.shell-mobile-brand-mark .compass-logo,
+.onboarding-brand-mark .compass-logo,
+.onboarding-finish-mark .compass-logo { color: var(--primary-text); }
+.settings-panel:not(.open) { visibility: hidden; box-shadow: none !important; pointer-events: none; }
+.toast { width: max-content; max-width: min(90vw, 420px); }
+.toast:not(.show) { pointer-events: none; }
+.header-image.detail-without-photo { background: #315747; }
+.header-image.detail-without-photo .placeholder-img { height: 100%; width: 100%; background: transparent; }
+.ai-suggestion-row { gap: 10px; flex-wrap: wrap; }
+.ai-suggestion-row > span { min-width: 0; overflow-wrap: anywhere; }
+.ai-actions-group { flex-wrap: wrap; min-width: 0; }
+.ai-error { color: var(--primary-text); border-left: 3px solid #b54535; padding: 10px 14px; }
+[data-theme="dark"] #wishlist-quick-input,
+[data-theme="dark"] #wishlist-empty-input { color: var(--primary-text); background: var(--card-background); }
+.modal-content .modal-body { min-height: 0; overflow-y: auto; }
+.modal-content label { color: var(--primary-text) !important; }
+.shell-mobile-title { color: var(--primary-text); }
+@media (max-width: 768px) {
+    body:not(.shell-menu-open) .app-sidebar:not(.mobile-open) { visibility: hidden; box-shadow: none; }
+}

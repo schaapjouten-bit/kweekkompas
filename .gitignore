@@ -6,5 +6,13 @@ scratch/
 # Local Netlify folder
 .netlify
 .env
+.env.*
+!.env.example
 node_modules/
-dist/  
+dist/
+supabase/.temp/
+
+# Personal source backup and unrelated local media stay on this computer.
+/laatste.json
+/VJ_Reactor/
+/suno_cover_test.jpeg
