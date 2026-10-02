@@ -1,4 +1,4 @@
-const { createClient } = require('@supabase/supabase-js');
+const { createClient } = require('./supabase-client.mjs');
 const { env, HttpError, headersOf } = require('./http');
 const publicKey = () => env('SUPABASE_PUBLISHABLE_KEY')?.trim() || env('SUPABASE_ANON_KEY')?.trim();
 function configured() { return Boolean(env('SUPABASE_URL')?.trim() && publicKey()); }

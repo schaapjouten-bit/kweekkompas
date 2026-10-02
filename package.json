@@ -2,7 +2,7 @@
   "name": "kweekkompas",
   "version": "2.0.0",
   "private": true,
-  "engines": { "node": ">=22" },
+  "engines": { "node": ">=22.12" },
   "description": "KweekKompas v2 — lokale tuinplanner met optionele cloud en AI",
   "main": "app-v132.js",
   "directories": {
