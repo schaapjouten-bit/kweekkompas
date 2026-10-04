@@ -2,6 +2,7 @@ const { env, HttpError } = require('./http');
 const { configured, authenticate } = require('./supabase');
 const { getGeminiModels } = require('./gemini-models');
 const { ollamaBase } = require('./ollama');
+const contract = require('../../../../ai-contract');
 const providers = ['gemini', 'ollama', 'openai-compatible'];
 function providerConfig() {
     const localAPI = env('KWEEK_LOCAL_DEV') === 'true' && globalThis.KweekLocalAPI;
@@ -66,11 +67,6 @@ async function callAI(body, system, prompt) {
     let data;
     try { data = await response.json(); } catch { throw new HttpError(502, 'De AI-provider gaf geen geldig antwoord.'); }
     const text = provider === 'gemini' ? data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') : provider === 'ollama' ? data.response : data.choices?.[0]?.message?.content;
-    try {
-        const clean = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-        const parsed = JSON.parse(clean);
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
-        return parsed;
-    } catch { throw new HttpError(502, 'De AI-provider gaf geen geldig JSON-antwoord. Probeer opnieuw.'); }
+    return contract.parse(text);
 }
 module.exports = { providerConfig, authorizeAI, callAI };

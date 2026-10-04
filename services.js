@@ -73,8 +73,9 @@
         const display = () => {
             const provider = prefs.provider || config?.defaultProvider;
             const labels = { gemini: 'Gemini', ollama: 'Lokale AI (Ollama)', 'openai-compatible': 'Eigen API' };
-            const unavailable = provider === 'ollama' && config?.providers?.ollama?.connection?.runtime === 'hosted' && !config.providers.ollama.available;
-            button.textContent = `${labels[provider] || 'AI-instellingen'}${unavailable ? ' · online niet bereikbaar' : ''} ⌄`;
+            const directStatus = provider === 'ollama' && window.KweekBrowserOllama?.direct ? window.KweekBrowserOllama.status().state : null;
+            const suffix = directStatus === 'reachable' ? ' · verbonden op deze computer' : directStatus === 'blocked' ? ' · verbinding controleren' : directStatus ? ' · nog niet getest' : '';
+            button.textContent = `${labels[provider] || 'AI-instellingen'}${suffix} ⌄`;
             button.setAttribute('aria-label', `Open AI-instellingen${provider ? ': ' + (config?.providers?.[provider]?.label || labels[provider]) : ''}`);
             const model = prefs.model || config?.providers?.[provider]?.model;
             button.title = model ? `Model: ${model}` : 'Provider en model instellen';
@@ -108,16 +109,24 @@
         <ol><li><a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Download Ollama</a> voor je besturingssysteem en installeer het.</li>
         <li>Open PowerShell of Terminal en download het standaardmodel:${ollamaCommandHTML()}Wacht tot de download klaar is. Hiervoor heb je internet en voldoende schijfruimte nodig.</li>
         <li>Start Ollama en laat het draaien. Op Windows kun je Ollama via het Startmenu openen. Als je de opdrachtregelversie gebruikt, start je de server met <code>ollama serve</code>. Start geen tweede server als Ollama al draait.</li>
-        <li>Open de lokale KweekKompas-app met de lokale server (<code>npm start</code>) en ga naar Instellingen → AI. Kies <strong>Lokale AI (Ollama)</strong> en <code>llama3:latest</code>, of een ander model dat je zelf hebt gedownload. Sla je AI-keuze op.</li>
+        <li>Open KweekKompas online op deze computer, of start de lokale app met <code>npm start</code>. Ga naar Instellingen → AI. Kies <strong>Lokale AI (Ollama)</strong> en <code>llama3:latest</code>, of een ander model dat je zelf hebt gedownload. Sla je AI-keuze op.</li>
         <li>Klik op <strong>Verbinding testen</strong>. De test leest alleen de modellenlijst; hij stelt geen AI-vraag. Een geslaagde test bevestigt bereikbaarheid en modelbeschikbaarheid, niet de snelheid of kwaliteit van antwoorden.</li></ol>
         <h4>Lokaal, online en op een ander apparaat</h4>
         <p><strong>Lokale app:</strong> de browser praat met de lokale KweekKompas-server. Die bereikt Ollama op dezelfde computer, standaard via poort 11434.</p>
-        <p><strong>Online app:</strong> de AI-aanvraag loopt via Netlify. Netlify kan jouw Ollama op localhost niet bereiken: localhost is daar de Netlify-server. Installeren op jouw computer maakt deze online verbinding dus niet vanzelf werkend. Gebruik de lokale app voor Ollama op je computer. Een andere Ollama-server moet afzonderlijk en beveiligd bereikbaar zijn voor de backend; deze hulp stelt dat niet in.</p>
-        <p><strong>Ander apparaat:</strong> localhost verwijst naar het apparaat waarop de KweekKompas-server draait. De online app op een telefoon gebruikt dus niet automatisch Ollama op je pc. Voor gebruik via je pc is een aparte, beveiligde netwerkopstelling nodig. Stel Ollama niet zonder toegangsbeveiliging open op internet.</p>
+        <p><strong>Online app op dezelfde computer:</strong> uitsluitend bij Lokale AI maakt de browser rechtstreeks verbinding met <code>http://127.0.0.1:11434</code>. Modellen controleren en beide AI-hulpen gebruiken die verbinding; Ollama-vragen gaan dan niet via Netlify. Netlify zelf bereikt jouw localhost niet. Er is geen automatische omschakeling naar Gemini bij een fout.</p>
+        <p><strong>Telefoon of ander apparaat:</strong> 127.0.0.1 verwijst naar het apparaat waarop de browser draait. Een telefoon bereikt hiermee dus niet Ollama op je pc. Gebruik voor deze koppeling de browser op dezelfde computer. Zet Ollama niet publiek of op alle netwerkinterfaces open; laat het standaardadres 127.0.0.1 behouden.</p>
+        <h4>Windows: de online site toestaan</h4>
+        <ol><li>Sluit Ollama volledig af via het systeemvak → Quit/Afsluiten. Bij <code>ollama serve</code> in een terminal: beëindig die server met Ctrl+C. Controleer zo nodig in Taakbeheer dat de Ollama-server is gestopt.</li>
+        <li>Open Start, zoek <strong>Omgevingsvariabelen voor uw account bewerken</strong> en open de gebruikersvariabelen. Bewerk of maak <code>OLLAMA_ORIGINS</code>.</li>
+        <li>Voeg exact <code>https://kweekkompas.netlify.app</code> toe, zonder afsluitende slash. Behoud andere expliciet toegestane origins als kommagescheiden waarden. Verwijder wildcardwaarden zoals <code>*</code>; gebruik geen wildcard. Als er nog geen expliciete origins zijn, is de volledige waarde alleen de onderstaande origin.
+        <div class="ollama-command"><input aria-label="Exacte toegestane KweekKompas-origin" readonly value="https://kweekkompas.netlify.app"><button type="button" class="settings-secondary-button" data-ollama-copy>Kopieer origin</button><span class="ollama-copy-status" role="status"></span></div></li>
+        <li>Bevestig alle vensters met OK. Start Ollama opnieuw via Start. Alleen een tabblad herladen is onvoldoende: de server leest deze instelling bij het starten. Voor een terminalserver: open een nieuwe PowerShell, zet <code>$env:OLLAMA_ORIGINS = [Environment]::GetEnvironmentVariable('OLLAMA_ORIGINS','User')</code> en start <code>ollama serve</code>.</li>
+        <li>Herlaad KweekKompas en klik op Verbinding testen. Vraagt Chrome/Edge om lokale-netwerktoegang, sta dit alleen voor deze site toe. Bij eerder weigeren: open de site-instellingen via het pictogram naast het adres, controleer lokale-netwerktoegang en test opnieuw.</li></ol>
         <h4>Als het niet werkt</h4>
-        <ul><li><strong>Server niet bereikbaar:</strong> start Ollama, controleer of de lokale KweekKompas-server draait en test opnieuw. De test kan een gestopte server, onjuist adres of firewall niet afzonderlijk vaststellen. Een afwijkend Ollama-adres staat in de backend; controleer die configuratie en herstart de lokale KweekKompas-server na een wijziging.</li>
+        <ul><li><strong>Server niet bereikbaar:</strong> start Ollama op dezelfde computer en test opnieuw. Alleen voor de lokaal gestarte app moet ook de KweekKompas-server draaien; een afwijkend adres staat daar in de backend. De online browserroute gebruikt altijd 127.0.0.1:11434. Een fetch-fout bewijst niet afzonderlijk dat de server gestopt is.</li>
         <li><strong>Model ontbreekt:</strong> download het gekozen model, of kies de exacte naam uit <code>ollama list</code>. Het standaardcommando downloadt alleen <code>llama3:latest</code>; een ander opgeslagen model blijft je eigen keuze.</li>
-        <li><strong>Browserrechten of CORS:</strong> deze app roept Ollama via de backend aan, dus normaal is geen browsertoestemming voor een directe Ollama-verbinding nodig. Een CORS-wijziging verhelpt niet dat Netlify jouw localhost niet kan bereiken. Controleer bij een aparte netwerkopstelling de browsermelding en de toegestane origins; zet niet zomaar alle origins open.</li></ul>
+        <li><strong>Browserrechten:</strong> de online verbinding kan toestemming voor lokale-netwerktoegang vereisen. Een geweigerde toestemming wordt waar mogelijk apart gemeld; controleer de site-instellingen. De lokale backendroute heeft deze directe browsertoegang niet nodig.</li>
+        <li><strong>CORS of HTTPS naar loopback:</strong> loopback-HTTP kan vanuit HTTPS werken, maar browserbeleid, versie of bedrijfsbeheer kan toegang blokkeren. De browserconsole toont soms de concrete CORS-, lokale-netwerk- of mixed-contentmelding. Een algemene fetch-fout maakt CORS en een gestopte server niet afzonderlijk zichtbaar. Controleer de exacte origin en herstart Ollama; schakel browserbeveiliging niet uit. Als jouw browser dit aantoonbaar blokkeert, blijft de lokaal gestarte app bruikbaar.</li></ul>
         <figure><img src="assets/help/local-ai-settings.png" alt="Voorbeeld van Lokale AI-instellingen met provider Lokale AI (Ollama), model llama3:latest, downloadlink, kopieercommando, verbindingstest en installatiehulp; zonder persoonlijke gegevens." width="366" loading="lazy"><figcaption>Actuele instellingen met neutrale testgegevens. De getoonde verbinding is een voorbeeld.</figcaption></figure>
         <p class="service-note">Meer uitleg: <a href="https://docs.ollama.com/api/tags" target="_blank" rel="noopener noreferrer">modellenlijst</a> en <a href="https://docs.ollama.com/faq" target="_blank" rel="noopener noreferrer">Ollama-installatie en bereikbaarheid</a>.</p>
     </details>`;
@@ -153,7 +162,7 @@
                 <div class="ollama-actions"><button id="ollama-test" class="settings-secondary-button" type="button">Verbinding testen</button><button class="ollama-help-link" type="button" data-ollama-help>Lees de installatiehulp</button></div>
                 <p id="ollama-test-status" class="service-status" role="status" aria-live="polite"></p><p id="ollama-route-note" class="service-note"></p></div>
                 <p id="ai-provider-status" class="service-status" role="status">Backendconfiguratie laden…</p>
-                <p class="service-note">Sleutels en API-adressen worden uitsluitend in de backend ingesteld. Ollama moet bereikbaar zijn vanaf de backend.</p>
+                <p class="service-note">Gemini en Eigen API gebruiken de backend. Online Lokale AI gebruikt rechtstreeks Ollama op deze computer; de lokaal gestarte app blijft de backend gebruiken.</p>
                 <button class="settings-primary-button" type="submit">AI-keuze opslaan</button>
                 <p id="ai-save-status" class="service-status" role="status"></p>
             </form>
@@ -377,7 +386,8 @@
         const isGemini = provider === 'gemini';
         panel.querySelector('#ollama-setup').hidden = provider !== 'ollama';
         say('ollama-test-status', '', panel);
-        say('ollama-route-note', info?.connection?.runtime === 'hosted' ? 'Je gebruikt de online backend. Netlify kan Ollama op localhost van jouw computer niet bereiken. Gebruik daarvoor de lokale app.' : info?.connection?.runtime === 'local' ? 'Deze lokale backend kan Ollama op dezelfde computer bereiken. De browser maakt geen directe Ollama-verbinding.' : 'De verbinding loopt via de KweekKompas-backend. De online app bereikt jouw localhost niet.', panel);
+        const directOllama = window.KweekBrowserOllama?.direct;
+        say('ollama-route-note', directOllama ? 'Online verbindt deze browser rechtstreeks met Ollama op deze computer via 127.0.0.1:11434. Dit bereikt niet automatisch je pc vanaf een telefoon.' : 'Deze lokale app gebruikt de bestaande KweekKompas-backendroute naar Ollama.', panel);
         model.hidden = isGemini || isCustom; model.disabled = isGemini || isCustom || !provider; model.required = !isGemini && !isCustom && Boolean(provider);
         select.hidden = !isGemini; select.required = isGemini; select.disabled = !isGemini;
         panel.querySelector('#ai-settings-form button[type="submit"]').disabled = false;
@@ -412,7 +422,7 @@
             const option = document.createElement('option'); option.value = name; options.append(option);
         }
         say('ai-provider-status', info ? (info.configured ? `${info.label}: backend ingesteld. ${info.available === false ? 'De Ollama-server is momenteel niet bereikbaar.' : 'Beschikbaarheid van het model wordt bij de aanvraag gecontroleerd.'}` : `${info.label}: backendconfiguratie ontbreekt.`) : 'Backend niet beschikbaar.', panel);
-        if (provider === 'ollama') say('ai-provider-status', info?.connection?.runtime === 'hosted' && !info.available ? 'Lokale AI is online niet bereikbaar. Gebruik de lokale app; je opgeslagen keuze blijft behouden.' : 'Gebruik Verbinding testen om bereikbaarheid en het gekozen model te controleren, zonder een AI-vraag.', panel);
+        if (provider === 'ollama') say('ai-provider-status', directOllama ? window.KweekBrowserOllama.status().message : 'Gebruik Verbinding testen om bereikbaarheid en het gekozen model te controleren, zonder een AI-vraag.', panel);
     }
     function showCustomMetadata(panel, value) {
         panel.querySelector('#custom-api-address').value = value.address;
@@ -453,6 +463,15 @@
         if (!model) return say('ollama-test-status', 'Vul eerst een modelnaam in.', panel);
         button.disabled = true; say('ollama-test-status', 'Verbinding controleren…', panel);
         try {
+            if (window.KweekBrowserOllama?.direct) {
+                const connection = await window.KweekBrowserOllama.inspect(model);
+                if (button.isConnected && panel.querySelector('#ai-provider').value === 'ollama') {
+                    say('ollama-test-status', connection.message, panel);
+                    say('ai-provider-status', connection.message, panel);
+                    if (!connection.modelAvailable) appendOllamaHelp(panel.querySelector('#ollama-test-status'), { code: 'OLLAMA_MODEL_MISSING' });
+                }
+                updateDashboardProvider(); return;
+            }
             config = await request('ai-config');
             if (!button.isConnected || panel.querySelector('#ai-provider').value !== 'ollama') return;
             const connection = config.providers?.ollama?.connection;
@@ -466,7 +485,11 @@
                 : 'De backend kan de Ollama-verbinding niet controleren. Start de lokale app met npm start.';
             say('ollama-test-status', message, panel);
             say('ollama-route-note', connection?.runtime === 'hosted' ? 'Online loopt deze test op Netlify. Jouw localhost is daar niet bereikbaar; CORS of browsertoestemming verandert dat niet.' : 'Getest via de lokale KweekKompas-backend, met alleen de modellenlijst.', panel);
-        } catch { say('ollama-test-status', 'De KweekKompas-backend is niet bereikbaar. Start de lokale app met npm start en probeer opnieuw.', panel); }
+        } catch (error) {
+            say('ollama-test-status', error.code ? error.message : 'De KweekKompas-backend is niet bereikbaar. Start de lokale app met npm start en probeer opnieuw.', panel);
+            appendOllamaHelp(panel.querySelector('#ollama-test-status'), error);
+            if (window.KweekBrowserOllama?.direct) { say('ai-provider-status', error.message, panel); updateDashboardProvider(); }
+        }
         finally { if (button.isConnected) button.disabled = false; }
     }
     function displayAccount(panel, configured) {
@@ -834,7 +857,13 @@
     });
     async function requestAI(route, body) {
         const choice = readPreferences();
-        try { return await request(route, { ...body, ai: choice }); }
+        try {
+            if (choice.provider === 'ollama' && window.KweekBrowserOllama?.direct) {
+                try { return await window.KweekBrowserOllama.generate(route, body, choice.model || 'llama3:latest'); }
+                finally { updateDashboardProvider(); }
+            }
+            return await request(route, { ...body, ai: choice });
+        }
         catch (error) {
             if (choice.provider === 'ollama') {
                 if (!error.status && !error.code) error.code = 'OLLAMA_BACKEND_UNREACHABLE';

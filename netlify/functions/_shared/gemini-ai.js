@@ -1,5 +1,6 @@
 const { endpoint, readBody, reply } = require('./lib/http');
 const { authorizeAI, callAI } = require('./lib/ai');
+const contract = require('../../../ai-contract');
 exports.handler = endpoint(async event => {
   const body = readBody(event);
   if (body.mode === 'fill_seed_info' || body.mode === 'garden_assistant') {
@@ -12,7 +13,7 @@ exports.handler = endpoint(async event => {
   }
   if (event.httpMethod !== 'POST') return reply(405, { error: 'Gebruik POST.' });
   const cookies = await authorizeAI(event);
-  const parsing = body.mode === 'parse_notes_for_seeds';
-  const data = await callAI(body, parsing ? 'Haal uitsluitend genoemde plantnamen uit deze notities. Verzin geen extra planten. Output uitsluitend JSON: { "planten": ["Naam"] }.' : 'Geef praktische Nederlandse zaaisuggesties. Output uitsluitend JSON: { "planten": ["Naam"] }.', parsing ? String(body.input || '').slice(0, 4000) : 'Maand: ' + String(body.month || '').slice(0, 40));
+  const { system, prompt } = contract.build('gemini-ai', body);
+  const data = await callAI(body, system, prompt);
   return reply(200, { text: JSON.stringify(data) }, cookies);
 });
