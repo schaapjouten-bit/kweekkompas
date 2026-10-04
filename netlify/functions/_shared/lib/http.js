@@ -22,7 +22,7 @@ function reply(statusCode, data, cookies = []) {
 function endpoint(handler) {
     return async event => {
         try { checkOrigin(event); return await handler(event); }
-        catch (error) { return reply(error.status || 502, { error: error.status ? error.message : 'De externe dienst is niet bereikbaar. Probeer later opnieuw.' }, event.responseCookies || []); }
+        catch (error) { return reply(error.status || 502, { error: error.status ? error.message : 'De externe dienst is niet bereikbaar. Probeer later opnieuw.', ...(typeof error.code === 'string' && /^OLLAMA_[A-Z_]+$/.test(error.code) ? { code: error.code } : {}) }, event.responseCookies || []); }
     };
 }
-module.exports = { env, HttpError, headersOf, readBody, reply, endpoint };
+module.exports = { env, HttpError, headersOf, checkOrigin, readBody, reply, endpoint };

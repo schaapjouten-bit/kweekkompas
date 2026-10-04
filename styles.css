@@ -6239,6 +6239,12 @@ textarea:focus-visible, [tabindex]:focus-visible {
 }
 
 .seed-summary-card {
+  width: 100%;
+  color: var(--primary-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 150ms, box-shadow 150ms;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -6249,6 +6255,20 @@ textarea:focus-visible, [tabindex]:focus-visible {
   border: 1px solid var(--border-color);
   border-radius: 14px;
   box-shadow: var(--shell-shadow);
+}
+
+.seed-summary-card:hover {
+  background: var(--hover-color, var(--background-color));
+  box-shadow: 0 0 0 2px var(--accent-color, #668b62);
+}
+
+.seed-summary-card:focus-visible {
+  outline: 3px solid var(--accent-color, #668b62);
+  outline-offset: 3px;
+}
+
+.seed-summary-card[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px var(--accent-color, #668b62);
 }
 
 .seed-summary-label {
@@ -7129,6 +7149,10 @@ textarea:focus-visible, [tabindex]:focus-visible {
 .settings-info-note strong { color: var(--primary-text); font-size: 12px; }
 .settings-info-note span { font-size: 12px; text-align: right; }
 .settings-data-grid { display: grid; gap: 10px; }
+.settings-storage-shortcut { margin-top: 12px; }
+.settings-example-collections { margin-top: 22px; }
+.settings-example-collections > p { margin: 10px 0; font-size: 13px; line-height: 1.6; color: var(--secondary-text); }
+.settings-example-collections button:disabled { opacity: .6; cursor: wait; }
 .settings-data-card h4 { font-size: 14px; }
 .settings-data-card p { max-width: 450px; margin: 5px 0 0; font-size: 12px; line-height: 1.5; }
 .settings-data-card > div { min-width: 0; }
@@ -8239,7 +8263,96 @@ body:has(#view-home:not(.hidden)) .toast-container .toast { position: relative; 
 #view-home .home-overdue-tasks h4 { margin: 0; color: var(--primary-text); font-size: 15px; }
 #view-home .home-overdue-tasks .home-reminder-task { border-left: 3px solid var(--accent-primary); }
 .service-form { display: grid; gap: 14px; min-width: 0; }
+/* One Planning entry, shared selection and the existing task form. */
+.planning-header { margin: 0 0 14px; }
+.planning-heading, .planning-toolbar, .planning-date-nav { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.planning-heading, .planning-toolbar { justify-content: space-between; }
+.planning-heading { margin-bottom: 8px; }
+.planning-heading .planner-eyebrow { margin: 0 0 3px; font-size: 11px; line-height: 1.3; }
+.planning-heading h1 { margin: 0; font-size: 28px; color: var(--primary-text); }
+.planning-heading > button { width: auto; flex: none; }
+.planning-tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--border-color); background: var(--card-background); border-radius: 12px; }
+.planning-tabs button, .planning-date-nav button, .planning-advice-add, .planning-edit { width: auto; border: 1px solid var(--border-color); background: var(--card-background); color: var(--primary-text); border-radius: 8px; padding: 8px 12px; font: inherit; cursor: pointer; }
+.planning-tabs button { border-color: transparent; }
+.planning-tabs [aria-selected="true"] { background: var(--accent-primary); color: var(--text-on-accent, #fff); }
+.planning-date-nav { gap: 6px; }
+#planning-period { min-width: 100px; text-align: center; font-weight: 600; }
+.planning-selection { margin: 7px 0 0; font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+#view-calendar .calendar-page-header { display: none; }
+#view-sowing-grid .sowing-planner-header > div:first-child { display: none; }
+#view-sowing-grid .sowing-planner-header { justify-content: flex-end; margin-bottom: 12px; }
+#view-sowing-grid .sowing-planner-header { display: none; }
+.planning-header .planner-year-select-label { font-size: 0; }
+.planning-header #planner-year-input { font: inherit; font-size: 14px; width: 85px; min-height: 40px; padding: 8px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-background); color: var(--primary-text); box-sizing: border-box; }
+.planning-header[data-tab="month"] .planner-year-select-label, .planning-header:not([data-tab="month"]) #planning-period { display: none; }
+#view-calendar .calendar-header #cal-prev, #view-calendar .calendar-header #cal-next, #view-calendar .calendar-header #cal-today, #view-calendar #cal-month-title { display: none; }
+#view-calendar .calendar-header { margin-bottom: 12px; justify-content: flex-start; }
+#planner-this-month { display: none; }
+#view-sowing-grid .planner-month-actions button { width: auto; flex: none; }
+#view-sowing-grid .planning-advice-row .planner-plant-row { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+#view-sowing-grid .planning-advice-row .planner-plant-meta { display: flex; flex-wrap: wrap; gap: 5px; }
+#view-sowing-grid .planning-advice-row .planner-plant-name { width: 100%; }
+.planning-advice-row { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.planning-advice-row .planner-plant-row { flex: 1; min-width: 0; }
+.planning-advice-add { flex: none; padding: 7px 9px; font-size: 12px; }
+.planning-header button:focus-visible, #view-agenda button:focus-visible, .planning-advice-add:focus-visible, #planning-dialog :focus-visible { outline: 3px solid var(--accent-primary); outline-offset: 3px; }
+#view-agenda { min-width: 0; }
+#view-agenda .reminder-row { display: flex; gap: 12px; padding: 14px; margin: 8px 0; border: 1px solid var(--border-color); background: var(--card-background); color: var(--primary-text); border-radius: 12px; }
+#view-agenda .reminder-text-col { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+#view-agenda .reminder-row.done, #view-calendar .reminder-row.done { opacity: 1; }
+#view-agenda .reminder-row.done .reminder-text-col > span, #view-calendar .reminder-row.done .reminder-text-col > span { color: var(--text-muted); text-decoration: line-through; }
+#view-agenda .reminder-actions-col, #view-calendar .reminder-actions-col { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.planning-agenda-date { font-size: 16px; margin: 24px 0 10px; text-transform: capitalize; }
+#planning-dialog { box-sizing: border-box; width: min(480px, calc(100% - 24px)); max-height: calc(100dvh - 32px); padding: 24px; border: 1px solid var(--border-color); border-radius: 18px; background: var(--card-background); color: var(--primary-text); overflow-y: auto; }
+#planning-dialog::backdrop { background: rgb(0 0 0 / .45); }
+#planning-form { display: grid; gap: 10px; padding: 0; }
+#planning-form input, #planning-form select { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; font: inherit; color: var(--primary-text); background: var(--input-background, var(--card-background)); }
+.planning-dialog-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.planning-dialog-heading h2 { margin: 0 0 12px; }
+.planning-dialog-heading button { background: transparent; border: 0; color: inherit; font-size: 24px; cursor: pointer; }
+.planning-form-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.planning-form-actions button { width: auto; }
+@media (max-width: 600px) {
+  .planning-toolbar { align-items: flex-start; gap: 12px; }
+  .planning-heading h1 { font-size: 24px; }
+  .planning-date-nav { width: 100%; justify-content: space-between; }
+  #view-sowing-grid .sowing-planner-header { justify-content: flex-start; }
+  .planning-advice-row { flex-wrap: wrap; }
+  .planning-advice-row .planner-plant-row { flex-basis: 100%; }
+  #view-agenda .reminder-row, #view-calendar .reminder-row { flex-wrap: wrap; }
+  #view-agenda .reminder-actions-col, #view-calendar .reminder-actions-col { margin-left: 32px; }
+  #planning-dialog { padding: 18px; }
+}
 .service-form > button { justify-self: start; }
+/* Prompt 2.1: own dated tasks first; advice is general plant information. */
+#view-sowing-grid .planner-tasks-content { margin-bottom: 14px; }
+#view-sowing-grid .planner-tasks-content .planner-saved-planning { padding: 16px; background: var(--card-background); }
+#view-sowing-grid .planner-activities-content { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+#view-sowing-grid #planner-activities-content .planner-activity-group { border: 0; border-radius: 0; background: transparent; padding: 0; }
+#view-sowing-grid #planner-activities-content .planner-activity-group + .planner-activity-group { border-top: 1px solid var(--border-color); padding-top: 14px; }
+.planner-advice-note { margin: 0 0 10px; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+#view-sowing-grid #planner-activities-content .planning-advice-row { display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: 12px; border-bottom: 1px solid var(--border-color); }
+#view-sowing-grid #planner-activities-content .planning-advice-row:last-child { border-bottom: 0; }
+#view-sowing-grid #planner-activities-content .planner-plant-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 120px; gap: 12px; align-items: center; border: 0; border-radius: 6px; background: transparent; padding: 10px 0; width: 100%; }
+#view-sowing-grid #planner-activities-content .planner-plant-meta { display: contents; text-align: left; }
+#view-sowing-grid #planner-activities-content .planner-plant-name { width: auto; font-size: 13px; }
+#view-sowing-grid #planner-activities-content .planner-plant-meta > span:first-child { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+#view-sowing-grid #planner-activities-content .planner-plant-meta .badge { justify-self: start; font-size: 11px; }
+.planning-heading > button { padding: 9px 13px; min-height: 38px; }
+.planning-tabs button { padding: 7px 11px; }
+#view-calendar .calendar-period-group { background: transparent; padding: 8px 0; border-radius: 0; }
+#view-calendar .calendar-period-group + .calendar-period-group { border-top: 1px solid var(--border-color); }
+#view-calendar .calendar-period-group li { display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: 10px; padding: 6px 0; }
+.calendar-advice-copy { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.calendar-advice-copy .calendar-period-plant { font-weight: 600; }
+.calendar-period-status { color: var(--text-muted); font-size: 11px; }
+@media (max-width: 700px) {
+  #view-sowing-grid #planner-activities-content .planning-advice-row { gap: 8px; align-items: end; padding: 8px 0; }
+  #view-sowing-grid #planner-activities-content .planner-plant-row { grid-template-columns: minmax(0, 1fr); gap: 5px; padding: 0; }
+  #view-sowing-grid #planner-activities-content .planner-plant-meta .badge { font-size: 10px; }
+  #view-sowing-grid #planner-activities-content .planning-advice-add { align-self: center; }
+  .planning-toolbar { gap: 8px; }
+}
 .service-status { margin: 10px 0; color: var(--text-color); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .service-note { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.6; }
 .service-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }

@@ -1,0 +1,29 @@
+{
+  "backupVersion": 1,
+  "seeds": [
+    {
+      "id": "basilicum",
+      "naam": "Basilicum",
+      "type": "Kruid",
+      "status": "Voorraad",
+      "standplaats": "Zon",
+      "water": "Gemiddeld",
+      "zaaitijd": "4,5,6",
+      "oogsttijd": "6,7,8,9",
+      "beschrijving": "Zaai op een warme plek. Houd de potgrond licht vochtig en bescherm tegen kou.",
+      "tags": ["potten"]
+    },
+    {
+      "id": "bieslook",
+      "naam": "Bieslook",
+      "type": "Kruid",
+      "status": "Voorraad",
+      "standplaats": "Halfschaduw",
+      "water": "Gemiddeld",
+      "zaaitijd": "3,4,5",
+      "oogsttijd": "5,6,7,8,9",
+      "beschrijving": "Geschikt voor een pot met drainage. Knip regelmatig blad en laat de plant opnieuw uitlopen.",
+      "tags": ["potten", "meerjarig"]
+    }
+  ]
+}

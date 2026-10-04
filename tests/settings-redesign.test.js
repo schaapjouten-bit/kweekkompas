@@ -52,7 +52,9 @@ test('Data & opslag behoudt veilige acties en maakt reset herkenbaar als gevaren
     assert.match(appSource, /Je bevestigt dit eerst/);
     assert.match(appSource, /Je gegevens worden automatisch op dit apparaat opgeslagen/);
     assert.match(appSource, /Een account is niet nodig/);
-    assert.match(appSource, /onclick="loadExampleGarden\(this\)"/);
+    assert.match(appSource, /button\.setAttribute\('onclick', 'loadExampleGarden\(this\)'\)/);
+    assert.match(appSource, /settings-storage-shortcut/);
+    assert.match(appSource, /id="example-collections-title"/);
 });
 
 test('Instellingen-secties zijn bereikbaar zonder oude afzonderlijke settingsmodals te gebruiken', () => {

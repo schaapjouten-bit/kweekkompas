@@ -60,7 +60,7 @@ test('onbekende themawaarde valt veilig terug naar Light', () => {
 });
 
 test('app-shell bevat alle bestaande productiesecties en geen nieuwe pagina', () => {
-    for (const view of ['home', 'list', 'sowing-grid', 'calendar', 'wishlist']) {
+    for (const view of ['home', 'list', 'planning', 'wishlist']) {
         assert.match(indexSource, new RegExp(`data-shell-view="${view}"`));
     }
     assert.match(indexSource, /id="shell-settings-button"/);

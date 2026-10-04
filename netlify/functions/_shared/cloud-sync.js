@@ -1,8 +1,11 @@
 const { endpoint, readBody, reply, HttpError } = require('./lib/http');
 const { authenticate } = require('./lib/supabase');
+const cloudData = require('../../../cloud-data');
+const { validateSnapshotPhotos } = require('./photos');
 function checkStorage(error, message) {
     if (!error) return;
     if (['PGRST205', '42P01'].includes(error.code)) throw new HttpError(503, 'Cloudopslag moet nog worden ingericht op het Supabase-project. Je lokale tuin blijft behouden.');
+    if (error.code === '23514') throw new HttpError(413, 'Deze tuin past niet binnen de ingestelde cloudopslaglimiet of het tuinformaat. Je lokale gegevens blijven volledig behouden.');
     throw new HttpError(503, message);
 }
 exports.handler = endpoint(async event => {
@@ -11,11 +14,19 @@ exports.handler = endpoint(async event => {
     if (event.httpMethod === 'GET') {
         const { data, error } = await session.db.from('kweekkompas_snapshots').select('payload, revision, updated_at').eq('user_id', session.user.id).maybeSingle();
         checkStorage(error, 'Cloudopslag is niet beschikbaar. Controleer de Supabase-tabel en toegangsregels.');
-        return reply(200, { snapshot: data, userId: session.user.id }, session.cookies);
+        // Older snapshots may include device settings. Never return them for restore.
+        return reply(200, { snapshot: data ? { ...data, payload: cloudData.select(data.payload) } : null, userId: session.user.id }, session.cookies);
     }
-    const { payload, revision, expectedUserId } = readBody(event);
+    if (Buffer.byteLength(event.body || '') > 4_000_000) throw new HttpError(413, 'De aanvraag met tuingegevens is te groot voor de cloudkopie. Er is niets opgeslagen; je lokale tuin blijft behouden.');
+    const { payload: input, revision, expectedUserId } = readBody(event);
     if (expectedUserId !== session.user.id) throw new HttpError(409, 'Het ingelogde account is gewijzigd. Open Instellingen opnieuw.');
-    if (!payload || payload.backupVersion !== 1 || !Array.isArray(payload.seeds) || !Number.isSafeInteger(revision) || revision < 0) throw new HttpError(400, 'Ongeldige back-up of cloudversie.');
+    if (!Number.isSafeInteger(revision) || revision < 0) throw new HttpError(400, 'Ongeldige back-up of cloudversie.');
+    let payload;
+    try { payload = cloudData.select(input); }
+    catch (error) { throw new HttpError(400, error.message); }
+    try { cloudData.assertSize(payload); }
+    catch (error) { throw new HttpError(413, error.message); }
+    await validateSnapshotPhotos(session, payload);
     const next = { user_id: session.user.id, payload, revision: revision + 1, updated_at: new Date().toISOString() };
     // Compare-and-swap: stale devices cannot silently overwrite a newer copy.
     const query = revision === 0

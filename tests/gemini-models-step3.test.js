@@ -1,4 +1,4 @@
-// Models-list tests only. No .env loading and no generation or live API calls.
+// Models-list/probe fixtures only. No .env loading or live API calls.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -17,33 +17,73 @@ async function isolated(fn) {
         for (const [name, value] of before) { if (value === undefined) delete process.env[name]; else process.env[name] = value; }
     }
 }
-test('models.list: pagination, generateContent + text filtering, deduplication and economical default', () => isolated(async (lib, handler) => {
+test('models.list: pagination, stable text filtering, three families and one probe per candidate', () => isolated(async (lib, handler) => {
     const calls = [];
+    const probes = [];
     global.fetch = async (url, options) => {
-        url = new URL(url); calls.push(url);
+        url = new URL(url);
         assert.equal(url.origin, 'https://generativelanguage.googleapis.com');
-        assert.equal(url.pathname, '/v1beta/models');
-        assert.equal(options.method || 'GET', 'GET');
         assert.equal(options.headers['x-goog-api-key'], 'dummy-model-list-secret');
         assert.equal(url.searchParams.has('key'), false);
+        if (options.method === 'POST') {
+            probes.push(url.pathname);
+            assert.equal(JSON.parse(options.body).generationConfig.maxOutputTokens, 256);
+            return Response.json({ candidates: [{ content: { parts: [{ text: '{"ok":true}' }] } }] });
+        }
+        calls.push(url);
+        assert.equal(url.pathname, '/v1beta/models');
         return Response.json(calls.length === 1 ? { models: [model('gemini-3.8-flash'), model('gemini-3.5-flash-lite'), model('gemini-3.8-flash-tts'), model('gemini-3.1-flash-image'), model('gemini-3.5-flash', ['embedContent'])], nextPageToken: 'page2' }
-            : { models: [model('gemini-3.5-flash-lite'), model('gemini-3.1-pro-preview'), model('gemini-3.1-flash-lite')] });
+            : { models: [model('gemini-3.5-flash-lite'), model('gemini-3.1-pro-preview'), model('gemini-3.1-flash-lite'), model('gemini-2.5-pro'), model('gemini-3.9-flash-exp'), model('gemini-flash-latest')] });
     };
     const responses = await Promise.all([handler({ httpMethod: 'GET' }), handler({ httpMethod: 'GET' })]);
     assert.equal(calls.length, 2);
     assert.equal(calls[1].searchParams.get('pageToken'), 'page2');
     const data = JSON.parse(responses[0].body);
-    assert.equal(data.defaultModel, 'gemini-3.5-flash-lite');
-    assert.equal(data.models.length, 4);
-    assert.equal(data.models.find(item => item.id === data.defaultModel).hint, 'snel en zuinig');
+    assert.equal(data.defaultModel, 'gemini-3.8-flash');
+    assert.deepEqual(data.models, [{ id: 'gemini-3.8-flash', label: '3.8 Flash' }, { id: 'gemini-3.5-flash-lite', label: '3.5 Flash-Lite' }, { id: 'gemini-2.5-pro', label: '2.5 Pro' }]);
+    assert.deepEqual(data.rejected, []);
+    assert.deepEqual(probes, data.models.map(m => `/v1beta/models/${m.id}:generateContent`));
     assert.doesNotMatch(responses[0].body, /dummy-model-list-secret|API_KEY|inputTokenLimit/);
     assert.equal((await handler({ httpMethod: 'GET' })).statusCode, 200);
     assert.equal(calls.length, 2);
-    assert.equal(lib.chooseDefault([model('gemini-2.5-flash')].map(item => ({ id: item.name.slice(7) }))), '');
+    assert.equal(probes.length, 3, 'Concurrent callers and reopening use cached probes');
+    assert.equal(lib.chooseDefault([]), '');
 }));
 test('empty list remains empty; no invented fallback models', () => isolated(async (_, handler) => {
     global.fetch = async () => Response.json({ models: [] });
-    assert.deepEqual(JSON.parse((await handler({ httpMethod: 'GET' })).body), { models: [], defaultModel: '' });
+    assert.deepEqual(JSON.parse((await handler({ httpMethod: 'GET' })).body), { models: [], defaultModel: '', rejected: [] });
+}));
+
+test('failed candidates are omitted without retries or replacement probes', () => isolated(async (_, handler) => {
+    const probes = [];
+    global.fetch = async (url, options) => {
+        if (options.method !== 'POST') return Response.json({ models: [model('gemini-3.8-flash'), model('gemini-3.7-flash'), model('gemini-3.5-flash-lite'), model('gemini-2.5-pro')] });
+        probes.push(String(url));
+        if (String(url).includes('flash-lite')) return Response.json({ candidates: [{ content: { parts: [{ text: '{"ok":true}' }] } }] });
+        return Response.json({ error: { message: 'dummy-model-list-secret' } }, { status: 404 });
+    };
+    const reply = await handler({ httpMethod: 'GET' });
+    const data = JSON.parse(reply.body);
+    assert.deepEqual(data.models, [{ id: 'gemini-3.5-flash-lite', label: '3.5 Flash-Lite' }]);
+    assert.equal(data.defaultModel, 'gemini-3.5-flash-lite');
+    assert.deepEqual(data.rejected, [{ id: 'gemini-3.8-flash', status: 404 }, { id: 'gemini-2.5-pro', status: 404 }]);
+    await handler({ httpMethod: 'GET' });
+    assert.equal(probes.length, 3);
+    assert.doesNotMatch(reply.body, /dummy-model-list-secret/);
+}));
+
+test('empty, malformed or thought-only success responses are not working text models', () => isolated(async (_, handler) => {
+    let probes = 0;
+    global.fetch = async (_, options) => {
+        if (options.method !== 'POST') return Response.json({ models: [model('gemini-3.8-flash'), model('gemini-3.5-flash-lite'), model('gemini-2.5-pro')] });
+        probes++;
+        return Response.json({ candidates: [{ content: { parts: [{ thought: true, text: '{"ok":true}' }] } }] });
+    };
+    const data = JSON.parse((await handler({ httpMethod: 'GET' })).body);
+    assert.deepEqual(data.models, []);
+    assert.equal(data.defaultModel, '');
+    assert.equal(data.rejected.length, 3);
+    assert.equal(probes, 3);
 }));
 test('invalid credential: one attempt, safe error, no retry after five minutes', () => isolated(async (_, handler) => {
     let attempts = 0;

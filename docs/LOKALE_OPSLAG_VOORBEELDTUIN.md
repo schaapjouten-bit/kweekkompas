@@ -1,5 +1,11 @@
 # Lokale opslag en voorbeeldtuin
 
+Aanvulling stap 2 (3 oktober 2026): de collectie-JSON is verplaatst naar
+`assets/example-collections/voorbeeldtuin.json`; de bestaande foto's blijven
+in `assets/example-garden/`. Zie `VOORBEELDCOLLECTIES_STAP2.md` voor de actuele
+ingang, het manifest, eigen collecties en controles. Hieronder staat het
+oorspronkelijke verslag van stap 1.
+
 Uitgevoerd op 2 oktober 2026, uitsluitend lokaal.
 
 De opslagsectie en bijbehorende uitleg vermelden nu: “Je gegevens worden

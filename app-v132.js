@@ -254,13 +254,14 @@ function buildLegacyProfileMirror(profile) {
     return mirror;
 }
 
-function saveUserProfileData(profile, { syncOnboarding = true } = {}) {
+function saveUserProfileData(profile, { syncOnboarding = true, source = 'own' } = {}) {
     const normalized = normalizeUserProfile(profile) || { ...DEFAULT_USER_PROFILE };
     const canonical = JSON.stringify(normalized);
     const legacy = JSON.stringify(buildLegacyProfileMirror(normalized));
 
-    localStorage.setItem(CANONICAL_PROFILE_STORAGE_KEY, canonical);
-    localStorage.setItem(LEGACY_PROFILE_STORAGE_KEY, legacy);
+    const profileChanged = localStorage.getItem(CANONICAL_PROFILE_STORAGE_KEY) !== canonical;
+    if (profileChanged) localStorage.setItem(CANONICAL_PROFILE_STORAGE_KEY, canonical);
+    if (localStorage.getItem(LEGACY_PROFILE_STORAGE_KEY) !== legacy) localStorage.setItem(LEGACY_PROFILE_STORAGE_KEY, legacy);
 
     if (syncOnboarding) {
         const synchronizedFields = [
@@ -270,12 +271,13 @@ function saveUserProfileData(profile, { syncOnboarding = true } = {}) {
         ];
         for (const [key, value] of synchronizedFields) {
             if (hasMeaningfulProfileValue(value) || readStoredString(key) !== '') {
-                localStorage.setItem(key, value || '');
+                if (localStorage.getItem(key) !== (value || '')) localStorage.setItem(key, value || '');
             }
         }
     }
 
     window.userProfile = normalized;
+    if (profileChanged) globalThis.KweekCloudStatus?.changed(source);
     return normalized;
 }
 
@@ -295,7 +297,7 @@ function loadUserProfile() {
     // selections remain temporary until the user presses Finish.
     if (hasStoredProfile || (onboardingCompleted && profileRecordHasMeaningfulData(onboardingFields))) {
         try {
-            saveUserProfileData(normalized);
+            saveUserProfileData(normalized, { source: 'migration' });
         } catch (error) {
             console.warn('[KweekKompas] Profielmigratie kon niet worden opgeslagen.');
         }
@@ -349,12 +351,56 @@ function shouldStartOnboarding(doneOnboarding, profileExists, seedCount, databas
 // Global State
 window.userProfile = loadUserProfile();
 
+// Keep existing drawer/dialog controls inside their visible panel. Preserve
+// earlier inert states so opening and closing never enables hidden app views.
+const panelInteractionStates = new WeakMap();
+function updatePanelInteraction(panel, open, { focus, close } = {}) {
+    const saved = panelInteractionStates.get(panel);
+    if (!open) {
+        if (!saved) return;
+        document.removeEventListener('keydown', saved.keydown);
+        for (const [element, inert] of saved.inert) element.inert = inert;
+        panelInteractionStates.delete(panel);
+        if (saved.returnFocus?.isConnected && saved.returnFocus.getClientRects().length) saved.returnFocus.focus({ preventScroll: true });
+        return;
+    }
+    if (!saved) {
+        const inert = new Map();
+        for (let branch = panel; branch.parentElement; branch = branch.parentElement) {
+            for (const sibling of branch.parentElement.children) {
+                if (sibling === branch || sibling.matches('#settings-overlay, #toast-container, script, style, link')) continue;
+                inert.set(sibling, sibling.inert); sibling.inert = true;
+            }
+            if (branch.parentElement === document.body) break;
+        }
+        const keydown = event => {
+            if (panel.closest('[inert]') || document.querySelector('dialog[open]')) return;
+            if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close?.(); }
+            if (event.key !== 'Tab') return;
+            const controls = [...panel.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"])')]
+                .filter(element => element.checkVisibility({ checkVisibilityCSS: true }) && element.getClientRects().length && !element.closest('[hidden], [inert]'));
+            const first = controls[0], last = controls.at(-1);
+            if (!panel.contains(document.activeElement)) { event.preventDefault(); (event.shiftKey ? last : first)?.focus(); }
+            else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        };
+        panelInteractionStates.set(panel, { inert, keydown, returnFocus: document.activeElement });
+        document.addEventListener('keydown', keydown);
+    }
+    focus?.focus({ preventScroll: true });
+}
+
 window.toggleSettingsPanel_REPAIR_V131 = function() {
     isSettingsOpen = !isSettingsOpen;
     renderSettingsPanel();
 }
 
 window.openInfoModal = function(section) {
+    if (section === 'data') {
+        window.closeInfoModal();
+        window.openSettingsSection('storage');
+        return;
+    }
     console.log("Opening modal section:", section);
     const modal = document.getElementById('info-modal');
     if (!modal) { console.error("Modal #info-modal not found!"); return; }
@@ -428,6 +474,7 @@ window.saveUserProfile = function() {
     if (typeof showToast === 'function') showToast("Profiel opgeslagen! ✅");
 };
 
+const settingsExpandedSections = new Set();
 function renderSettingsPanel() {
     const panel = document.getElementById('settings-panel');
     const overlay = document.getElementById('settings-overlay');
@@ -437,15 +484,37 @@ function renderSettingsPanel() {
     }
 
     if (isSettingsOpen) {
+        const alreadyOpen = panel.classList.contains('open');
+        const previousScroll = alreadyOpen ? panel.querySelector('.settings-content')?.scrollTop || 0 : 0;
+        const active = panel.contains(document.activeElement) ? document.activeElement : null;
+        const focusSelector = active?.id ? '#' + CSS.escape(active.id) : active?.dataset.themeChoice ? `[data-theme-choice="${active.dataset.themeChoice}"]` : active?.dataset.layoutChoice ? `[data-layout-choice="${active.dataset.layoutChoice}"]` : null;
+        panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); panel.setAttribute('aria-labelledby', 'settings-page-title');
         panel.classList.add('open');
         overlay.classList.remove('hidden');
         // Re-render to ensure theme labels and state are correct
         panel.innerHTML = getSettingsHTML();
+        const content = panel.querySelector('.settings-content');
+        const account = panel.querySelector('#settings-section-cloud');
+        if (content && account) content.prepend(account);
+        panel.querySelectorAll('.settings-page-section:not(#settings-section-cloud)').forEach(section => {
+            const key = section.id;
+            const labels = { 'settings-section-profile': 'Tuinprofiel', 'settings-section-display': 'Weergave', 'settings-section-ai': 'AI', 'settings-section-storage': 'Data & opslag', 'settings-section-about': 'Over KweekKompas', 'settings-section-faq': 'Hulp' };
+            const details = document.createElement('details'); details.className = 'settings-collapse';
+            details.open = settingsExpandedSections.has(key);
+            const summary = document.createElement('summary'); summary.textContent = labels[key] || section.querySelector('h3')?.textContent;
+            section.before(details); details.append(summary, section);
+            details.addEventListener('toggle', () => { if (details.open) settingsExpandedSections.add(key); else settingsExpandedSections.delete(key); });
+        });
         applySettingsPanelValues(panel);
         window.KweekServices?.mount(panel);
+        window.refreshExampleCollections?.(panel);
+        if (content) content.scrollTop = previousScroll;
+        updatePanelInteraction(panel, true, { focus: focusSelector ? panel.querySelector(focusSelector) : panel.querySelector('.settings-close-button'), close: window.toggleSettingsPanel_REPAIR_V131 });
     } else {
         panel.classList.remove('open');
         overlay.classList.add('hidden');
+        panel.removeAttribute('aria-modal');
+        updatePanelInteraction(panel, false);
         // We no longer destroy panel.innerHTML on close!
     }
 }
@@ -484,6 +553,8 @@ window.openSettingsSection = function(section) {
         const panel = document.getElementById('settings-panel');
         const target = panel?.querySelector(`#${targetId}`);
         if (!target) return;
+        const collapse = target.closest('details.settings-collapse');
+        if (collapse) collapse.open = true;
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         target.focus?.({ preventScroll: true });
     };
@@ -547,7 +618,7 @@ function bindSettingsProfileControls(panel) {
     };
     Object.entries(fieldMap).forEach(([id, key]) => {
         const field = panel.querySelector(`#${id}`);
-        field?.addEventListener('change', () => window.saveProfileField(key, field.value));
+        field?.addEventListener(field.matches('input[type="text"]') ? 'input' : 'change', () => window.saveProfileField(key, field.value));
     });
     panel.querySelectorAll('[data-profile-garden-place]').forEach(field => {
         field.addEventListener('change', () => {
@@ -640,7 +711,7 @@ function getProfileHTML() {
       <!-- NAAM -->
       <div style="display: flex; flex-direction: column; gap: 6px;">
         <label style="font-size: 13px; font-weight: 600; color: var(--text-muted);">Jouw Naam</label>
-        <input id="profile-modal-name" type="text" value="" placeholder="Hoe mogen we je noemen?" onchange="window.saveProfileField('name', this.value)" style="padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); font-size: 15px; font-family: inherit;">
+        <input id="profile-modal-name" type="text" value="" placeholder="Hoe mogen we je noemen?" oninput="window.saveProfileField('name', this.value)" style="padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); font-size: 15px; font-family: inherit;">
       </div>
 
       <!-- ERVARING -->
@@ -761,8 +832,10 @@ window.handleProfilePhotoUpload = function(e) {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function(event) {
-    const dataUrl = event.target.result;
+  reader.onload = async function(event) {
+    let dataUrl;
+    try { dataUrl = await window.KweekPhotoStorage.processDataURL(event.target.result, true); }
+    catch (error) { showToast(error.message); return; }
     const safeDataUrl = safeWishlistImageUrl(dataUrl);
     if (!safeDataUrl) {
       showToast('Ongeldige profielfoto.');
@@ -932,6 +1005,7 @@ function getDataStorageHTML() {
 
       <h2 class="modal-title">💾 Data & Opslag</h2>
       <p class="modal-subtitle">Je gegevens worden automatisch op dit apparaat opgeslagen. Een account is niet nodig.</p>
+      <button class="data-button" onclick="document.getElementById('settings-generic-modal')?.remove(); openSettingsSection('storage')">Voorbeeldcollecties bekijken</button>
 
       <div class="data-section">
         <h4>💾 Backup maken</h4>
@@ -1123,6 +1197,7 @@ function getSettingsHTML() {
                     <p class="settings-kicker">Persoonlijk en lokaal</p>
                     <h2 id="settings-page-title">Instellingen</h2>
                     <p class="settings-page-intro">Beheer je profiel, weergave en lokale gegevens op één rustige plek.</p>
+                    <button class="settings-secondary-button settings-storage-shortcut" type="button" onclick="openSettingsSection('storage')">Data & opslag · Voorbeeldcollecties</button>
                 </div>
                 <button class="settings-close-button" type="button" aria-label="Instellingen sluiten" onclick="toggleSettingsPanel_REPAIR_V131()">×</button>
             </div>
@@ -1168,19 +1243,26 @@ function getSettingsHTML() {
 
                 <section class="settings-page-section" id="settings-section-storage" aria-labelledby="settings-storage-title" tabindex="-1">
                     <div class="settings-section-heading"><div><p class="settings-section-eyebrow">Data & opslag</p><h3 id="settings-storage-title">Opgeslagen op dit apparaat</h3><p>Je gegevens worden automatisch op dit apparaat opgeslagen.</p></div></div>
-                    <div class="settings-info-note"><strong>Een account is niet nodig</strong><span>Je kunt de app zonder account gebruiken. Via Account & cloud kun je zelf een kopie synchroniseren. Inloggen verandert je lokale tuin niet.</span></div>
+
                     <div class="settings-data-grid">
                         <article class="settings-data-card"><div><h4>Back-up downloaden</h4><p>Download een volledige back-up als bestand om zelf te bewaren.</p></div><button class="settings-primary-button" type="button" onclick="exportData()">Back-up downloaden</button></article>
                         <article class="settings-data-card"><div><h4>Back-up herstellen</h4><p>Zet een back-up terug. Wat in het bestand staat vervangt de bijbehorende gegevens; de rest blijft bewaard. Je bevestigt dit eerst.</p></div><button class="settings-primary-button" type="button" onclick="restoreBackup()">Back-up herstellen</button></article>
+                        <article class="settings-data-card"><div><h4>Veiligheidskopie terugzetten</h4><p>Gebruik de lokale kopie van vóór het laatste cloudherstel.</p></div><button class="settings-secondary-button" type="button" data-cloud-action="recover">Veiligheidskopie terugzetten</button><p id="cloud-recover-status" role="status" class="service-status"></p></article>
                         <article class="settings-data-card"><div><h4>Data importeren</h4><p>Open een opgeslagen bestand. Importeren werkt hetzelfde als herstellen: je bevestigt eerst wat wordt vervangen.</p></div><button class="settings-secondary-button" type="button" onclick="importData()">Data importeren</button></article>
-                        <article class="settings-data-card"><div><h4>Voorbeeldtuin</h4><p>Voeg voorbeeldplanten met foto's en teeltinformatie toe. Je eigen planten blijven bewaard. Planten die er al staan worden overgeslagen.</p><p id="example-garden-status" role="status" aria-live="polite"></p></div><button id="load-example-garden" class="settings-secondary-button" type="button" onclick="loadExampleGarden(this)" aria-describedby="example-garden-status">Voorbeeldtuin laden</button></article>
+                    </div>
+                    <div class="settings-example-collections" aria-labelledby="example-collections-title">
+                        <h4 id="example-collections-title">Voorbeeldcollecties</h4>
+                        <p>Voeg planten toe om KweekKompas te verkennen. Je eigen gegevens blijven bewaard. Laden gebeurt alleen op dit apparaat, na je bevestiging.</p>
+                        <div id="example-collections-list" class="settings-data-grid" aria-busy="true"></div>
+                        <p id="example-garden-status" role="status" aria-live="polite">Voorbeeldcollecties ophalen…</p>
+                        <button class="settings-secondary-button" type="button" onclick="refreshExampleCollections()">Lijst vernieuwen</button>
                     </div>
                     <div class="settings-danger-zone"><div><p class="settings-section-eyebrow">Gevarenzone</p><h4>Applicatie resetten</h4><p>Verwijdert alle zaden, instellingen en lokale gegevens. Dit kan niet ongedaan worden gemaakt.</p></div><button class="settings-danger-button" type="button" onclick="resetApp()">Alles verwijderen</button></div>
                 </section>
 
                 <section class="settings-page-section" id="settings-section-about" aria-labelledby="settings-about-title" tabindex="-1"><div class="settings-section-heading"><div><p class="settings-section-eyebrow">Over de app</p><h3 id="settings-about-title">KweekKompas</h3><p>Een overzichtelijke lokale planner voor zaaien, verzorgen en oogsten.</p></div><span class="settings-version">Versie 1.3.2</span></div></section>
 
-                <section class="settings-page-section settings-faq-section" id="settings-section-faq" aria-labelledby="settings-faq-title" tabindex="-1"><div class="settings-section-heading"><div><p class="settings-section-eyebrow">Hulp</p><h3 id="settings-faq-title">Veelgestelde vragen</h3></div></div><details><summary>Worden mijn gegevens opgeslagen?</summary><p>Ja. Je gegevens worden automatisch op dit apparaat opgeslagen. Een account is niet nodig.</p></details><details><summary>Kan ik een back-up maken?</summary><p>Ja. Gebruik Back-up downloaden en bewaar het bestand op een veilige plek.</p></details></section>
+                <section class="settings-page-section settings-faq-section" id="settings-section-faq" aria-labelledby="settings-faq-title" tabindex="-1"><div class="settings-section-heading"><div><p class="settings-section-eyebrow">Hulp</p><h3 id="settings-faq-title">Veelgestelde vragen</h3></div></div><details><summary>Worden mijn gegevens opgeslagen?</summary><p>Ja. Je gegevens worden automatisch op dit apparaat opgeslagen. Een account is niet nodig.</p></details><details><summary>Kan ik een back-up maken?</summary><p>Ja. Gebruik Back-up downloaden en bewaar het bestand op een veilige plek.</p></details>${window.KweekServices?.localHelpHTML?.() || ''}</section>
             </div>
         </div>
     `;
@@ -1316,6 +1398,7 @@ function saveSeed(seed) {
                 if (settled) return;
                 settled = true;
                 void requestResult;
+                globalThis.KweekCloudStatus?.changed();
                 resolve();
             };
             tx.onerror = event => fail(tx.error || event?.target?.error || new Error('Opslaan van zaad is mislukt.'));
@@ -1331,28 +1414,34 @@ function saveSeed(seed) {
     });
 }
 
-function replaceAllSeedsAtomic(seedsToRestore) {
+function replaceAllSeedsAtomic(seedsToRestore, { check = () => {}, signal } = {}) {
     if (!db) return Promise.reject(new Error('Lokale database is niet beschikbaar.'));
 
     return new Promise((resolve, reject) => {
         let transaction;
+        const abort = () => { try { transaction?.abort(); } catch { /* already closed */ } };
+        const cleanup = () => signal?.removeEventListener('abort', abort);
         try {
+            check(); signal?.throwIfAborted();
             transaction = db.transaction(STORE_NAME, 'readwrite');
+            signal?.addEventListener('abort', abort, { once: true });
             const store = transaction.objectStore(STORE_NAME);
             store.clear();
             for (const seed of seedsToRestore) store.put(seed);
 
-            transaction.oncomplete = () => resolve();
-            transaction.onerror = () => reject(transaction.error || new Error('Opslaan van zaden is mislukt.'));
-            transaction.onabort = () => reject(transaction.error || new Error('Opslaan van zaden is afgebroken.'));
+            transaction.oncomplete = () => { cleanup(); globalThis.KweekCloudStatus?.changed('restore-internal'); resolve(); };
+            transaction.onerror = () => { cleanup(); reject(transaction.error || new Error('Opslaan van zaden is mislukt.')); };
+            transaction.onabort = () => { cleanup(); reject(signal?.reason || transaction.error || new Error('Opslaan van zaden is afgebroken.')); };
         } catch (error) {
+            cleanup();
             try { transaction?.abort(); } catch (abortError) { /* already closed */ }
             reject(error);
         }
     });
 }
 
-function addExampleSeedsAtomic(examples) {
+function addExampleSeedsAtomic(examples, collectionId = 'voorbeeldtuin') {
+    globalThis.KweekCloudStatus?.external('example');
     if (!db) return Promise.reject(new Error('Lokale opslag is niet beschikbaar.'));
     const nameKey = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('nl-NL');
     // Read and add in one transaction: simultaneous tabs cannot overwrite user
@@ -1371,7 +1460,8 @@ function addExampleSeedsAtomic(examples) {
                     const names = new Set(existing.map(plant => nameKey(plant.naam)));
                     const keys = new Set(existing.map(plant => plant.examplePlantKey).filter(Boolean));
                     for (const example of examples) {
-                        const key = String(example.id);
+                        // Keep the original garden identity for already loaded examples.
+                        const key = collectionId === 'voorbeeldtuin' ? String(example.id) : `${collectionId}:${example.id}`;
                         const name = nameKey(example.naam);
                         if (keys.has(key) || names.has(name)) continue;
                         let id = key;
@@ -1382,7 +1472,7 @@ function addExampleSeedsAtomic(examples) {
                     }
                 } catch { transaction.abort(); }
             };
-            transaction.oncomplete = () => resolve(added);
+            transaction.oncomplete = () => { globalThis.KweekCloudStatus?.changed('restore-internal'); resolve(added); };
             transaction.onerror = () => reject(new Error('Voorbeeldtuin opslaan is mislukt. Er is niets toegevoegd.'));
             transaction.onabort = () => reject(new Error('Voorbeeldtuin opslaan is afgebroken. Er is niets toegevoegd.'));
         } catch (error) {
@@ -1411,6 +1501,7 @@ function deleteSeedDB(id) {
                 if (settled) return;
                 settled = true;
                 void requestResult;
+                globalThis.KweekCloudStatus?.changed();
                 resolve();
             };
             tx.onerror = event => fail(tx.error || event?.target?.error || new Error('Verwijderen van zaad is mislukt.'));
@@ -1648,6 +1739,11 @@ function buildReminderRow(item, handlers = {}) {
     deleteButton.title = 'Verwijder';
     deleteButton.setAttribute('aria-label', 'Verwijder herinnering');
     deleteButton.textContent = '×';
+    if (handlers.onEdit) {
+        const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'planning-edit'; edit.textContent = 'Bewerken';
+        edit.setAttribute('aria-label', `Bewerk: ${item.title}`);
+        edit.onclick = () => handlers.onEdit(item); actionColumn.appendChild(edit);
+    }
     actionColumn.appendChild(deleteButton);
 
     const toggleReminder = event => {
@@ -2229,8 +2325,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let reminders = readStoredJSON('moestuin_reminders', [], normalizeReminders);
     let dailyProgress = readStoredJSON('daily_progress', { date: '', count: 0 }, normalizeDailyProgress);
+    let planningTab = 'year';
+    let planningEditingId = null;
+    let planningEditingTask = null;
+    let planningReturnFocus = null;
+    let planningFormActive = false;
     let curCalDate = new Date();
-    let selectedDateStr = null;
+    let selectedDateStr = formatDate(new Date());
     let calendarTaskWeek = false;
     let aiPlanningDraft = null;
     let calendarHasRendered = false;
@@ -2240,6 +2341,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         dailyProgress = { date: todayStr, count: 0 };
         if (!unreadableStoredJSONKeys.has('daily_progress')) {
             localStorage.setItem('daily_progress', JSON.stringify(dailyProgress));
+            globalThis.KweekCloudStatus?.changed();
         }
     }
 
@@ -2284,11 +2386,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     function incrementDailyProgress() {
         dailyProgress.count++;
         localStorage.setItem('daily_progress', JSON.stringify(dailyProgress));
+        globalThis.KweekCloudStatus?.changed();
         updateProgressUI();
     }
 
     const saveReminders = () => {
         localStorage.setItem('moestuin_reminders', JSON.stringify(reminders));
+        globalThis.KweekCloudStatus?.changed();
     };
 
     const addQuickReminder = (seed, customDate = null) => {
@@ -2389,6 +2493,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let displayedPhotoCount = 6; // How many web results to show initially
     let editingId = null;
     let activeCategory = 'Alles';
+    let activeSeedSummary = 'all';
     let activePlantStatus = null;
     let dashboardPlantStatus = 'Gezaaid';
     let activeMonthFilter = null; // null or 0-11
@@ -2459,6 +2564,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             activePlantStatus = null;
 
             if (filterValue === 'Alles') {
+                activeSeedSummary = 'all';
                 activeCategory = 'Alles';
                 activeMonthFilter = null;
                 localStorage.removeItem('activeMonthFilter');
@@ -2659,6 +2765,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             hint.textContent = 'Controleer je keuze bij Instellingen → AI.';
             errorState.appendChild(hint);
             sourceStatusEl?.replaceChildren(errorState);
+            window.KweekServices?.appendOllamaHelp(errorState, err);
         } finally {
             if (btn) {
                 btn.disabled = false;
@@ -2929,7 +3036,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function saveCurrentForm() {
-        if (viewAdd.classList.contains('hidden')) return;
+        if (viewAdd.classList.contains('hidden') || !seedForm.reportValidity()) return false;
         const naam = inputNaam.value.trim();
         if (!naam) return;
 
@@ -2981,6 +3088,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             addToWishlistFromCard(newSeed);
         }
         await saveSeed(newSeed);
+        await clearSeedDraft();
         seeds = await getAllSeeds();
 
         // Ensure UI reflects changes everywhere
@@ -3014,19 +3122,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         return 'Voorraad';
     }
 
+    function getSeedSummarySelection(selection) {
+        const allSeeds = Array.isArray(seeds) ? seeds : [];
+        if (selection === 'favorites') return allSeeds.filter(seed => seed.isFavorite);
+        if (selection === 'season') {
+            const currentMonth = new Date().getMonth();
+            return allSeeds.filter(seed => getActiveMonths(seed).has(currentMonth));
+        }
+        return allSeeds;
+    }
+
     function updateSeedSummary() {
         const total = document.getElementById('seed-summary-total');
         const favorites = document.getElementById('seed-summary-favorites');
         const season = document.getElementById('seed-summary-season');
         if (!total && !favorites && !season) return;
 
-        const allSeeds = Array.isArray(seeds) ? seeds : [];
-        if (total) total.textContent = String(allSeeds.length);
-        if (favorites) favorites.textContent = String(allSeeds.filter(seed => seed.isFavorite).length);
-        if (season) {
-            const currentMonth = new Date().getMonth();
-            season.textContent = String(allSeeds.filter(seed => getActiveMonths(seed).has(currentMonth)).length);
-        }
+        if (total) total.textContent = String(getSeedSummarySelection('all').length);
+        if (favorites) favorites.textContent = String(getSeedSummarySelection('favorites').length);
+        if (season) season.textContent = String(getSeedSummarySelection('season').length);
+        document.querySelectorAll('[data-seed-summary]').forEach(button => {
+            const selected = button.dataset.seedSummary === activeSeedSummary;
+            const additionalFilters = activePlantStatus !== null || activeCategory !== 'Alles' || activeMonthFilter !== null || Boolean(searchInput?.value);
+            button.setAttribute('aria-pressed', String(selected && (activeSeedSummary !== 'all' || !additionalFilters)));
+        });
     }
 
     function renderSeeds(items) {
@@ -3036,13 +3155,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (items.length === 0) {
             const q = searchInput?.value || '';
-            const hasFilters = activePlantStatus !== null || activeCategory !== 'Alles' || activeMonthFilter !== null || q;
+            const hasFilters = activeSeedSummary !== 'all' || activePlantStatus !== null || activeCategory !== 'Alles' || activeMonthFilter !== null || q;
             const empty = document.createElement('div');
             empty.className = 'empty-state';
             empty.style.cssText = 'padding: 60px 20px;';
             const message = document.createElement('p');
             message.style.cssText = 'font-size: 16px; font-weight: 700; color: var(--text-main); margin-bottom: 4px;';
-            message.textContent = activePlantStatus === 'Actief' ? 'Geen actieve planten' : hasFilters ? 'Geen resultaten gevonden' : 'Je hebt nog geen zaden toegevoegd';
+            message.textContent = activePlantStatus === 'Actief' ? 'Geen actieve planten' : activeSeedSummary === 'favorites' && !q && activeCategory === 'Alles' ? 'Je hebt nog geen favorieten' : activeSeedSummary === 'season' && !q && activeCategory === 'Alles' ? 'Geen zaden om deze maand te zaaien' : hasFilters ? 'Geen resultaten gevonden' : 'Je hebt nog geen zaden toegevoegd';
             const submessage = document.createElement('p');
             submessage.style.cssText = 'font-size: 13px; color: var(--text-muted); margin-bottom: 20px;';
             submessage.textContent = hasFilters ? 'Met deze filters of zoekterm konden we niets vinden.' : 'Begin met het toevoegen van je eerste plant.';
@@ -3511,6 +3630,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     function openEditView(seed) {
+        seedDraftActive = false; draftTurn++;
         editingId = seed.id;
         inputNaam.value = seed.naam;
         inputNaam.dataset.featuredUrl = seed.featuredImageUrl || '';
@@ -3574,6 +3694,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnSubmitForm.textContent = 'Wijzigingen Opslaan';
         document.getElementById('btn-form-delete')?.classList.remove('hidden');
         switchView('add');
+        seedDraftActive = true; restoreSeedDraft().catch(draftError);
     }
 
     function renderQuickActions(seed) {
@@ -3633,13 +3754,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // View Switching
     function switchView(name, options = {}) {
+        if (name === 'planning') name = ({ year: 'sowing-grid', month: 'calendar', agenda: 'agenda' })[options.tab || planningTab];
+        const isPlanning = ['sowing-grid', 'calendar', 'agenda'].includes(name);
+        document.getElementById('planning-header')?.classList.toggle('hidden', !isPlanning);
+        document.getElementById('view-agenda')?.classList.add('hidden');
+        if (isPlanning) planningTab = name === 'sowing-grid' ? 'year' : name === 'calendar' ? 'month' : 'agenda';
         window.scrollTo({ top: 0, behavior: 'instant' });
         [viewHome, viewList, viewSowingGrid, viewAdd, viewDetail, viewWishlist, viewCalendar, viewOnboarding].forEach(v => v?.classList.add('hidden'));
         // Sync Mobile Nav (Desktop & Mobile)
         document.querySelectorAll('.nav-buttons button').forEach(b => b?.classList.remove('active'));
         document.querySelectorAll('.mobile-nav-item').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.shell-nav-item').forEach(b => {
-            const active = b.dataset.shellView === name;
+            const active = b.dataset.shellView === (isPlanning ? 'planning' : name);
             b.classList.toggle('active', active);
             if (active) b.setAttribute('aria-current', 'page');
             else b.removeAttribute('aria-current');
@@ -3648,7 +3774,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const activeDesktopBtn = document.querySelector(`.nav-buttons button[onclick*="${name}"]`);
         if (activeDesktopBtn) activeDesktopBtn.classList.add('active');
 
-        const activeMobileBtn = document.querySelector(`.mobile-nav-item[data-view="${name}"]`);
+        const activeMobileBtn = document.querySelector(`.mobile-nav-item[data-view="${isPlanning ? 'planning' : name}"]`);
         if (activeMobileBtn) activeMobileBtn.classList.add('active');
 
         if (name === 'home') { viewHome?.classList.remove('hidden'); btnHome?.classList.add('active'); renderHome(); }
@@ -3668,11 +3794,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         else if (name === 'detail') { viewDetail?.classList.remove('hidden'); }
         else if (name === 'sowing-grid') { viewSowingGrid?.classList.remove('hidden'); btnSowingGrid?.classList.add('active'); renderSowingGrid(); }
         else if (name === 'wishlist') { viewWishlist?.classList.remove('hidden'); btnWishlist?.classList.add('active'); renderWishlist(); }
+        else if (name === 'agenda') { document.getElementById('view-agenda').classList.remove('hidden'); renderPlanningAgenda(); }
         else if (name === 'calendar') { calendarTaskWeek = Boolean(options.taskWeek); viewCalendar?.classList.remove('hidden'); btnCalendar?.classList.add('active'); renderCalendar(); }
+        if (isPlanning) updatePlanningHeader();
     }
 
     if (btnHome) btnHome.onclick = () => switchView('home');
     if (btnList) btnList.onclick = () => {
+        activeSeedSummary = 'all';
         activePlantStatus = null;
         localStorage.removeItem('activeMonthFilter');
         activeMonthFilter = null;
@@ -3720,6 +3849,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const view = button.dataset.shellView;
             if (!view) return;
             if (view === 'list') {
+                activeSeedSummary = 'all';
                 activePlantStatus = null;
                 localStorage.removeItem('activeMonthFilter');
                 activeMonthFilter = null;
@@ -3744,6 +3874,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!view) return;
 
             if (view === 'list') {
+                activeSeedSummary = 'all';
                 activePlantStatus = null;
                 localStorage.removeItem('activeMonthFilter');
                 activeMonthFilter = null;
@@ -3856,6 +3987,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
     const openAddForm = () => {
+        seedDraftActive = false; draftTurn++;
         editingId = null;
         seedForm?.reset();
         pendingImages = [];
@@ -3904,6 +4036,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('btn-form-delete')?.classList.add('hidden');
         document.getElementById('pexels-mini-search')?.classList.add('hidden');
         switchView('add');
+        seedDraftActive = true; restoreSeedDraft().catch(draftError);
     };
     if (btnAddZadenTop) btnAddZadenTop.onclick = openAddForm;
     window.openAddForm = openAddForm;
@@ -3952,6 +4085,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function renderUnifiedGallery() {
+        persistSeedDraft(true);
         if (!unifiedGallery) return;
         unifiedGallery.replaceChildren();
 
@@ -4105,8 +4239,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const files = Array.from(e.target.files);
             files.forEach(file => {
                 const reader = new FileReader();
-                reader.onload = (re) => {
-                    const url = safeWishlistImageUrl(re.target.result);
+                reader.onload = async (re) => {
+                    let url;
+                    try { url = safeWishlistImageUrl(await window.KweekPhotoStorage.processDataURL(re.target.result, true)); }
+                    catch (error) { showToast(error.message); return; }
                     if (!url) return;
                     if (!pendingImages.some(p => p.url === url)) {
                         pendingImages.push({ url, source: 'upload' });
@@ -4192,6 +4328,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function openGardenList(status) {
+        activeSeedSummary = 'all';
         activePlantStatus = status; activeCategory = 'Alles'; activeMonthFilter = null;
         localStorage.removeItem('activeMonthFilter'); searchInput.value = '';
         filterChips.forEach(chip => chip.classList.toggle('active', chip.dataset.filter === 'Alles'));
@@ -4475,55 +4612,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                                         setTimeout(() => window.scrollToGardenItem(targetId), 100);
                                     }, 250);
                                 } else if (type === 'cal') {
-                                    // Requirement 16.1 & 16.2: Direct intent with date picker
-                                    const picker = document.createElement('input');
-                                    picker.type = 'date';
-                                    picker.style.position = 'fixed';
-                                    picker.style.top = '0';
-                                    picker.style.left = '0';
-                                    picker.style.opacity = '0';
-                                    picker.style.pointerEvents = 'none';
-                                    document.body.appendChild(picker);
-
-                                    // Default to suggested date if it exists
-                                    if (s.suggestDate) {
-                                        picker.value = (s.suggestDate instanceof Date) ? s.suggestDate.toISOString().split('T')[0] : s.suggestDate;
-                                    } else {
-                                        picker.value = new Date().toISOString().split('T')[0];
-                                    }
-
-                                    if (picker.showPicker) {
-                                        picker.showPicker();
-                                    } else {
-                                        picker.click();
-                                    }
-
-                                    picker.onchange = () => {
-                                        if (picker.value) {
-                                            const selectedDate = new Date(picker.value);
-                                            const day = selectedDate.getDate();
-                                            const month = selectedDate.toLocaleDateString('nl-NL', { month: 'short' });
-
-                                            // Visual confirmation: Requirement 17.2
-                                            mini.replaceChildren();
-                                            const confirmation = document.createElement('div');
-                                            confirmation.style.cssText = 'display:flex; align-items:center; justify-content:center; width:100%; height:100%; color:var(--primary-color); background:var(--bg-alt); border-radius:12px; font-size:12px;';
-                                            const confirmationText = document.createElement('span');
-                                            confirmationText.style.fontWeight = '700';
-                                            confirmationText.textContent = `Gepland op ${day} ${month}`;
-                                            confirmation.appendChild(confirmationText);
-                                            mini.appendChild(confirmation);
-
-                                            mini.classList.add('removing');
-                                            setTimeout(() => {
-                                                addQuickReminder(s, selectedDate);
-                                                renderHome(); // Refreshes list, item is now filtered out (17.1)
-                                            }, 750);
-                                        }
-                                        picker.remove();
-                                    };
-                                    picker.addEventListener('cancel', () => picker.remove());
-                                    setTimeout(() => { if (document.body.contains(picker)) picker.remove(); }, 60000);
+                                    const suggested = s.suggestDate instanceof Date ? formatDate(s.suggestDate) : s.suggestDate;
+                                    const date = parseCalendarDate(suggested);
+                                    if (date && suggested >= formatDate(new Date())) { selectedDateStr = suggested; setPlanningPeriod(date.getFullYear(), date.getMonth()); }
+                                    switchView('calendar');
+                                    openPlanningForm({ plantId: String(s.id), activity: 'sow', date: suggested });
                                 }
                             };
                         });
@@ -4532,7 +4625,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (suggestionEl && s.suggestDate) {
                             suggestionEl.onclick = (e) => {
                                 e.stopPropagation();
-                                // Reuse the picker logic for intent from text too
+                                // Open the shared explicit-save planning form.
                                 const btnCal = mini.querySelector('.btn-mini-action[data-type="cal"]');
                                 if (btnCal) btnCal.click();
                             };
@@ -4737,8 +4830,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function handleFiles(files) {
         Array.from(files).forEach(file => {
             const reader = new FileReader();
-            reader.onload = (re) => {
-                const url = safeWishlistImageUrl(re.target.result);
+            reader.onload = async (re) => {
+                let url;
+                try { url = safeWishlistImageUrl(await window.KweekPhotoStorage.processDataURL(re.target.result, true)); }
+                catch (error) { showToast(error.message); return; }
                 if (!url) return;
                 if (!pendingImages.some(p => p.url === url)) {
                     pendingImages.push({ url: url, source: 'upload' });
@@ -4778,8 +4873,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // General Filters
     function applyFilters() {
         const q = searchInput.value.toLowerCase();
-        let filtered = seeds;
-        if (activePlantStatus) filtered = activePlantStatus === 'Actief' ? getActiveGardenPlants() : filtered.filter(s => s.status === activePlantStatus);
+        let filtered = getSeedSummarySelection(activeSeedSummary);
+        if (activePlantStatus) filtered = filtered.filter(s => activePlantStatus === 'Actief' ? activeGardenStatuses.includes(s.status) : s.status === activePlantStatus);
         const currentMonth = new Date().getMonth();
 
         // 1. Filter by Category
@@ -4827,6 +4922,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     window.clearMonthFilter = function () {
+        activeSeedSummary = 'all';
         activeMonthFilter = null;
         applyFilters();
     };
@@ -4834,6 +4930,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     searchInput.oninput = applyFilters;
 
     window._resetAllFilters = () => {
+        activeSeedSummary = 'all';
         activePlantStatus = null;
         activeCategory = 'Alles';
         activeMonthFilter = null;
@@ -4843,11 +4940,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Reset filter chip UI
         document.querySelectorAll('.filter-chip').forEach(c => {
             c.classList.remove('active');
-            if (c.textContent.includes('Alle Zaden')) c.classList.add('active');
+            if (c.dataset.filter === 'Alles') c.classList.add('active');
         });
+
+        const contextBanner = document.getElementById('seeds-context-banner');
+        if (contextBanner) {
+            contextBanner.replaceChildren();
+            delete contextBanner.dataset.plantStatus;
+            contextBanner.classList.add('hidden');
+        }
 
         applyFilters();
     };
+
+    document.querySelectorAll('[data-seed-summary]').forEach(button => {
+        button.addEventListener('click', () => {
+            window._resetAllFilters();
+            activeSeedSummary = button.dataset.seedSummary;
+            applyFilters();
+        });
+    });
 
     // Sowing planner overview: all month and activity values come from saved seed/reminder data.
     let plannerSelectedMonth = new Date().getMonth();
@@ -4867,8 +4979,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (date.getFullYear() < 1000 || date.getFullYear() > 9999) return;
         if (!plannerSoonDate && plannerSelectedYear === date.getFullYear() && plannerSelectedMonth === date.getMonth()) return;
         plannerSoonDate = null;
-        plannerSelectedYear = date.getFullYear();
-        plannerSelectedMonth = date.getMonth();
+        setPlanningPeriod(date.getFullYear(), date.getMonth());
         renderSowingGrid();
     }
 
@@ -4910,6 +5021,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const activityContent = document.getElementById('planner-activities-content');
         if (!grid || !activityContent) return;
 
+        syncPlanningFromPlanner();
+        updatePlanningHeader();
         const currentMonth = new Date().getMonth();
         const currentYear = plannerSelectedYear;
         const isCurrentYear = currentYear === new Date().getFullYear();
@@ -4974,17 +5087,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             monthName.textContent = calMonthNames[monthIndex];
             const summary = document.createElement('span');
             summary.className = 'month-count';
-            summary.textContent = actionCount === 0 ? 'Geen activiteiten' : `${actionCount} ${actionCount === 1 ? 'activiteit' : 'activiteiten'}`;
+            summary.textContent = actionCount === 0 ? 'Geen advies' : `${actionCount} ${actionCount === 1 ? 'advies' : 'adviezen'}`;
             card.append(monthTop, monthName, summary);
             if (reminderCount > 0) {
                 const reminderBadge = document.createElement('span');
                 reminderBadge.className = 'planner-reminder-count';
-                reminderBadge.textContent = `${reminderCount} kalenderitems`;
+                reminderBadge.textContent = `${reminderCount} ingeplande taken`;
                 card.appendChild(reminderBadge);
             }
             card.addEventListener('click', () => {
                 plannerSoonDate = null;
-                plannerSelectedMonth = monthIndex;
+                setPlanningPeriod(currentYear, monthIndex);
                 renderSowingGrid();
             });
             grid.appendChild(card);
@@ -5028,7 +5141,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 heading.className = 'planner-activity-group-heading';
                 heading.append(createIcon(group.icon));
                 const headingText = document.createElement('h4');
-                headingText.textContent = group.label;
+                headingText.textContent = group.id === 'harvest' ? 'Oogstperiodes · plantinformatie' : group.label;
                 const groupCount = document.createElement('span');
                 groupCount.textContent = String(group.plants.length);
                 heading.append(headingText, groupCount);
@@ -5056,13 +5169,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const status = document.createElement('span');
                         status.className = `badge ${safeClassToken(seed.status)}`;
                         status.textContent = getStatusLabel(seed.status);
+                        status.title = 'Opgeslagen plantstatus; geen beoordeling van oogstrijpheid';
                         meta.append(period, status);
                         row.append(name, meta);
                         row.addEventListener('click', () => openDetailView(seed));
-                        list.appendChild(row);
+                        const plan = document.createElement('button'); plan.type = 'button'; plan.className = 'planning-advice-add'; plan.textContent = '+ Inplannen';
+                        plan.setAttribute('aria-label', `Inplannen: ${seed.naam} ${group.label}`);
+                        plan.onclick = () => openPlanningForm({ plantId: String(seed.id), activity: group.id === 'transplant' ? 'transplant' : group.id === 'harvest' ? 'harvest' : 'sow' });
+                        const entry = document.createElement('div'); entry.className = 'planning-advice-row'; entry.append(row, plan);
+                        list.appendChild(entry);
                     });
 
-                groupElement.append(heading, list);
+                groupElement.append(heading);
+                if (group.id === 'harvest') {
+                    const note = document.createElement('p'); note.className = 'planner-advice-note';
+                    note.textContent = 'Algemene oogstperiode, geen actuele oogsttaak. Controleer de groei en rijpheid van je eigen plant voordat je oogsten inplant.';
+                    groupElement.append(note);
+                }
+                groupElement.append(list);
                 activityContent.appendChild(groupElement);
             });
         }
@@ -5070,12 +5194,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Dated tasks stay in their saved month/year; recurring periods above
         // are displayed independently and never become copied reminders.
         const selectedReminders = plannerSoonDate ? [] : getPlannerReminders(plannerSelectedMonth, currentYear);
-        if (selectedReminders.length) {
+        const tasksContent = document.getElementById('planner-tasks-content');
+        tasksContent.replaceChildren();
+        {
             const planning = document.createElement('section');
             planning.className = 'planner-activity-group planner-saved-planning';
             const heading = document.createElement('div');
             heading.className = 'planner-activity-group-heading';
-            const headingText = document.createElement('h4'); headingText.textContent = 'Ingeplande kalenderitems';
+            const headingText = document.createElement('h4'); headingText.textContent = 'Ingeplande taken';
             const count = document.createElement('span'); count.textContent = String(selectedReminders.length);
             heading.append(createIcon('calendar'), headingText, count);
             const list = document.createElement('div'); list.className = 'planner-plant-list';
@@ -5097,7 +5223,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
                 list.append(row);
             });
-            planning.append(heading, list); activityContent.append(planning);
+            if (!selectedReminders.length) {
+                const empty = document.createElement('p'); empty.className = 'planner-advice-note'; empty.textContent = 'Geen ingeplande taken in deze maand.'; list.append(empty);
+            }
+            planning.append(heading, list); tasksContent.append(planning);
         }
 
         const previousButton = document.getElementById('planner-prev-month');
@@ -5109,7 +5238,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (nextButton) nextButton.onclick = () => selectPlannerPeriod(currentYear, plannerSelectedMonth + 1);
         if (thisMonthButton) thisMonthButton.onclick = () => {
             const today = new Date();
-            selectPlannerPeriod(today.getFullYear(), today.getMonth());
+            selectedDateStr = formatDate(today); selectPlannerPeriod(today.getFullYear(), today.getMonth()); updatePlanningHeader();
         };
         if (selectedMonthSelect) selectedMonthSelect.onchange = () => {
             selectPlannerPeriod(currentYear, Number(selectedMonthSelect.value));
@@ -5130,7 +5259,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (previousButton) previousButton.disabled = currentYear === 1000 && plannerSelectedMonth === 0;
         if (nextButton) nextButton.disabled = currentYear === 9999 && plannerSelectedMonth === 11;
         if (openCalendarButton) openCalendarButton.onclick = () => {
-            calendarTaskWeek = false; selectedDateStr = null;
+            calendarTaskWeek = false;
             curCalDate = new Date(currentYear, plannerSelectedMonth, 1);
             switchView('calendar');
             renderCalendar();
@@ -5259,11 +5388,133 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
 
+    // Concepts stay on this device and never enter the garden/cloud payload.
+    let seedDraftActive = false, wishDraftActive = false, restoringDraft = false, draftTurn = 0, wishDraftTurn = 0;
+    const seedDraftFields = ['naam', 'code', 'type', 'standplaats', 'water', 'status', 'beschrijving', 'ervaringen', 'purchaseYear', 'shopLink'];
+    const wishDraftFields = ['edit-wish-name', 'edit-wish-type', 'edit-wish-link', 'edit-wish-img-url', 'edit-wish-note'];
+    const seedDraftKey = () => 'seed:' + (editingId ?? 'new');
+    const wishDraftKey = () => 'wish:' + editingWishId;
+    const fieldValues = ids => Object.fromEntries(ids.map(id => [id, document.getElementById(id)?.value || '']));
+    const restoreFields = values => {
+        for (const [id, value] of Object.entries(values || {})) {
+            if (!seedDraftFields.includes(id) && !wishDraftFields.includes(id)) continue;
+            const field = document.getElementById(id);
+            if (field && typeof value === 'string' && (field.tagName !== 'SELECT' || [...field.options].some(option => option.value === value))) field.value = value;
+        }
+    };
+    const draftError = error => showToast(error.message || 'Het concept kon niet worden bewaard.');
+    function persistSeedDraft(withMedia = false) {
+        if (!seedDraftActive || restoringDraft || viewAdd.classList.contains('hidden') || !window.KweekDrafts) return;
+        draftTurn++;
+        const values = { fields: fieldValues(seedDraftFields), editingId,
+            months: Object.fromEntries(['zaaitijd-picker', 'oogsttijd-picker'].map(id => [id, [...document.querySelectorAll('#' + id + ' .month-picker-item.active')].map(item => Number(item.dataset.monthIndex))])),
+            tags: [...document.querySelectorAll('.tag-picker-chip.active')].map(item => item.dataset.tag),
+            score: document.getElementById('star-rating-picker')?.dataset.value || '0' };
+        const assets = withMedia ? { images: pendingImages, featuredUrl: inputNaam.dataset.featuredUrl || '' } : undefined;
+        window.KweekDrafts.put(seedDraftKey(), values, assets).catch(draftError);
+    }
+    async function restoreSeedDraft() {
+        const key = seedDraftKey(), turn = ++draftTurn;
+        const draft = await window.KweekDrafts?.get(key);
+        if (!draft || key !== seedDraftKey() || turn !== draftTurn || viewAdd.classList.contains('hidden')) return;
+        restoringDraft = true;
+        try {
+            restoreFields(draft.values.fields);
+            for (const [id, months] of Object.entries(draft.values.months || {})) {
+                if (!['zaaitijd-picker', 'oogsttijd-picker'].includes(id) || !Array.isArray(months)) continue;
+                document.querySelectorAll('#' + id + ' .month-picker-item').forEach(item => item.classList.toggle('active', months.includes(Number(item.dataset.monthIndex))));
+            }
+            if (Array.isArray(draft.values.tags)) renderTagPicker(draft.values.tags.filter(tag => typeof tag === 'string'));
+            const score = document.getElementById('star-rating-picker');
+            if (score) { score.dataset.value = draft.values.score || '0'; initStarPicker(); }
+            if (Array.isArray(draft.assets?.images)) {
+                pendingImages = draft.assets.images.filter(item => safeWishlistImageUrl(item?.url));
+                inputNaam.dataset.featuredUrl = safeWishlistImageUrl(draft.assets.featuredUrl) || '';
+                renderUnifiedGallery();
+            }
+            showToast('Je plantconcept is hersteld. Nog niet definitief opgeslagen.');
+        } finally { restoringDraft = false; }
+    }
+    async function clearSeedDraft() {
+        seedDraftActive = false; draftTurn++;
+        await window.KweekDrafts?.drop(seedDraftKey()).catch(draftError);
+    }
+    function persistWishDraft(withMedia = false) {
+        if (!wishDraftActive || restoringDraft || !editingWishId || !window.KweekDrafts) return;
+        wishDraftTurn++;
+        window.KweekDrafts.put(wishDraftKey(), { fields: fieldValues(wishDraftFields) }, withMedia ? { image: wishImageDraft } : undefined).catch(draftError);
+    }
+    async function restoreWishDraft() {
+        const key = wishDraftKey(), turn = ++wishDraftTurn;
+        const draft = await window.KweekDrafts?.get(key);
+        if (!draft || key !== wishDraftKey() || !wishDraftActive || turn !== wishDraftTurn) return;
+        restoringDraft = true;
+        try {
+            restoreFields(draft.values.fields);
+            if (draft.assets?.image !== undefined) wishImageDraft = safeWishlistImageUrl(draft.assets.image) || null;
+            const item = wishlist.find(item => String(item.id) === String(editingWishId));
+            updateWishImgPreview(wishImageDraft ?? item?.image);
+            updateVisitLink(document.getElementById('edit-wish-link').value);
+            showToast('Je verlanglijstconcept is hersteld.');
+        } finally { restoringDraft = false; }
+    }
+    function persistTextDraft(key, values) {
+        if (restoringDraft || !window.KweekDrafts) return;
+        document.getElementById(key === 'task' ? 'btn-cancel-task-draft' : 'btn-cancel-wish-quick-draft')?.classList.toggle('hidden', !values.title.trim());
+        if (!values.title.trim()) { window.KweekDrafts.drop(key).catch(draftError); return; }
+        window.KweekDrafts.put(key, values).catch(draftError);
+    }
+    seedForm.addEventListener('input', () => persistSeedDraft());
+    seedForm.addEventListener('change', () => persistSeedDraft());
+    seedForm.addEventListener('click', event => {
+        if (event.target.closest('.month-picker-item, .tag-picker-chip, .star-rating-picker')) queueMicrotask(() => persistSeedDraft());
+    });
+    document.getElementById('btn-cancel-seed-draft').onclick = async () => { await clearSeedDraft(); seedForm.reset(); pendingImages = []; switchView('list'); };
+    document.addEventListener('input', event => {
+        if (wishDraftFields.includes(event.target.id)) persistWishDraft();
+        if (['wishlist-quick-input', 'wishlist-empty-input'].includes(event.target.id)) persistTextDraft('wish-quick', { title: event.target.value });
+        if (event.target.id === 'new-reminder-input') persistPlanningDraft();
+    });
+    document.addEventListener('change', event => { if (wishDraftFields.includes(event.target.id)) persistWishDraft(); });
+    const cancelTaskDraft = document.createElement('button');
+    cancelTaskDraft.id = 'btn-cancel-task-draft'; cancelTaskDraft.type = 'button'; cancelTaskDraft.className = 'calendar-today-button'; cancelTaskDraft.textContent = 'Concept annuleren';
+    cancelTaskDraft.classList.add('hidden');
+    document.getElementById('btn-add-reminder').closest('.day-input-area').append(cancelTaskDraft);
+    cancelTaskDraft.onclick = () => { document.getElementById('new-reminder-input').value = ''; persistTextDraft('task', { title: '', date: selectedDateStr }); };
+    const cancelQuickWish = document.createElement('button');
+    cancelQuickWish.id = 'btn-cancel-wish-quick-draft'; cancelQuickWish.type = 'button'; cancelQuickWish.className = 'btn-secondary hidden'; cancelQuickWish.textContent = 'Concept annuleren';
+    document.getElementById('btn-add-wish-quick').after(cancelQuickWish);
+    cancelQuickWish.onclick = () => { ['wishlist-quick-input', 'wishlist-empty-input'].forEach(id => { const field = document.getElementById(id); if (field) field.value = ''; }); window.KweekDrafts?.drop('wish-quick').catch(draftError); cancelQuickWish.classList.add('hidden'); };
+    const cancelWishDraft = document.createElement('button');
+    cancelWishDraft.id = 'btn-cancel-wish-draft'; cancelWishDraft.type = 'button'; cancelWishDraft.className = 'btn-secondary'; cancelWishDraft.textContent = 'Annuleren';
+    document.getElementById('btn-wish-save').before(cancelWishDraft);
+    cancelWishDraft.onclick = async () => { const key = wishDraftKey(); wishDraftActive = false; await window.KweekDrafts?.drop(key).catch(draftError); closeWishModal(); };
+    async function resumeLastDraft() {
+        const key = window.KweekDrafts?.last();
+        if (!key) return;
+        const draft = await window.KweekDrafts.get(key);
+        if (!draft) return;
+        if (key.startsWith('seed:')) {
+            const id = draft.values.editingId;
+            if (id === null) openAddForm();
+            else { const seed = seeds.find(seed => String(seed.id) === String(id)); if (seed) openEditView(seed); }
+        } else if (key.startsWith('wish:')) {
+            const id = key.slice(5);
+            if (wishlist.some(item => String(item.id) === id)) { switchView('wishlist'); openWishModal(id); }
+        } else if (key === 'wish-quick') {
+            switchView('wishlist');
+            ['wishlist-quick-input', 'wishlist-empty-input'].forEach(id => { const field = document.getElementById(id); if (field) field.value = draft.values.title || ''; });
+            cancelQuickWish.classList.remove('hidden');
+        } else if (key === 'task') {
+            switchView('planning', { tab: draft.values.tab || 'month' });
+            await openPlanningForm({}, draft.values);
+        }
+    }
+
     // Form logic simple
     seedForm.onsubmit = async (e) => {
         e.preventDefault();
         await saveCurrentForm();
-        switchView('list');
     };
 
     // Initial load
@@ -5637,16 +5888,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         return snapshot;
     }
 
-    function restoreLocalStorageSnapshot(snapshot) {
+    function restoreLocalStorageSnapshot(snapshot, keys = null) {
         const currentKeys = [];
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key !== null) currentKeys.push(key);
         }
         for (const key of currentKeys) {
-            if (!Object.prototype.hasOwnProperty.call(snapshot, key)) localStorage.removeItem(key);
+            if ((!keys || keys.has(key)) && !Object.prototype.hasOwnProperty.call(snapshot, key)) localStorage.removeItem(key);
         }
-        for (const [key, value] of Object.entries(snapshot)) localStorage.setItem(key, value);
+        for (const [key, value] of Object.entries(snapshot)) if (!keys || keys.has(key)) localStorage.setItem(key, value);
     }
 
     function buildRestoreStorageWrites(backup) {
@@ -5691,20 +5942,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
     }
 
-    async function restoreBackupData(backup) {
+    async function restoreBackupData(backup, { managed = false, check = () => {}, signal } = {}) {
+        if (!managed) globalThis.KweekCloudStatus?.external('import');
         const safetyBackup = await captureRestoreSafetyBackup(backup);
+        check(); signal?.throwIfAborted();
         let seedsReplaced = false;
         try {
             applyRestoreToLocalStorage(backup);
             if (hasProvidedDataset(backup, 'seeds')) {
-                await replaceAllSeedsAtomic(backup.seeds);
+                await replaceAllSeedsAtomic(backup.seeds, { check, signal });
                 seeds = cloneBackupData(backup.seeds);
                 seedsReplaced = true;
             }
         } catch (error) {
             try {
-                restoreLocalStorageSnapshot(safetyBackup.storage);
-                if (seedsReplaced || safetyBackup.seeds) {
+                // A cancelled automatic restore must not roll back account,
+                // queue or import guards changed while IndexedDB was pending.
+                const rollbackKeys = managed ? new Set(buildRestoreStorageWrites(backup)
+                    .filter(([key, value]) => localStorage.getItem(key) === String(value)).map(([key]) => key)) : null;
+                restoreLocalStorageSnapshot(safetyBackup.storage, rollbackKeys);
+                if (seedsReplaced || (!managed && safetyBackup.seeds)) {
                     await replaceAllSeedsAtomic(safetyBackup.seeds);
                     seeds = cloneBackupData(safetyBackup.seeds);
                 }
@@ -5716,6 +5973,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     window.KweekLocalData = {
+        captureCloud: async () => window.KweekCloudData.select(buildBackupPayload(await getAllSeeds())),
+        validateCloud: payload => {
+            const selected = window.KweekCloudData.select(payload);
+            normalizeImportedBackup(selected); // Validation without mutating any local data.
+            return selected;
+        },
+        restoreCloud: async (payload, options = {}) => {
+            const selected = window.KweekLocalData.validateCloud(payload);
+            if (selected.userProfile) selected.userProfile = { ...selected.userProfile, units: loadUserProfile().units };
+            await restoreBackupData(normalizeImportedBackup(selected), options);
+            globalThis.KweekCloudStatus?.changed('restore-internal');
+        },
         capture: async () => {
             const payload = buildBackupPayload(await getAllSeeds());
             for (let i = 0; i < localStorage.length; i++) {
@@ -5727,31 +5996,83 @@ document.addEventListener('DOMContentLoaded', async () => {
         restore: async payload => {
             const normalized = normalizeImportedBackup(payload);
             await restoreBackupData(normalized);
+            globalThis.KweekCloudStatus?.changed('restore-internal');
         }
     };
 
     // --- DATA MANAGEMENT LOGIC ---
+    const exampleDirectory = 'assets/example-collections/';
+    let availableExampleCollections = new Map();
+    let exampleCatalogRequest = 0;
+    const exampleStatus = message => {
+        const element = document.getElementById('example-garden-status');
+        if (element) element.textContent = message;
+    };
+    async function readExampleFile(file) {
+        const response = await fetch(exampleDirectory + file, { cache: 'no-store' });
+        if (!response.ok) throw new Error(response.status === 404 ? `Het voorbeeldbestand ${file} ontbreekt. Controleer de bestandsnaam en bouw opnieuw.` : `Het voorbeeldbestand ${file} kan niet worden geladen. Probeer de lijst opnieuw te vernieuwen.`);
+        try { return await response.json(); }
+        catch { throw new Error(`Het voorbeeldbestand ${file} bevat ongeldige JSON. Er is niets toegevoegd.`); }
+    }
+    function validateExampleFile(input) {
+        window.KweekExampleCollections.collection(input);
+        // Reuse the same complete plant validation as file import/restore.
+        return normalizeImportedBackup(input).seeds;
+    }
+    window.refreshExampleCollections = async function(panel = document.getElementById('settings-panel')) {
+        const list = panel?.querySelector('#example-collections-list');
+        if (!list) return;
+        const request = ++exampleCatalogRequest;
+        list.setAttribute('aria-busy', 'true');
+        exampleStatus('Voorbeeldcollecties ophalen…');
+        try {
+            const entries = window.KweekExampleCollections.manifest(await readExampleFile('manifest.json'));
+            const results = await Promise.all(entries.map(async entry => {
+                try { return { entry, count: validateExampleFile(await readExampleFile(entry.file)).length }; }
+                catch (error) { return { entry, error: error.name === 'BackupValidationError' ? 'Het voorbeeldbestand is niet geldig. Controleer de plantgegevens.' : error.message }; }
+            }));
+            if (request !== exampleCatalogRequest || !list.isConnected) return;
+            availableExampleCollections = new Map(entries.map(entry => [entry.id, entry]));
+            list.replaceChildren();
+            for (const { entry, count, error } of results) {
+                const card = document.createElement('article'); card.className = 'settings-data-card';
+                const info = document.createElement('div');
+                const title = document.createElement('h4'); title.textContent = entry.name;
+                const description = document.createElement('p'); description.textContent = entry.description;
+                const amount = document.createElement('p'); amount.textContent = error || `${count} planten`;
+                const button = document.createElement('button'); button.type = 'button'; button.className = 'settings-secondary-button';
+                button.dataset.collectionId = entry.id;
+                button.textContent = entry.id === 'voorbeeldtuin' ? 'Voorbeeldtuin laden' : `${entry.name} laden`;
+                button.disabled = !!error; button.setAttribute('aria-describedby', 'example-garden-status');
+                if (entry.id === 'voorbeeldtuin') { button.id = 'load-example-garden'; button.setAttribute('onclick', 'loadExampleGarden(this)'); }
+                else button.onclick = () => window.loadExampleCollection(entry.id, button);
+                info.append(title, description, amount); card.append(info, button); list.append(card);
+            }
+            exampleStatus(entries.length ? (results.some(result => result.error) ? 'Niet alle voorbeeldcollecties zijn beschikbaar. Controleer de melding bij de collectie.' : 'Kies een collectie. Je bevestigt het toevoegen eerst.') : 'Er zijn nog geen voorbeeldcollecties beschikbaar.');
+        } catch (error) {
+            if (request !== exampleCatalogRequest || !list.isConnected) return;
+            availableExampleCollections.clear(); list.replaceChildren(); exampleStatus(error.message);
+        } finally {
+            if (request === exampleCatalogRequest) list.setAttribute('aria-busy', 'false');
+        }
+    };
     let exampleGardenLoading = false;
-    window.loadExampleGarden = async function(button) {
+    window.loadExampleGarden = button => window.loadExampleCollection('voorbeeldtuin', button);
+    window.loadExampleCollection = async function(collectionId, button) {
         if (exampleGardenLoading) return;
         exampleGardenLoading = true;
         if (button) button.disabled = true;
-        const status = message => {
-            const element = document.getElementById('example-garden-status');
-            if (element) element.textContent = message;
-        };
+        const status = exampleStatus;
         try {
-            status('Voorbeeldtuin laden…');
-            const response = await fetch('assets/example-garden/voorbeeldtuin.json');
-            if (!response.ok) throw new Error('Voorbeeldtuin kan nu niet worden geladen. Probeer later opnieuw.');
-            // Reuse the complete backup validation, but import plants only.
-            const input = await response.json();
-            const examples = normalizeImportedBackup({ backupVersion: input.backupVersion, seeds: input.seeds }).seeds;
-            if (!confirm(`${examples.length} voorbeeldplanten aan je tuin toevoegen? Je eigen planten blijven bewaard. Planten die er al staan worden overgeslagen.`)) {
-                status('Voorbeeldtuin laden geannuleerd.');
+            const entry = availableExampleCollections.get(collectionId);
+            if (!entry) throw new Error('Deze voorbeeldcollectie is niet beschikbaar. Vernieuw eerst de lijst.');
+            status(`${entry.name} laden…`);
+            const examples = validateExampleFile(await readExampleFile(entry.file));
+            if (!confirm(`“${entry.name}”: ${examples.length} voorbeeldplanten aan je tuin toevoegen? Je eigen planten blijven bewaard. Planten die er al staan worden overgeslagen. Dit voegt alleen lokaal planten toe; er wordt niets naar de cloud geüpload.`)) {
+                status(`${entry.name} laden geannuleerd.`);
                 return;
             }
-            const added = await addExampleSeedsAtomic(examples);
+            const added = await addExampleSeedsAtomic(examples, entry.id);
             seeds = await getAllSeeds();
             renderHome();
             status(`${added} voorbeeldplanten toegevoegd.${added === 0 ? ' Deze planten staan al in je tuin.' : ''}`);
@@ -6042,6 +6363,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function saveWish() {
         localStorage.setItem('moestuin_wishlist', JSON.stringify(wishlist));
+        globalThis.KweekCloudStatus?.changed();
         renderWishlist();
     }
 
@@ -6054,6 +6376,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let wishReturnFocus = null;
 
     function openWishModal(id) {
+        wishDraftActive = false; wishDraftTurn++;
         editingWishId = id;
 
 
@@ -6080,14 +6403,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         wishReturnFocus = document.activeElement;
         wishModal.classList.remove('hidden');
-        document.getElementById('edit-wish-name').focus();
+        updatePanelInteraction(wishModal, true, { focus: document.getElementById('edit-wish-name'), close: closeWishModal });
+        wishDraftActive = true; restoreWishDraft().catch(draftError);
     }
 
     function closeWishModal() {
+        wishDraftActive = false;
         wishModal.classList.add('hidden');
         editingWishId = null;
         wishImageDraft = null;
         wishImageReadVersion++;
+        updatePanelInteraction(wishModal, false);
         (wishReturnFocus?.isConnected ? wishReturnFocus : wishInputQuick)?.focus();
     }
 
@@ -6097,9 +6423,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const saveButton = document.getElementById('btn-wish-save');
         saveButton.disabled = true;
         const reader = new FileReader();
-        reader.onload = () => {
+        reader.onload = async () => {
             if (version !== wishImageReadVersion || !editingWishId) return;
-            const safeImage = safeWishlistImageUrl(reader.result);
+            let safeImage;
+            try { safeImage = safeWishlistImageUrl(await window.KweekPhotoStorage.processDataURL(reader.result, true)); }
+            catch (error) {
+                if (version === wishImageReadVersion && editingWishId) { saveButton.disabled = false; showToast(error.message); }
+                return;
+            }
+            if (version !== wishImageReadVersion || !editingWishId) return;
             if (safeImage) {
                 wishImageDraft = safeImage;
                 const urlField = document.getElementById('edit-wish-img-url');
@@ -6116,6 +6448,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function updateWishImgPreview(src) {
+        persistWishDraft(true);
         const preview = document.getElementById('edit-wish-img-preview');
         const placeholder = document.getElementById('wish-img-placeholder');
         if (!preview || !placeholder) return;
@@ -6168,6 +6501,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             wishlist.unshift(newItem); // Add to top
             saveWish();
             inputEl.value = '';
+            window.KweekDrafts?.drop('wish-quick').catch(draftError);
+            cancelQuickWish.classList.add('hidden');
+            ['wishlist-quick-input', 'wishlist-empty-input'].forEach(id => { const field = document.getElementById(id); if (field) field.value = ''; });
 
             inputEl.focus();
         };
@@ -6216,6 +6552,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (wishImageDraft !== null) wishlist[index].image = wishImageDraft;
         saveWish();
+        window.KweekDrafts?.drop(wishDraftKey()).catch(draftError);
         closeWishModal();
     });
 
@@ -6230,6 +6567,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             wishlist = wishlist.filter(item => String(item.id) !== targetId);
 
             localStorage.setItem('moestuin_wishlist', JSON.stringify(wishlist));
+            globalThis.KweekCloudStatus?.changed();
             renderWishlist();
             closeWishModal();
         }
@@ -6260,6 +6598,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const grid = document.getElementById('calendar-grid');
         if (!grid) return;
 
+        plannerSelectedYear = curCalDate.getFullYear(); plannerSelectedMonth = curCalDate.getMonth();
+        updatePlanningHeader();
         const year = curCalDate.getFullYear();
         const month = curCalDate.getMonth();
         const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
@@ -6339,7 +6679,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('ai-planning-review')?.classList.toggle('hidden', !aiPlanningDraft);
         document.getElementById('ai-planning-cancel')?.classList.toggle('hidden', !aiPlanningDraft);
         const addButton = document.getElementById('btn-add-reminder');
-        if (addButton) addButton.textContent = aiPlanningDraft ? 'Inplannen' : 'Toevoegen';
+        if (addButton) addButton.textContent = 'Opslaan';
         document.querySelector('.calendar-upcoming-panel')?.classList.toggle('hidden', calendarTaskWeek);
         document.querySelector('#day-details .day-input-area')?.classList.toggle('hidden', calendarTaskWeek);
         const agendaEyebrow = document.querySelector('#day-details .calendar-panel-eyebrow');
@@ -6430,6 +6770,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!parseCalendarDate(dateStr)) return;
         calendarTaskWeek = false;
         selectedDateStr = dateStr;
+
         if (aiPlanningDraft) {
             aiPlanningDraft.date = dateStr;
             document.getElementById('ai-planning-date').value = dateStr;
@@ -6437,12 +6778,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const selectedDate = parseCalendarDate(dateStr);
         curCalDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
         renderCalendar();
+        document.querySelector(`#calendar-grid [aria-pressed="true"]`)?.focus();
 
         const input = document.getElementById('new-reminder-input');
-        if (input) {
+        if (input && document.getElementById('planning-dialog').open) {
             input.focus();
             input.onkeydown = event => {
-                if (event.key === 'Enter') document.getElementById('btn-add-reminder')?.click();
+                if (event.key === 'Enter') { event.preventDefault(); document.getElementById('btn-add-reminder')?.click(); }
             };
         }
     }
@@ -6464,6 +6806,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         dayItems.sort((a, b) => a.id - b.id).forEach(item => {
             const row = buildReminderRow(item, {
+                onEdit: () => openPlanningForm({ item }),
                 onToggle: () => {
                     item.done = !item.done;
                     saveReminders();
@@ -6471,7 +6814,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 },
                 onDelete: () => {
                     if (!window.confirm('Weet je zeker dat je deze herinnering wilt verwijderen?')) return;
-                    reminders = reminders.filter(reminder => reminder.id !== item.id);
+                    reminders = reminders.filter(reminder => reminder !== item);
                     saveReminders();
                     renderCalendar();
                 }
@@ -6489,7 +6832,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sections = [
             { label: 'Zaaien', ids: ['indoor-sow', 'outdoor-sow', 'sow'] },
             { label: 'Uitplanten', ids: ['transplant'] },
-            { label: 'Oogsten', ids: ['harvest'] }
+            { label: 'Oogstperiodes · plantinformatie', ids: ['harvest'] }
         ];
         let activityCount = 0;
 
@@ -6501,6 +6844,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const heading = document.createElement('h5');
             heading.textContent = section.label;
             block.appendChild(heading);
+            if (section.ids.includes('harvest')) {
+                const note = document.createElement('p'); note.className = 'planner-advice-note';
+                note.textContent = 'Algemene oogstperiode; dit betekent niet dat jouw plant nu oogstbaar is.'; block.append(note);
+            }
 
             const list = document.createElement('ul');
             sectionGroups.forEach(group => group.plants.forEach(seed => {
@@ -6509,11 +6856,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const item = document.createElement('li');
                 const action = document.createElement('span');
                 action.className = 'calendar-period-action';
-                action.textContent = group.label;
+                const periodValue = group.period === 'plant_months' ? (seed.plant_months || seed.plantMonths || seed.planttijd || seed.uitplanttijd || seed.uitplanten)
+                    : group.period === 'oogsttijd' ? (seed.oogsttijd || seed.harvest_months || seed.harvestMonths) : seed;
+                action.textContent = `${group.id === 'harvest' ? 'Oogstperiode' : group.label}: ${formatMonthRanges(getActiveMonths(periodValue)) || calMonthNames[monthIndex]}`;
                 const plantName = document.createElement('span');
                 plantName.className = 'calendar-period-plant';
                 plantName.textContent = name;
-                item.append(action, plantName);
+                const plan = document.createElement('button'); plan.type = 'button'; plan.className = 'planning-advice-add'; plan.textContent = '+ Inplannen';
+                plan.setAttribute('aria-label', `Inplannen: ${name} ${group.label}`);
+                plan.onclick = () => openPlanningForm({ plantId: String(seed.id), activity: group.id === 'transplant' ? 'transplant' : group.id === 'harvest' ? 'harvest' : 'sow' });
+                const status = document.createElement('span'); status.className = 'calendar-period-status'; status.textContent = `Plantstatus: ${getStatusLabel(seed.status)}`;
+                const copy = document.createElement('div'); copy.className = 'calendar-advice-copy'; copy.append(plantName, action, status);
+                item.append(copy, plan);
                 list.appendChild(item);
                 activityCount += 1;
             }));
@@ -6580,8 +6934,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const btnCalPrev = document.getElementById('cal-prev');
     const btnCalNext = document.getElementById('cal-next');
-    if (btnCalPrev) btnCalPrev.onclick = () => { calendarTaskWeek = false; curCalDate = new Date(curCalDate.getFullYear(), curCalDate.getMonth() - 1, 1); selectedDateStr = null; renderCalendar(); };
-    if (btnCalNext) btnCalNext.onclick = () => { calendarTaskWeek = false; curCalDate = new Date(curCalDate.getFullYear(), curCalDate.getMonth() + 1, 1); selectedDateStr = null; renderCalendar(); };
+    if (btnCalPrev) btnCalPrev.onclick = () => { calendarTaskWeek = false; setPlanningPeriod(curCalDate.getFullYear(), curCalDate.getMonth() - 1); renderCalendar(); };
+    if (btnCalNext) btnCalNext.onclick = () => { calendarTaskWeek = false; setPlanningPeriod(curCalDate.getFullYear(), curCalDate.getMonth() + 1); renderCalendar(); };
 
     const btnCalToday = document.getElementById('cal-today');
     if (btnCalToday) btnCalToday.onclick = () => {
@@ -6596,84 +6950,53 @@ document.addEventListener('DOMContentLoaded', async () => {
     const reminderInput = document.getElementById('new-reminder-input');
 
     function cancelAIPlanning(returnHome = true) {
-        if (!aiPlanningDraft) return;
-        const draft = aiPlanningDraft;
-        aiPlanningDraft = null;
-        reminderInput.value = draft.previousTitle;
-        selectedDateStr = draft.previousDate;
-        curCalDate = draft.previousCalendar;
-        calendarTaskWeek = false;
-        renderCalendar();
-        if (returnHome) {
-            switchView('home');
-            draft.button?.focus();
-        }
+        if (aiPlanningDraft) closePlanningForm(true);
     }
 
-    window._planAssistantSuggestion = (action, button) => {
+    window._planAssistantSuggestion = async (action, button) => {
         if (!action || action.destination !== 'todo' || button?.disabled) return;
-        if (aiPlanningDraft) {
-            switchView('calendar');
-            showAssistantFeedback('Er staat al een voorstel klaar.');
-            return;
-        }
-        aiPlanningDraft = { ...action, button, previousTitle: reminderInput.value,
-            previousDate: selectedDateStr, previousCalendar: new Date(curCalDate) };
-        calendarTaskWeek = false;
-        selectedDateStr = action.date || null;
-        const date = parseCalendarDate(action.date);
-        if (date) curCalDate = new Date(date.getFullYear(), date.getMonth(), 1);
-        document.getElementById('ai-planning-date').value = action.date;
-        reminderInput.value = action.title;
+        if (planningFormActive || document.getElementById('planning-dialog').open) return;
         switchView('calendar');
-        reminderInput.scrollIntoView({ block: 'center' });
-        reminderInput.focus();
-        showAssistantFeedback('Voorstel klaar; nog niet ingepland.');
+        await openPlanningForm({ title: action.title, date: action.date });
+        if (planningFormActive) {
+            const date = parseCalendarDate(document.getElementById('ai-planning-date').value);
+            if (date) { selectedDateStr = formatDate(date); setPlanningPeriod(date.getFullYear(), date.getMonth()); renderCalendar(); }
+            aiPlanningDraft = { ...action, button };
+            document.getElementById('ai-planning-review').classList.remove('hidden');
+        }
     };
-    document.getElementById('ai-planning-cancel').onclick = () => cancelAIPlanning();
-    document.getElementById('ai-planning-date').onchange = event => {
-        if (!aiPlanningDraft) return;
-        aiPlanningDraft.date = isAIPlanningDate(event.target.value) ? event.target.value : '';
-        selectedDateStr = aiPlanningDraft.date || null;
-        const date = parseCalendarDate(aiPlanningDraft.date);
-        if (date) curCalDate = new Date(date.getFullYear(), date.getMonth(), 1);
-        renderCalendar();
-    };
+    document.getElementById('ai-planning-cancel').onclick = () => closePlanningForm(true);
+    document.getElementById('ai-planning-date').onchange = () => persistPlanningDraft();
 
     const handleAdd = () => {
-        if (aiPlanningDraft) {
-            const dateInput = document.getElementById('ai-planning-date');
-            const date = dateInput.value;
-            const title = reminderInput.value.trim();
-            if (!isAIPlanningDate(date)) { showAssistantFeedback('Kies een geldige datum.'); dateInput.focus(); return; }
-            if (!title) { showAssistantFeedback('Vul een activiteit in.'); reminderInput.focus(); return; }
-            const duplicate = reminders.some(item => item.date === date && item.title.trim().toLocaleLowerCase('nl-NL') === title.toLocaleLowerCase('nl-NL'));
-            if (!duplicate) {
-                reminders.push({ id: Date.now(), date, title, done: false });
-                saveReminders();
-            }
-            const button = aiPlanningDraft.button;
-            aiPlanningDraft = null;
-            selectedDateStr = date;
-            reminderInput.value = '';
-            if (button) { button.textContent = 'Ingepland'; button.disabled = true; }
-            renderCalendar();
-            showAssistantFeedback(duplicate ? 'Staat al in je planning.' : 'Ingepland.');
-            return;
-        }
-        if (!selectedDateStr) return;
-        const val = reminderInput.value.trim();
-        if (!val) return;
-        reminders.push({ id: Date.now(), date: selectedDateStr, title: val, done: false });
-        saveReminders();
-        reminderInput.value = '';
-        renderCalendar();
-        reminderInput.focus();
+        if (!planningFormActive) return;
+        const form = document.getElementById('planning-form');
+        const date = document.getElementById('ai-planning-date').value;
+        const title = reminderInput.value.trim();
+        if (!form.reportValidity() || !parseCalendarDate(date) || !title) return;
+        const activity = document.getElementById('planning-activity').value;
+        const plantId = document.getElementById('planning-plant').value;
+        if (activity !== 'custom' && !plantId) { planningMessage('Kies een plant voor deze activiteit.'); document.getElementById('planning-plant').focus(); return; }
+        const existing = reminders.includes(planningEditingTask) ? planningEditingTask : null;
+        const duplicate = reminders.some(item => item !== existing && item.date === date && item.title.trim().toLocaleLowerCase('nl-NL') === title.toLocaleLowerCase('nl-NL'));
+        if (duplicate) { planningMessage('Deze taak staat al op deze datum ingepland.'); return; }
+        let newId = Date.now();
+        while (reminders.some(item => item.id === newId)) newId += 1;
+        const next = existing ? { ...existing, date, title, activity, plantId } : { id: newId, date, title, done: false, activity, plantId };
+        const previous = reminders;
+        reminders = existing ? reminders.map(item => item === existing ? next : item) : [...reminders, next];
+        try { saveReminders(); } catch { reminders = previous; planningMessage('Opslaan mislukt. Je concept blijft bewaard.'); return; }
+        const button = aiPlanningDraft?.button;
+        if (button) { button.textContent = 'Ingepland'; button.disabled = true; }
+        closePlanningForm(true);
+        refreshPlanning();
+        if (document.activeElement === document.body) document.getElementById('planning-add').focus();
+        showToast('Taak opgeslagen.');
     };
 
     if (btnAddReminder) btnAddReminder.onclick = handleAdd;
     if (reminderInput) {
-        reminderInput.onkeydown = (e) => { if (e.key === 'Enter') handleAdd(); };
+        reminderInput.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } };
     }
 
     const btnCloseDetails = document.getElementById('btn-close-details');
@@ -6688,20 +7011,158 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const btnFab = document.getElementById('btn-add-event-fab');
-    if (btnFab) {
-        btnFab.onclick = () => {
-            if (viewCalendar.classList.contains('hidden')) {
-                switchView('calendar');
-            }
-            if (!selectedDateStr) {
-                const today = new Date();
-                curCalDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-                selectDay(formatDate(today), today.getDate());
-            } else {
-                document.getElementById('new-reminder-input')?.focus();
-            }
-        };
+    if (btnFab) btnFab.onclick = () => openPlanningForm();
+
+    // Planning uses the existing reminders, save hook and device-only drafts.
+    function setPlanningPeriod(year, month) {
+        const period = new Date(year, month, 1);
+        if (period.getFullYear() < 1000 || period.getFullYear() > 9999) return;
+        const day = parseCalendarDate(selectedDateStr)?.getDate();
+        curCalDate = period;
+        plannerSelectedYear = period.getFullYear(); plannerSelectedMonth = period.getMonth();
+        selectedDateStr = day ? formatDate(new Date(plannerSelectedYear, plannerSelectedMonth, Math.min(day, new Date(plannerSelectedYear, plannerSelectedMonth + 1, 0).getDate()))) : null;
+        calendarTaskWeek = false;
+        updatePlanningHeader();
     }
+    function syncPlanningFromPlanner() {
+        if (curCalDate.getFullYear() !== plannerSelectedYear || curCalDate.getMonth() !== plannerSelectedMonth) setPlanningPeriod(plannerSelectedYear, plannerSelectedMonth);
+    }
+    function updatePlanningHeader() {
+        const year = curCalDate.getFullYear(), month = curCalDate.getMonth();
+        document.getElementById('planning-header').dataset.tab = planningTab;
+        const yearInput = document.getElementById('planner-year-input');
+        yearInput.value = year;
+        yearInput.onchange = () => {
+            if (yearInput.checkValidity() && Number.isInteger(Number(yearInput.value))) { setPlanningPeriod(Number(yearInput.value), curCalDate.getMonth()); plannerSoonDate = null; refreshPlanning(); }
+            else yearInput.value = curCalDate.getFullYear();
+        };
+        document.getElementById('planning-period').textContent = planningTab === 'month' ? `${calMonthNames[month]} ${year}` : String(year);
+        const selected = parseCalendarDate(selectedDateStr);
+        const today = new Date();
+        const dateOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+        const todayLabel = `Vandaag: ${today.toLocaleDateString('nl-NL', dateOptions)}`;
+        document.getElementById('planning-selection').textContent = selected && formatDate(selected) === formatDate(today)
+            ? todayLabel
+            : `${todayLabel} · Geselecteerd: ${selected ? selected.toLocaleDateString('nl-NL', dateOptions) : `${calMonthNames[month]} ${year}`}`;
+        document.querySelectorAll('[data-planning-tab]').forEach(button => {
+            const active = button.dataset.planningTab === planningTab;
+            button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1;
+        });
+        const monthly = planningTab === 'month';
+        document.getElementById('planning-prev').setAttribute('aria-label', monthly ? 'Vorige maand' : 'Vorig jaar');
+        document.getElementById('planning-next').setAttribute('aria-label', monthly ? 'Volgende maand' : 'Volgend jaar');
+        document.getElementById('planning-prev').disabled = year === 1000 && (!monthly || month === 0);
+        document.getElementById('planning-next').disabled = year === 9999 && (!monthly || month === 11);
+    }
+    function refreshPlanning() {
+        if (planningTab === 'year') renderSowingGrid();
+        else if (planningTab === 'month') renderCalendar();
+        else renderPlanningAgenda();
+        updatePlanningHeader();
+    }
+    function renderPlanningAgenda() {
+        const list = document.getElementById('planning-agenda-list'); list.replaceChildren();
+        const year = curCalDate.getFullYear();
+        const tasks = reminders.filter(item => parseCalendarDate(item.date)?.getFullYear() === year).slice().sort((a, b) => a.date.localeCompare(b.date));
+        document.getElementById('planning-agenda-title').textContent = `Ingeplande taken · ${year} · ${tasks.length}`;
+        let dateKey = '';
+        for (const item of tasks) {
+            if (dateKey !== item.date) {
+                dateKey = item.date;
+                const heading = document.createElement('h3'); heading.className = 'planning-agenda-date';
+                heading.textContent = parseCalendarDate(item.date).toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' }); list.append(heading);
+            }
+            list.append(buildReminderRow(item, {
+                onEdit: () => openPlanningForm({ item }),
+                onToggle: () => { item.done = !item.done; saveReminders(); refreshPlanning(); },
+                onDelete: () => { if (!confirm('Deze taak verwijderen?')) return; reminders = reminders.filter(task => task !== item); saveReminders(); refreshPlanning(); }
+            }));
+        }
+        if (!tasks.length) { const empty = document.createElement('p'); empty.className = 'calendar-empty-message'; empty.textContent = 'Nog geen taken in dit jaar. Kies + Inplannen om een taak toe te voegen.'; list.append(empty); }
+    }
+    function planningMessage(text) { document.getElementById('planning-form-message').textContent = text; }
+    function suggestedPlanningDate() {
+        const today = formatDate(new Date());
+        const selected = parseCalendarDate(selectedDateStr);
+        const currentMonth = today.slice(0, 7) === formatDate(curCalDate).slice(0, 7);
+        const candidate = selected ? selectedDateStr : currentMonth ? today : formatDate(new Date(curCalDate.getFullYear(), curCalDate.getMonth(), 1));
+        // A past period is deliberate navigation, never an automatic past task.
+        return candidate < today ? '' : candidate;
+    }
+    function planningValues() {
+        return { title: document.getElementById('new-reminder-input').value, date: document.getElementById('ai-planning-date').value,
+            activity: document.getElementById('planning-activity').value, plantId: document.getElementById('planning-plant').value,
+            editingId: planningEditingId, editingOriginal: planningEditingTask ? { id: planningEditingTask.id, date: planningEditingTask.date, title: planningEditingTask.title } : null, tab: planningTab };
+    }
+    function persistPlanningDraft() {
+        if (!planningFormActive) return;
+        window.KweekDrafts?.put('task', planningValues()).catch(draftError);
+    }
+    async function openPlanningForm(options = {}, restored = null) {
+        const dialog = document.getElementById('planning-dialog');
+        if (planningFormActive || dialog.open) return;
+        // Lock before reading IndexedDB so repeated clicks open only one form.
+        planningFormActive = true;
+        planningReturnFocus = document.activeElement;
+        const stored = restored || (await window.KweekDrafts?.get('task'))?.values;
+        const item = options.item;
+        const values = item ? { ...item, editingId: item.id } : stored || { ...options, date: options.date && options.date >= formatDate(new Date()) ? options.date : suggestedPlanningDate(), editingId: null };
+        planningEditingId = values.editingId ?? null;
+        planningEditingTask = item || (values.editingOriginal ? reminders.find(task => values.editingOriginal.id !== undefined ? task.id === values.editingOriginal.id : task.id === undefined && task.date === values.editingOriginal.date && task.title === values.editingOriginal.title) : planningEditingId !== null ? reminders.find(task => task.id === planningEditingId) : null) || null;
+        if (!planningEditingTask) planningEditingId = null;
+        const plant = document.getElementById('planning-plant'); plant.replaceChildren();
+        const none = document.createElement('option'); none.value = ''; none.textContent = 'Geen plant'; plant.append(none);
+        seeds.forEach(seed => { const option = document.createElement('option'); option.value = String(seed.id); option.textContent = seed.naam; plant.append(option); });
+        document.getElementById('planning-activity').value = values.activity || 'custom';
+        plant.value = values.plantId || '';
+        plant.required = document.getElementById('planning-activity').value !== 'custom';
+        document.getElementById('ai-planning-date').value = parseCalendarDate(values.date) ? values.date : '';
+        document.getElementById('new-reminder-input').value = values.title || '';
+        if (!values.title && plant.value) updatePlanningTaskTitle();
+        document.getElementById('planning-form-title').textContent = planningEditingTask ? 'Taak bewerken' : 'Inplannen';
+        document.getElementById('ai-planning-review').classList.add('hidden');
+        document.getElementById('ai-planning-cancel').classList.add('hidden');
+        document.getElementById('btn-cancel-task-draft').classList.add('hidden');
+        planningMessage(stored && !item ? 'Concept hersteld. Nog niet opgeslagen.' : !document.getElementById('ai-planning-date').value ? 'Deze selectie ligt in het verleden. Kies zelf een datum; er is niets ingepland.' : 'Er is nog niets gewijzigd. Sla op om deze taak vast te leggen.');
+        dialog.showModal();
+        document.getElementById('new-reminder-input').focus();
+    }
+    function updatePlanningTaskTitle() {
+        const activity = document.getElementById('planning-activity').value;
+        const plant = seeds.find(seed => String(seed.id) === document.getElementById('planning-plant').value);
+        if (plant && activity !== 'custom') document.getElementById('new-reminder-input').value = `${plant.naam} ${{ sow: 'zaaien', transplant: 'uitplanten', harvest: 'oogsten' }[activity]}`;
+        document.getElementById('planning-plant').required = activity !== 'custom';
+    }
+    function closePlanningForm(discard = false) {
+        if (discard) window.KweekDrafts?.drop('task').catch(draftError);
+        else persistPlanningDraft();
+        planningFormActive = false; planningEditingId = null; planningEditingTask = null; aiPlanningDraft = null;
+        document.getElementById('planning-dialog').close();
+        planningReturnFocus?.focus();
+    }
+    const planningYearField = document.querySelector('.planner-year-select-label');
+    document.getElementById('planning-period').after(planningYearField);
+    document.getElementById('planning-add').onclick = () => openPlanningForm();
+    document.getElementById('planning-prev').onclick = () => { setPlanningPeriod(curCalDate.getFullYear() - (planningTab === 'month' ? 0 : 1), curCalDate.getMonth() - (planningTab === 'month' ? 1 : 0)); plannerSoonDate = null; refreshPlanning(); };
+    document.getElementById('planning-next').onclick = () => { setPlanningPeriod(curCalDate.getFullYear() + (planningTab === 'month' ? 0 : 1), curCalDate.getMonth() + (planningTab === 'month' ? 1 : 0)); plannerSoonDate = null; refreshPlanning(); };
+    document.getElementById('planning-today').onclick = () => { const today = new Date(); selectedDateStr = formatDate(today); setPlanningPeriod(today.getFullYear(), today.getMonth()); plannerSoonDate = null; refreshPlanning(); };
+    const planningTabs = [...document.querySelectorAll('[data-planning-tab]')];
+    planningTabs.forEach((button, index) => {
+        button.onclick = () => switchView('planning', { tab: button.dataset.planningTab });
+        button.onkeydown = event => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const target = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (index + (event.key === 'ArrowRight' ? 1 : 2)) % 3;
+            planningTabs[target].click(); planningTabs[target].focus();
+        };
+    });
+    document.getElementById('planning-close').onclick = () => closePlanningForm();
+    document.getElementById('planning-cancel').onclick = () => closePlanningForm(true);
+    document.getElementById('planning-dialog').addEventListener('cancel', event => { event.preventDefault(); closePlanningForm(); });
+    document.getElementById('planning-form').addEventListener('submit', event => { event.preventDefault(); handleAdd(); });
+    ['planning-activity', 'planning-plant'].forEach(id => { document.getElementById(id).onchange = () => { updatePlanningTaskTitle(); persistPlanningDraft(); }; });
+    document.getElementById('planning-form').addEventListener('input', persistPlanningDraft);
+
 
     // Delete seed from form
     // Dashboard Tips link
@@ -6719,6 +7180,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (confirm("Weet je zeker dat je dit zaadje wilt verwijderen?")) {
             try {
                 await deleteSeedDB(editingId);
+                await clearSeedDraft();
                 seeds = await getAllSeeds();
                 showToast("Zaadje verwijderd! 🗑️");
                 switchView('list');
@@ -6806,7 +7268,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         let value = valueOrSeed;
         // If a seed object is passed, automatically pick the best sowing months field
         if (valueOrSeed && typeof valueOrSeed === 'object' && !Array.isArray(valueOrSeed)) {
-            value = valueOrSeed.zaaitijd || valueOrSeed.sowingMonths || valueOrSeed.zaaiTijd || valueOrSeed.sowMonths;
+            value = valueOrSeed.zaaitijd || valueOrSeed.sow_months || valueOrSeed.sowingMonths || valueOrSeed.zaaiTijd || valueOrSeed.sowMonths;
         }
 
         let active = new Set();
@@ -6973,6 +7435,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             errorCard.className = 'ai-advies-card ai-error';
             errorCard.setAttribute('role', 'alert');
             errorCard.textContent = err.message || 'AI is tijdelijk niet beschikbaar. Controleer Instellingen → AI.';
+            window.KweekServices?.appendOllamaHelp(errorCard, err);
             output.appendChild(errorCard);
         } finally {
             if (btn) {
@@ -6997,6 +7460,7 @@ window._quickAskAI = (vraag) => stelAIHulpVraag(vraag);
 
 function applyMonthFilter(monthName) {
     if (!monthName) return;
+    activeSeedSummary = 'all';
 
     // Map full month name to short name because seeds are stored with short names
     const mIdx = calMonthNames.indexOf(monthName);
@@ -7047,7 +7511,7 @@ function showMonthContextBanner(month, count) {
 window.revealInList = function (seedId) {
     // 1. Ensure any month filters are cleared so the item is definitely visible
     if (window.clearMonthFilter) window.clearMonthFilter();
-    activeCategory = 'Alles';
+    window._resetAllFilters();
     localStorage.removeItem('nu_doen_show_all'); // Small reset if needed
 
     // 2. Refresh the list filters
@@ -7296,6 +7760,7 @@ window.applyMonthFilter = applyMonthFilter;
         switchView('onboarding');
     } else {
         switchView('home');
+        await resumeLastDraft();
     }
 });
 

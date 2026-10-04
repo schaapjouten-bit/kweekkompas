@@ -1,0 +1,132 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { chromium } = require('playwright');
+const { startFixtures } = require('./service-fixtures.cjs');
+const { createServer } = require('../scripts/dev-server.cjs');
+const output = path.resolve(__dirname, '../scratch/auth-account');
+fs.mkdirSync(output, { recursive: true });
+(async () => {
+    const fixture = await startFixtures();
+    Object.assign(process.env, { SUPABASE_URL: fixture.base, SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_fixture' });
+    const originalFetch = global.fetch;
+    let writes = 0;
+    const mailRedirects = [];
+    global.fetch = async (input, options) => {
+        const url = new URL(input); const body = options?.body ? JSON.parse(options.body) : {};
+        const send = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+        if (url.pathname.startsWith('/rest/')) { if (options?.method !== 'GET') writes++; return send({ code: 'PGRST205' }, 404); }
+        if (['/auth/v1/signup', '/auth/v1/recover', '/auth/v1/resend'].includes(url.pathname)) { mailRedirects.push(url.searchParams.get('redirect_to')); return send(url.pathname.endsWith('/signup') ? { id: fixture.ids.a, email: 'a@example.test' } : {}); }
+        if (url.pathname === '/auth/v1/verify') return body.token_hash === 'valid-hash' ? send({ access_token: fixture.tokens.a, refresh_token: 'refresh-a', expires_in: 3600, token_type: 'bearer', user: { id: fixture.ids.a, email: 'a@example.test' } }) : send({ msg: 'expired', error_code: 'otp_expired' }, 403);
+        if (url.pathname === '/auth/v1/user' && options?.method === 'PUT') return send({ id: fixture.ids.a, email: 'a@example.test' });
+        if (url.pathname === '/auth/v1/token' && body.password === 'unconfirmed-password') return send({ msg: 'Email not confirmed', error_code: 'email_not_confirmed' }, 400);
+        return originalFetch(input, options);
+    };
+    const server = createServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const browser = await chromium.launch({ headless: true });
+    const checks = []; const errors = [];
+    try {
+        for (const width of [1440, 390]) for (const theme of ['light', 'dark', 'playful']) {
+            const context = await browser.newContext({ viewport: { width, height: 1000 } });
+            await context.route('**/*', route => new URL(route.request().url()).origin === base ? route.continue() : route.abort());
+            await context.addInitScript(theme => { localStorage.setItem('theme', theme); localStorage.setItem('onboarding_done', 'true'); }, theme);
+            const page = await context.newPage(); page.setDefaultTimeout(10000); page.on('pageerror', e => errors.push(e.message));
+            // Keep AI requests entirely isolated from configured providers.
+            await page.route('**/api/ai-*', route => route.fulfill({ status: 200, json: route.request().url().endsWith('/ai-config') ? { defaultProvider: 'ollama', providers: { ollama: { label: 'Isolated fixture', configured: false } } } : { models: [] } }));
+            await page.goto(base); await page.waitForFunction(() => window.KweekLocalData);
+            await page.evaluate(async () => window.KweekLocalData.restore({ backupVersion: 1, seeds: [{ id: 'auth-isolated', naam: 'Aparte auth-testplant', type: 'Groente', status: 'Voorraad', standplaats: 'Zon', beschrijving: 'Eigen testnotitie', afbeelding: 'data:image/png;base64,aGVsbG8=' }], wishlist: [{ id: 123, name: 'Testwens', type: 'item' }], userProfile: { name: 'Auth testtuin', gardenType: 'Volle grond', light: 'Zon' }, onboardingDone: 'true' }));
+            const before = await page.evaluate(() => window.KweekLocalData.capture());
+            await page.evaluate(() => window.toggleSettingsPanel_REPAIR_V131());
+            await page.waitForFunction(() => document.querySelector('#cloud-status')?.textContent.includes('Niet ingelogd'));
+            await page.locator('#settings-section-cloud').scrollIntoViewIfNeeded();
+            assert.match(await page.locator('#cloud-local-status').innerText(), /Je tuin staat lokaal/);
+            let authPosts = 0;
+            page.on('request', req => { if (req.url() === base + '/api/auth' && req.method() === 'POST') authPosts++; });
+            for (const [mode, title] of [['login', 'Inloggen'], ['signup', 'Account aanmaken'], ['reset', 'Wachtwoord vergeten'], ['resend', 'Bevestigingsmail opnieuw sturen']]) {
+                await page.locator(`[data-auth-mode="${mode}"]`).click();
+                await page.locator(`[data-auth-mode="${mode}"]`).press('Enter');
+                assert.equal(await page.locator('#cloud-form-title').innerText(), title);
+                await page.locator('#cloud-auth-submit').press('Enter');
+                assert.match(await page.locator('#cloud-auth-status').innerText(), /Vul je e-mailadres/);
+            }
+            assert.equal(authPosts, 0);
+            await page.locator('#settings-section-cloud').screenshot({ path: path.join(output, `${width}-${theme}-validation.png`) });
+            await page.locator('#cloud-return').press('Enter');
+            await page.locator(width === 1440 ? '#shell-settings-button' : '.shell-mobile-settings').click();
+            assert.equal(await page.locator('#cloud-form-title').innerText(), 'Bevestigingsmail opnieuw sturen');
+            await page.locator('[data-auth-mode="login"]').click();
+            await page.fill('#cloud-email', 'invalid-email'); await page.locator('#cloud-auth-submit').click();
+            assert.match(await page.locator('#cloud-auth-status').innerText(), /geldig e-mailadres/); assert.equal(authPosts, 0);
+            await page.fill('#cloud-email', 'a@example.test'); await page.fill('#cloud-password', 'test-password');
+            let failAuth;
+            const blocked = new Promise(resolve => { failAuth = resolve; });
+            await page.route('**/api/auth', async route => {
+                if (route.request().method() === 'GET') return route.continue();
+                await blocked; return route.abort();
+            });
+            await page.click('#cloud-auth-submit');
+            await page.waitForFunction(() => document.getElementById('cloud-auth-status').textContent.includes('verstuurd'));
+            await page.locator('[data-auth-mode="reset"]').click();
+            assert.equal(await page.locator('#cloud-form-title').innerText(), 'Wachtwoord vergeten');
+            assert.match(await page.locator('#cloud-auth-status').innerText(), /eerdere aanvraag/);
+            failAuth();
+            await page.waitForFunction(() => document.getElementById('cloud-auth-status').textContent.includes('Geen verbinding'));
+            await page.unroute('**/api/auth');
+            await page.locator('[data-auth-mode="login"]').click();
+            await page.fill('#cloud-email', 'a@example.test'); await page.fill('#cloud-password', 'wrong'); await page.click('#cloud-auth-submit');
+            await page.waitForFunction(() => document.querySelector('#cloud-auth-status').textContent.includes('Inloggen mislukt'));
+            await page.fill('#cloud-password', 'unconfirmed-password'); await page.click('#cloud-auth-submit');
+            await page.waitForFunction(() => document.querySelector('#cloud-auth-status').textContent.includes('Bevestig eerst'));
+            await page.click('[data-auth-mode="signup"]'); await page.fill('#cloud-password', 'test-password'); await page.click('#cloud-auth-submit');
+            await page.waitForFunction(() => document.querySelector('#cloud-auth-status').textContent.includes('bevestigingsmail'));
+            await page.click('[data-auth-mode="resend"]'); await page.click('#cloud-auth-submit');
+            await page.waitForFunction(() => document.querySelector('#cloud-auth-status').textContent.includes('nog bevestigd'));
+            await page.click('[data-auth-mode="reset"]'); await page.click('#cloud-auth-submit');
+            await page.waitForFunction(() => document.querySelector('#cloud-auth-status').textContent.includes('herstelmail'));
+            await page.click('[data-auth-mode="login"]'); await page.fill('#cloud-password', 'test-password'); await page.click('#cloud-auth-submit');
+            await page.waitForFunction(() => document.querySelector('#cloud-status').textContent.includes('Je bent ingelogd'));
+            assert.match(await page.textContent('#cloud-auth-status'), /Ingelogd/);
+            assert.deepEqual(await page.evaluate(() => window.KweekLocalData.capture()), before);
+            await page.click('[data-cloud-action="logout"]'); await page.waitForFunction(() => document.querySelector('#cloud-status').textContent.includes('Niet ingelogd'));
+            await page.goto(base + '#access_token=' + fixture.tokens.a + '&refresh_token=refresh-a&type=recovery');
+            await page.waitForFunction(() => document.querySelector('#cloud-auth-submit')?.textContent === 'Nieuw wachtwoord opslaan');
+            assert.equal(page.url(), base + '/');
+            await page.locator('#cloud-password').scrollIntoViewIfNeeded();
+            await page.fill('#cloud-password', 'new-password'); await page.fill('#cloud-password-confirm', 'different-password'); await page.click('#cloud-auth-submit');
+            await page.waitForFunction(() => document.querySelector('#cloud-auth-status').textContent.includes('niet gelijk'));
+            await page.fill('#cloud-password-confirm', 'new-password');
+            await page.screenshot({ path: path.join(output, `${width}-${theme}-recovery.png`), fullPage: true });
+            await page.click('#cloud-auth-submit'); await page.waitForFunction(() => document.querySelector('#cloud-auth-status').textContent.includes('nieuwe wachtwoord is opgeslagen'));
+            await page.click('#cloud-return'); assert.equal(await page.locator('.settings-panel.open').count(), 0);
+            assert.deepEqual(await page.evaluate(() => window.KweekLocalData.capture()), before);
+            await page.goto(base + '?token_hash=valid-hash&type=email');
+            await page.waitForFunction(() => document.querySelector('#cloud-auth-status')?.textContent.includes('e-mailadres is bevestigd'));
+            assert.equal(page.url(), base + '/');
+            await page.goto(base + '#error_code=otp_expired&error_description=secret-test-value');
+            await page.waitForFunction(() => document.querySelector('#cloud-auth-status')?.textContent.includes('verlopen'));
+            assert.equal(page.url(), base + '/'); assert.ok(!(await page.textContent('#cloud-auth-status')).includes('secret-test-value'));
+            await page.goto(base + '?error=access_denied&error_code=otp_expired&error_description=secret-test-value');
+            await page.waitForFunction(() => document.querySelector('#cloud-auth-status')?.textContent.includes('verlopen'));
+            assert.equal(page.url(), base + '/');
+            assert.deepEqual(await page.evaluate(() => window.KweekLocalData.capture()), before);
+            assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+            checks.push(`${width}px ${theme}: login, signup, resend, reset, recovery, confirmation, expired link, local garden preserved`);
+            await context.close();
+        }
+        const fresh = await browser.newContext({ viewport: { width: 390, height: 844 } });
+        await fresh.route('**/*', route => new URL(route.request().url()).origin === base ? route.continue() : route.abort());
+        await fresh.route('**/api/ai-*', route => route.fulfill({ status: 200, json: { defaultProvider: 'ollama', providers: {}, models: [] } }));
+        const freshPage = await fresh.newPage();
+        await freshPage.goto(base + '?token_hash=valid-hash&type=recovery');
+        await freshPage.waitForFunction(() => document.querySelector('#cloud-auth-submit')?.textContent === 'Nieuw wachtwoord opslaan');
+        await freshPage.fill('#cloud-password', 'fresh-password'); await freshPage.fill('#cloud-password-confirm', 'fresh-password');
+        await freshPage.click('#cloud-auth-submit');
+        await freshPage.waitForFunction(() => document.querySelector('#cloud-auth-status').textContent.includes('nieuwe wachtwoord is opgeslagen'));
+        assert.equal(await freshPage.evaluate(() => localStorage.getItem('onboarding_done')), null);
+        await fresh.close(); checks.push('Fresh mobile browser: recovery accessible before onboarding, onboarding state unchanged');
+        assert.equal(writes, 0); assert.equal(fixture.snapshots.size, 0); assert.ok(mailRedirects.every(url => url === base + '/')); assert.deepEqual(errors, []);
+        fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify({ simulated: checks, writes, errors, realMailOrAccounts: false }, null, 2));
+        console.log(JSON.stringify({ simulated: checks, writes, errors }, null, 2));
+    } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); global.fetch = originalFetch; await fixture.stop(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

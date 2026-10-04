@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
   <title>KweekKompas 🌱 - Jouw Moestuin Planner</title>
   <script>
     /* Apply the stored shell theme before the first paint. Unknown values are
@@ -22,7 +23,7 @@
   <link rel="stylesheet" href="planner.css?v=3.2" charset="utf-8">
   <link rel="stylesheet" href="onboarding.css?v=7d" charset="utf-8">
   <link rel="stylesheet" href="wishlist.css?v=7e4" charset="utf-8">
-  <link rel="stylesheet" href="services.css?v=2" charset="utf-8">
+  <link rel="stylesheet" href="services.css?v=4" charset="utf-8">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -36,15 +37,11 @@
       <span class="mobile-nav-icon">📦</span>
       <span class="mobile-nav-label">Zaden</span>
     </button>
-    <button class="mobile-nav-item" data-view="sowing-grid" id="m-btn-planner">
+    <button class="mobile-nav-item" data-view="planning" id="m-btn-planner">
       <span class="mobile-nav-icon">📅</span>
-      <span class="mobile-nav-label">Planner</span>
+      <span class="mobile-nav-label">Planning</span>
     </button>
-    <button class="mobile-nav-item" data-view="calendar" id="m-btn-calendar">
-      <span class="mobile-nav-icon">🗓️</span>
-      <span class="mobile-nav-label">Kalender</span>
-    </button>
-    <button class="mobile-nav-item" data-view="wishlist" id="m-btn-wishlist">
+<button class="mobile-nav-item" data-view="wishlist" id="m-btn-wishlist">
       <span class="mobile-nav-icon">✨</span>
       <span class="mobile-nav-label">Wishlist</span>
     </button>
@@ -71,13 +68,10 @@
         <button class="shell-nav-item" data-shell-view="list" data-view="list" type="button" aria-label="Zaden">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h11a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Zm0 0v16M9 8h7M9 12h7M9 16h5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg><span>Zaden</span>
         </button>
-        <button class="shell-nav-item" data-shell-view="sowing-grid" data-view="sowing-grid" type="button" aria-label="Zaaiplanner">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v4M18 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm2 8h3m2 0h3m-8 4h3m2 0h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg><span>Zaaiplanner</span>
+        <button class="shell-nav-item" data-shell-view="planning" data-view="planning" type="button" aria-label="Planning">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v4M18 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm2 8h3m2 0h3m-8 4h3m2 0h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg><span>Planning</span>
         </button>
-        <button class="shell-nav-item" data-shell-view="calendar" data-view="calendar" type="button" aria-label="Kalender">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v4M18 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm4 8h.01M14 13h.01M10 17h.01M14 17h.01" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg><span>Kalender</span>
-        </button>
-        <button class="shell-nav-item" data-shell-view="wishlist" data-view="wishlist" type="button" aria-label="Verlanglijst">
+<button class="shell-nav-item" data-shell-view="wishlist" data-view="wishlist" type="button" aria-label="Verlanglijst">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 8.8c0 5.2-8 10-8 10s-8-4.8-8-10A4.2 4.2 0 0 1 12 6a4.2 4.2 0 0 1 8 2.8Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg><span>Verlanglijst</span>
         </button>
       </nav>
@@ -197,8 +191,21 @@
         </div>
       </section>
 
+      <header id="planning-header" class="planning-header hidden">
+        <div class="planning-heading"><div><p class="planner-eyebrow">Jouw tuinmomenten</p><h1>Planning</h1></div><button id="planning-add" class="btn-primary" type="button">+ Inplannen</button></div>
+        <div class="planning-toolbar">
+          <div class="planning-tabs" role="tablist" aria-label="Planning-weergave">
+            <button id="planning-tab-year" role="tab" aria-controls="view-sowing-grid" type="button" data-planning-tab="year">Jaar</button>
+            <button id="planning-tab-month" role="tab" aria-controls="view-calendar" type="button" data-planning-tab="month">Maand</button>
+            <button id="planning-tab-agenda" role="tab" aria-controls="view-agenda" type="button" data-planning-tab="agenda">Agenda</button>
+          </div>
+          <div class="planning-date-nav"><button id="planning-prev" type="button">‹</button><span id="planning-period" aria-live="polite"></span><button id="planning-next" type="button">›</button><button id="planning-today" type="button">Vandaag</button></div>
+        </div>
+        <p id="planning-selection" class="planning-selection"></p>
+      </header>
+      <section id="view-agenda" class="view hidden" role="tabpanel" aria-labelledby="planning-tab-agenda"><h2 id="planning-agenda-title">Ingeplande taken</h2><p class="calendar-period-note">Taken met een vaste datum, inclusief afgeronde taken. Plantperiodes zijn advies in Jaar en Maand.</p><div id="planning-agenda-list"></div></section>
       <!-- CALENDAR VIEW -->
-      <section id="view-calendar" class="view hidden">
+      <section id="view-calendar" class="view hidden" role="tabpanel" aria-labelledby="planning-tab-month">
         <header class="calendar-page-header">
           <div>
             <p class="calendar-page-eyebrow">Jouw tuinmomenten</p>
@@ -255,7 +262,7 @@
                 <div id="reminder-context-line" class="day-context-line"></div>
 
                 <section class="calendar-agenda-section" aria-labelledby="calendar-reminders-heading">
-                  <h4 id="calendar-reminders-heading" class="calendar-section-heading">Herinneringen</h4>
+                  <h4 id="calendar-reminders-heading" class="calendar-section-heading">Ingeplande taken</h4>
                   <div id="reminder-list" class="reminder-list"></div>
                 </section>
 
@@ -265,19 +272,7 @@
                   <div id="calendar-plant-period-list" class="calendar-plant-period-list"></div>
                 </section>
 
-                <div class="day-input-area">
-                  <div id="ai-planning-review" class="hidden">
-                    <p class="calendar-period-note">Voorstel van de tuinassistent. Controleer de activiteit en kies een datum voordat je toevoegt.</p>
-                    <label for="ai-planning-date" class="calendar-section-heading">Datum</label>
-                    <input type="date" id="ai-planning-date" min="1000-01-01" max="9999-12-31">
-                  </div>
-                  <label for="new-reminder-input" class="calendar-section-heading">Herinnering toevoegen</label>
-                  <div class="input-wrapper">
-                    <input type="text" id="new-reminder-input" placeholder="Bijvoorbeeld: planten water geven" autocomplete="off">
-                    <button id="btn-add-reminder" class="btn-add-inline" type="button">Toevoegen</button>
-                  </div>
-                  <button id="ai-planning-cancel" class="calendar-today-button hidden" type="button">Annuleren</button>
-                </div>
+
               </div>
             </section>
 
@@ -296,7 +291,7 @@
       </section>
 
       <!-- ZAAI-PLANNER GRID VIEW -->
-      <section id="view-sowing-grid" class="view hidden">
+      <section id="view-sowing-grid" class="view hidden" role="tabpanel" aria-labelledby="planning-tab-year">
         <div class="sowing-planner-header">
           <div>
             <p class="planner-eyebrow">Jaaroverzicht</p>
@@ -339,7 +334,7 @@
               <option value="6">Juli</option><option value="7">Augustus</option><option value="8">September</option>
               <option value="9">Oktober</option><option value="10">November</option><option value="11">December</option>
             </select>
-            <button id="planner-this-month" class="planner-this-month-button" type="button">Deze maand</button>
+            <button id="planner-this-month" class="planner-this-month-button" type="button">Vandaag</button>
           </div>
         </div>
 
@@ -351,17 +346,19 @@
           <!-- Dynamisch via JS (12 maanden) -->
         </div>
 
+        <div id="planner-tasks-content" class="planner-tasks-content"></div>
         <section class="planner-activities-panel" aria-labelledby="planner-activities-title">
           <div class="planner-activities-heading">
             <div>
               <p class="planner-eyebrow">Op basis van jouw plantgegevens</p>
-              <h3 id="planner-activities-title">Activiteiten</h3>
+              <h3 id="planner-activities-title">Plantperiodes · advies</h3>
             </div>
             <span id="planner-activity-count" class="planner-activity-count"></span>
           </div>
+          <p class="planner-advice-note">Algemene plantinformatie per maand. Een periode of plantstatus betekent niet dat jouw plant nu klaar is om te zaaien, uit te planten of te oogsten.</p>
           <div id="planner-activities-content" class="planner-activities-content"></div>
           <div class="planner-month-actions">
-            <button id="planner-open-calendar" class="planner-btn-primary" type="button">Bekijk Kalender</button>
+            <button id="planner-open-calendar" class="planner-btn-primary" type="button">Bekijk Maand</button>
             <button id="planner-open-seeds" class="planner-btn-secondary" type="button">Bekijk Zaden</button>
           </div>
         </section>
@@ -419,9 +416,9 @@
           </header>
 
           <div class="seed-summary" aria-label="Samenvatting van je zaden">
-            <article class="seed-summary-card"><span class="seed-summary-label">Totaal zaden</span><strong id="seed-summary-total">0</strong></article>
-            <article class="seed-summary-card"><span class="seed-summary-label">Favorieten</span><strong id="seed-summary-favorites">0</strong></article>
-            <article class="seed-summary-card"><span class="seed-summary-label">Deze maand zaaien</span><strong id="seed-summary-season">0</strong></article>
+            <button type="button" class="seed-summary-card" data-seed-summary="all" aria-pressed="true" aria-controls="seed-grid"><span class="seed-summary-label">Totaal zaden</span><strong id="seed-summary-total">0</strong></button>
+            <button type="button" class="seed-summary-card" data-seed-summary="favorites" aria-pressed="false" aria-controls="seed-grid"><span class="seed-summary-label">Favorieten</span><strong id="seed-summary-favorites">0</strong></button>
+            <button type="button" class="seed-summary-card" data-seed-summary="season" aria-pressed="false" aria-controls="seed-grid"><span class="seed-summary-label">Deze maand zaaien</span><strong id="seed-summary-season">0</strong></button>
           </div>
 
           <div class="seed-toolbar">
@@ -603,6 +600,7 @@
           </div>
 
           <div class="form-actions">
+            <button type="button" class="btn-secondary" id="btn-cancel-seed-draft">Annuleren</button>
             <button type="submit" class="btn-primary" id="btn-submit-form">Zaadje Opslaan</button>
             <button type="button" class="btn-delete-icon hidden" id="btn-form-delete" onclick="deleteCurrentSeed()" title="Verwijder zaadje">🗑️</button>
           </div>
@@ -635,8 +633,8 @@
             <section id="onboarding-step-1" class="onboarding-step" aria-labelledby="onboarding-storage-title">
               <p class="onboarding-eyebrow">Fijn dat je er bent</p>
               <h1 id="onboarding-storage-title">Jouw tuin, op jouw manier</h1>
-              <p class="onboarding-intro">Je gegevens worden lokaal in deze browser opgeslagen. Je hebt geen account nodig. Via Instellingen kun je later inloggen en handmatig synchroniseren.</p>
-              <div class="onboarding-storage-note"><span class="onboarding-note-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6l-7-3Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m9 12 2 2 4-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg></span><span>Jij houdt de controle over je gegevens. Een databaseoptie is later mogelijk.</span></div>
+              <p class="onboarding-intro">Je gegevens worden lokaal in deze browser opgeslagen. Je hebt geen account nodig. Via Instellingen kun je later inloggen en kiezen hoe je synchroniseert.</p>
+              <div class="onboarding-storage-note"><span class="onboarding-note-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6l-7-3Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m9 12 2 2 4-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg></span><span>Jij houdt de controle over je gegevens. Een cloudkopie is optioneel; back-ups kun je zelf bewaren.</span></div>
               <div class="onboarding-actions onboarding-storage-actions">
                 <button class="onboarding-button onboarding-button-primary onboarding-next" type="button" data-next="2">Verder met lokale opslag</button>
                 <button class="onboarding-button onboarding-button-secondary" type="button" id="btn-onboarding-restore">Back-up herstellen</button>
@@ -729,7 +727,7 @@
     <button id="lightbox-next" class="lightbox-btn lightbox-next" aria-label="Volgende foto">&#10095;</button>
   </div>
 
-  <div id="toast-container" class="toast-container"></div>
+  <div id="toast-container" class="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <!-- WISHLIST DETAIL MODAL -->
   <div id="wishlist-detail-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="wish-modal-title">
@@ -806,6 +804,19 @@
   </div>
 
   <!-- PLANNER MONTH POPUP -->
+  <dialog id="planning-dialog" aria-labelledby="planning-form-title">
+    <form class="day-input-area" id="planning-form">
+      <div class="planning-dialog-heading"><h2 id="planning-form-title">Inplannen</h2><button id="planning-close" type="button" aria-label="Sluiten en concept bewaren">×</button></div>
+      <div id="ai-planning-review" class="hidden"><p class="calendar-period-note">Voorstel van de tuinassistent. Er is nog niets ingepland.</p></div>
+      <label for="planning-activity">Activiteit</label>
+      <select id="planning-activity"><option value="custom">Eigen taak</option><option value="sow">Zaaien</option><option value="transplant">Uitplanten</option><option value="harvest">Oogsten</option></select>
+      <label for="planning-plant">Plant <span class="subtle">(optioneel bij eigen taak)</span></label><select id="planning-plant"><option value="">Geen plant</option></select>
+      <label for="ai-planning-date">Datum</label><input type="date" id="ai-planning-date" min="1000-01-01" max="9999-12-31" required>
+      <label for="new-reminder-input">Taak</label><input type="text" id="new-reminder-input" placeholder="Bijvoorbeeld: planten water geven" autocomplete="off" required>
+      <p id="planning-form-message" class="calendar-period-note" role="status"></p>
+      <div class="planning-form-actions"><button id="btn-add-reminder" class="btn-primary" type="button">Opslaan</button><button id="planning-cancel" class="btn-secondary" type="button">Annuleren</button><button id="ai-planning-cancel" class="hidden" type="button">Voorstel annuleren</button></div>
+    </form>
+  </dialog>
   <div id="planner-month-modal" class="modal-overlay hidden">
     <div class="planner-modal-content">
       <div class="planner-modal-header">
@@ -1051,8 +1062,13 @@
     </div>
   </div>
 
-  <script src="services.js?v=2"></script>
-  <script src="app-v132.js?v=7d" charset="utf-8"></script>
+  <script src="cloud-data.js?v=1"></script>
+  <script src="photo-storage.js?v=3"></script>
+  <script src="auto-sync.js?v=3"></script>
+  <script src="local-drafts.js?v=1"></script>
+  <script src="services.js?v=11"></script>
+  <script src="example-collections.js?v=1" charset="utf-8"></script>
+  <script src="app-v132.js?v=7i" charset="utf-8"></script>
 
 </body>
 </html>

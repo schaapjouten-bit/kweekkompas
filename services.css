@@ -1,4 +1,9 @@
 /* Fixes observed during desktop/mobile review; keep existing component styles. */
+#settings-section-cloud [hidden] { display: none !important; }
+#cloud-account-options [aria-pressed="true"] { border-color: var(--primary-color, #507254); font-weight: 700; }
+#cloud-login-form [aria-invalid="true"] { border-color: #b54535; }
+/* Mail links remain usable on a device that has not finished onboarding. */
+.auth-account-link .settings-panel.open { z-index: 10001; }
 .seed-search-field #search-input { padding-left: 44px; }
 .shell-mobile-brand-mark .compass-logo,
 .onboarding-brand-mark .compass-logo,
@@ -19,4 +24,87 @@
 .shell-mobile-title { color: var(--primary-text); }
 @media (max-width: 768px) {
     body:not(.shell-menu-open) .app-sidebar:not(.mobile-open) { visibility: hidden; box-shadow: none; }
+}
+/* Compact settings and one independent account dialog. */
+.settings-overlay { background: rgba(15, 28, 22, .45) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+.settings-panel { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; height: 100dvh; overflow: hidden !important; }
+.settings-panel .settings-page { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.settings-panel .settings-page-header { flex: 0 0 auto; }
+.settings-panel .settings-content { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.settings-collapse { border: 1px solid var(--border-color, #81938155); border-radius: 12px; margin: 10px 0; }
+.settings-collapse > summary, #cloud-details > summary { padding: 16px; cursor: pointer; font-weight: 600; }
+.settings-collapse > .settings-page-section { margin: 0; padding: 0 16px 16px; border: 0; box-shadow: none; background: transparent; }
+.settings-collapse > .settings-page-section > .settings-section-heading h3,
+.settings-collapse > .settings-page-section > .settings-section-heading .settings-section-eyebrow { display: none; }
+.compact-account { padding: 18px !important; margin-bottom: 12px !important; }
+.compact-account h3 { margin: 0 0 8px; }
+#cloud-account-name { overflow-wrap: anywhere; margin: 0 0 12px; }
+#cloud-status:empty { display: none; }
+#cloud-details { margin-top: 10px; }
+#cloud-details > summary { padding: 8px 0; font-size: 14px; }
+#account-popup { box-sizing: border-box; width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 24px; border: 1px solid var(--border-color, #81938155); border-radius: 20px; background: var(--card-background, #fff); color: var(--primary-text, #20382c); overflow-y: auto; box-shadow: 0 16px 48px #0003; }
+#account-popup::backdrop { background: rgba(15, 28, 22, .45); }
+#account-popup [hidden] { display: none !important; }
+.account-popup-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.account-popup-header h2 { margin: 0; font-size: 19px; }
+#account-close { background: transparent; color: inherit; border: 0; font-size: 26px; cursor: pointer; padding: 4px 8px; }
+#account-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color, #81938155); margin-bottom: 18px; }
+#account-tabs button { flex: 1; padding: 10px; background: transparent; color: inherit; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
+#account-tabs [aria-selected="true"] { border-bottom-color: var(--primary-color, #507254); font-weight: 700; }
+#account-popup .settings-field { margin-bottom: 12px; }
+#account-popup .settings-field input { width: 100%; box-sizing: border-box; }
+#cloud-form-title { margin: 0 0 8px; font-size: 17px; }
+#cloud-form-description { margin: 0 0 16px; }
+#cloud-auth-submit { width: 100%; }
+#cloud-auth-status { font-size: 14px; margin: 0 0 12px; }
+#cloud-auth-status:empty { display: none; }
+#account-popup [aria-invalid="true"] { border-color: #b54535; }
+.account-link { border: 0; background: transparent; color: inherit; font: inherit; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; padding: 8px 0; cursor: pointer; }
+.account-links { display: flex; flex-direction: column; align-items: flex-start; margin-top: 10px; }
+.account-return { display: block; margin: 14px auto 0; opacity: .85; }
+.account-choice-actions { display: flex; flex-direction: column; gap: 12px; }
+#account-popup :focus-visible, .settings-collapse > summary:focus-visible { outline: 2px solid var(--primary-color, #507254); outline-offset: 3px; }
+@media (max-width: 480px) { #account-popup { padding: 20px; } .settings-panel .settings-page-header { padding: 18px; } .settings-panel .settings-content { padding: 14px; } }
+body:has(#account-popup[open]), body:has(.settings-panel.open) { overflow: hidden; }
+html:has(#account-popup[open]), html:has(.settings-panel.open),
+html:has(#wishlist-detail-modal:not(.hidden)), body:has(#wishlist-detail-modal:not(.hidden)) { overflow: hidden !important; }
+.settings-panel .settings-content, #account-popup, #wishlist-detail-modal .wishlist-modal-body { overscroll-behavior: contain; }
+#wishlist-detail-modal .modal-content { overflow: hidden !important; }
+#wishlist-detail-modal .modal-header { flex: 0 0 auto; gap: 12px; }
+#wishlist-detail-modal .modal-header h3 { min-width: 0; overflow-wrap: anywhere; }
+#wishlist-detail-modal .modal-close-btn { flex: 0 0 32px; width: 32px; height: 32px; display: grid; place-items: center; }
+#wishlist-detail-modal .wishlist-modal-body { min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.auto-sync-switch { display: flex; align-items: center; gap: 10px; padding: 12px 0 0; font-size: 14px; cursor: pointer; }
+.auto-sync-switch input { width: 20px; height: 20px; accent-color: var(--primary-color, #507254); }
+#cloud-auto-note:empty { display: none; }
+#cloud-auto-choices { margin: 12px 0; }
+/* Notifications must wrap within the viewport in every view and panel. */
+.toast-container { width: max-content; max-width: min(90vw, 420px); }
+.toast-container .toast { position: relative; bottom: auto; left: auto; width: auto; max-width: 100%; box-sizing: border-box; transform: none; animation: none; overflow-wrap: anywhere; white-space: normal; }
+/* Local AI setup and the installation guide share the same small controls. */
+#ollama-setup[hidden] { display: none; }
+#ollama-setup > p:first-child { margin: 0 0 10px; line-height: 1.6; }
+.ollama-command { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin: 10px 0; min-width: 0; }
+.ollama-command input { box-sizing: border-box; width: 100%; min-width: 0; font-family: ui-monospace, Consolas, monospace; font-size: 12px; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-background); color: var(--primary-text); }
+.ollama-command button { width: auto; }
+.ollama-copy-status { grid-column: 1 / -1; color: var(--text-muted); font-size: 12px; }
+.ollama-copy-status:empty { display: none; }
+.ollama-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.ollama-actions button { width: auto; }
+#ollama-setup a, .local-ai-help a { color: var(--accent-primary); text-underline-offset: 3px; }
+.ollama-help-link { border: 0; padding: 4px 0; background: transparent; color: var(--accent-primary); font: inherit; text-decoration: underline; cursor: pointer; }
+.ollama-help-link:focus-visible, .ollama-command :focus-visible { outline: 3px solid var(--accent-primary); outline-offset: 3px; }
+.local-ai-help { line-height: 1.6; }
+.local-ai-help h4 { margin: 22px 0 8px; }
+.local-ai-help ol, .local-ai-help ul { padding-left: 22px; }
+.local-ai-help li { margin-bottom: 12px; }
+.local-ai-help code { font-size: 12px; overflow-wrap: anywhere; }
+.local-ai-help figure { margin: 16px 0; }
+.local-ai-help img { display: block; width: 100%; max-width: 420px; height: auto; border: 1px solid var(--border-color); border-radius: 10px; }
+.local-ai-help figcaption { color: var(--text-muted); font-size: 12px; margin-top: 8px; }
+@media (max-width: 420px) {
+    .settings-page-header > div { min-width: 0; }
+    .settings-storage-shortcut { max-width: 100%; white-space: normal; }
+    .ollama-command { grid-template-columns: minmax(0, 1fr); }
+    .ollama-command button { justify-self: start; }
 }

@@ -10,6 +10,7 @@ scratch/
 !.env.example
 node_modules/
 dist/
+.kweek-local-api.json*
 supabase/.temp/
 
 # Personal source backup and unrelated local media stay on this computer.

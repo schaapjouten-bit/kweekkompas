@@ -111,6 +111,32 @@ function createSeed(id = 'seed-1') {
     };
 }
 
+test('automatisch herstel controleert annulering na voorbereiden, vóór lokale writes', async () => {
+    const storage = createStorage({ moestuin_wishlist: '[{"id":1,"name":"Eigen wens"}]' });
+    const hooks = loadImportHooks(storage); let active = true;
+    hooks.context.getAllSeeds = async () => { active = false; return [createSeed()]; };
+    hooks.context.replaceAllSeedsAtomic = async () => { throw Error('Must not write'); };
+    const backup = hooks.normalizeImportedBackup({ backupVersion: 1, seeds: [createSeed('cloud')] });
+    await assert.rejects(hooks.restoreBackupData(backup, { managed: true, check: () => { if (!active) throw Error('Gestopt'); } }), /Gestopt/);
+    assert.equal(storage.getItem('moestuin_wishlist'), '[{"id":1,"name":"Eigen wens"}]');
+});
+
+test('rollback van geannuleerd automatisch herstel behoudt nieuwe accountstatus en eigen edits', async () => {
+    const storage = createStorage({ kweekkompas_auto_guard: 'old', moestuin_wishlist: '[{"id":1,"name":"Eigen wens"}]' });
+    const hooks = loadImportHooks(storage); let attempts = 0;
+    hooks.context.getAllSeeds = async () => [createSeed()];
+    hooks.context.replaceAllSeedsAtomic = async () => {
+        attempts++; storage.setItem('kweekkompas_auto_guard', 'new-account');
+        storage.setItem('moestuin_wishlist', '[{"id":2,"name":"Nieuwe eigen wens"}]');
+        throw Error('Gestopt');
+    };
+    const backup = hooks.normalizeImportedBackup({ backupVersion: 1, seeds: [createSeed('cloud')], wishlist: [] });
+    await assert.rejects(hooks.restoreBackupData(backup, { managed: true }), /Gestopt/);
+    assert.equal(storage.getItem('kweekkompas_auto_guard'), 'new-account');
+    assert.equal(storage.getItem('moestuin_wishlist'), '[{"id":2,"name":"Nieuwe eigen wens"}]');
+    assert.equal(attempts, 1, 'aborted atomic seed transaction needs no second replacement');
+});
+
 function createFakeDatabase(initialSeeds, { failWrites = false } = {}) {
     let committed = initialSeeds.map(seed => ({ ...seed }));
 

@@ -1,11 +1,8 @@
 const { env, HttpError } = require('./http');
 
-// Official model metadata, checked 2026-10-02. Never offer these unless
-// models.list actually returns them with generateContent support.
-// https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite
-// https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite
-const economicalModels = new Set(['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']);
-const textModel = /^gemini-(?:\d+(?:\.\d+)?-(?:flash-lite|flash|pro)(?:-preview(?:-\d+(?:-\d+)*)?|-\d{3})?|(?:flash-lite|flash|pro)-latest)$/;
+// Only explicit stable text model IDs. "latest" aliases can resolve to a
+// preview, so prefer the versioned IDs returned by Google's own models.list.
+const textModel = /^gemini-(\d+(?:\.\d+)?)-(flash-lite|flash|pro)(?:-\d{3})?$/;
 let cached = null;
 
 function normalizeModels(items) {
@@ -14,17 +11,38 @@ function normalizeModels(items) {
         const id = typeof item?.name === 'string' ? item.name.replace(/^models\//, '') : '';
         // Audio/image/live models cannot serve the app's text + JSON requests.
         if (!textModel.test(id) || !item.supportedGenerationMethods?.includes('generateContent')) continue;
-        models.set(id, { id, label: typeof item.displayName === 'string' ? item.displayName.slice(0, 128) : id,
-            hint: economicalModels.has(id) ? 'snel en zuinig' : id.includes('-preview') ? 'preview' : 'tekstmodel' });
+        const [, version, family] = id.match(textModel);
+        if (/preview|experimental|\bexp\b/i.test(item.displayName || '')) continue;
+        const name = { flash: 'Flash', 'flash-lite': 'Flash-Lite', pro: 'Pro' }[family];
+        models.set(id, { id, label: `${version} ${name}` });
     }
     return [...models.values()].sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true })).reverse();
 }
 function chooseDefault(models) {
-    return models.find(model => economicalModels.has(model.id))?.id
-        || models.find(model => model.id.includes('-flash-lite') && !model.id.includes('-preview'))?.id
-        || models.find(model => model.id.includes('-flash') && !model.id.includes('-preview') && model.id !== 'gemini-2.5-flash')?.id
-        || models.find(model => !model.id.includes('-preview') && model.id !== 'gemini-2.5-flash')?.id
-        || models.find(model => model.id !== 'gemini-2.5-flash')?.id || '';
+    return models.find(model => textModel.exec(model.id)?.[2] === 'flash')?.id || models[0]?.id || '';
+}
+function selectCandidates(models) {
+    // One candidate per family, highest stable version first; no probing a
+    // succession of alternatives if a candidate fails.
+    const sorted = [...models].sort((a, b) => b.id.localeCompare(a.id, 'en', { numeric: true }));
+    return ['flash', 'flash-lite', 'pro'].map(family => sorted.find(model => textModel.exec(model.id)?.[2] === family)).filter(Boolean);
+}
+async function checkModel(key, model) {
+    try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model.id)}:generateContent`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            body: JSON.stringify({ contents: [{ parts: [{ text: 'Return only {"ok":true}.' }] }],
+                generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 256 } }),
+            signal: AbortSignal.timeout(20_000), redirect: 'error'
+        });
+        if (!response.ok) return { id: model.id, status: response.status };
+        const data = await response.json();
+        const answer = data.candidates?.[0]?.content?.parts?.filter(part => !part.thought).map(part => part.text || '').join('');
+        if (JSON.parse(answer)?.ok !== true) return { id: model.id, status: 200, reason: 'invalid-answer' };
+        return null;
+    } catch (error) {
+        return { id: model.id, reason: error.name === 'TimeoutError' ? 'timeout' : 'invalid-or-unavailable-answer' };
+    }
 }
 async function fetchModels(key, entry) {
     const items = [];
@@ -50,10 +68,22 @@ async function fetchModels(key, entry) {
         if (token && (seen.has(token) || seen.size >= 10)) throw new Error();
         if (token) seen.add(token);
     } while (token);
-    const models = normalizeModels(items);
-    return { models, defaultModel: chooseDefault(models) };
+    const candidates = selectCandidates(normalizeModels(items));
+    const models = [], rejected = [];
+    for (const candidate of candidates) {
+        const failure = await checkModel(key, candidate);
+        if (failure) rejected.push(failure); else models.push(candidate);
+    }
+    return { models, defaultModel: chooseDefault(models), rejected };
 }
 function getGeminiModels() {
+    // An explicit deployment catalog needs no paid probes when settings open.
+    const configuredModels = [...new Set((env('GEMINI_MODELS') || '').split(',').map(value => value.trim()).filter(value => textModel.test(value)))];
+    if (configuredModels.length) {
+        const models = normalizeModels(configuredModels.map(id => ({ name: id, supportedGenerationMethods: ['generateContent'] })));
+        const selected = env('GEMINI_MODEL');
+        return Promise.resolve({ models, defaultModel: configuredModels.includes(selected) ? selected : chooseDefault(models), rejected: [], state: 'configured' });
+    }
     const key = env('GEMINI_API_KEY');
     if (!key) return Promise.reject(new HttpError(503, 'Gemini-modellenlijst niet beschikbaar. Je bestaande keuze blijft behouden.'));
     if (!cached || cached.key !== key || cached.expires <= Date.now()) {
@@ -65,4 +95,4 @@ function getGeminiModels() {
     }
     return cached.promise;
 }
-module.exports = { getGeminiModels, normalizeModels, chooseDefault };
+module.exports = { getGeminiModels, normalizeModels, chooseDefault, selectCandidates };

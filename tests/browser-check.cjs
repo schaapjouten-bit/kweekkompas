@@ -47,7 +47,7 @@ const report = { screens: [], errors: [], checks: [] };
         await page.waitForFunction(() => document.querySelector('#cloud-status')?.textContent.includes('Niet ingelogd'));
         const beforeLogin = await page.evaluate(() => window.KweekLocalData.capture());
         await page.fill('#cloud-email', 'a@example.test'); await page.fill('#cloud-password', 'wrong'); await page.click('#cloud-login-form button');
-        await page.waitForFunction(() => document.querySelector('#cloud-status').textContent.includes('Inloggen mislukt'));
+        await page.waitForFunction(() => document.querySelector('#cloud-auth-status').textContent.includes('Inloggen mislukt'));
         await page.fill('#cloud-password', 'test-password'); await page.click('#cloud-login-form button');
         await page.waitForFunction(() => document.querySelector('#cloud-status').textContent.includes('nog geen tuin'));
         assert.deepEqual(await page.evaluate(() => window.KweekLocalData.capture()), beforeLogin);

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "collections": [
+    {
+      "id": "voorbeeldtuin",
+      "name": "Voorbeeldtuin",
+      "description": "45 planten met foto's en algemene teeltinformatie uit de opgeschoonde voorbeeldtuin.",
+      "file": "voorbeeldtuin.json"
+    },
+    {
+      "id": "kruiden-in-potten",
+      "name": "Kruiden in potten",
+      "description": "Een kleine startcollectie met basilicum en bieslook, zonder foto's.",
+      "file": "kruiden-in-potten.json"
+    }
+  ]
+}
