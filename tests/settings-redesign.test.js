@@ -41,19 +41,18 @@ test('themakeuzes behouden light, dark en interne playful-waarde', () => {
     assert.match(appSource, /<span>Warm<\/span>/);
 });
 
-test('Data & opslag behoudt veilige acties en maakt reset herkenbaar als gevarenzone', () => {
+test('Data & opslag toont back-upacties en een afzonderlijke resetactie', () => {
     assert.match(appSource, /Back-up downloaden/);
     assert.match(appSource, /onclick="exportData\(\)"/);
     assert.match(appSource, /onclick="restoreBackup\(\)"/);
     assert.match(appSource, /onclick="importData\(\)"/);
-    assert.match(appSource, /class="settings-danger-zone"/);
+    assert.match(appSource, /class="settings-reset-action"[\s\S]*class="settings-danger-button"/);
     assert.match(appSource, /onclick="resetApp\(\)"/);
     assert.match(appSource, /Wat in het bestand staat vervangt de bijbehorende gegevens; de rest blijft bewaard/);
     assert.match(appSource, /Je bevestigt dit eerst/);
-    assert.match(appSource, /Je gegevens worden automatisch op dit apparaat opgeslagen/);
-    assert.match(appSource, /Een account is niet nodig/);
+    assert.match(appSource, /Opgeslagen op dit apparaat/);
+    assert.match(appSource, /Worden mijn gegevens opgeslagen\?/);
     assert.match(appSource, /button\.setAttribute\('onclick', 'loadExampleGarden\(this\)'\)/);
-    assert.match(appSource, /settings-storage-shortcut/);
     assert.match(appSource, /id="example-collections-title"/);
 });
 

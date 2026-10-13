@@ -1,5 +1,5 @@
 /* Fixes observed during desktop/mobile review; keep existing component styles. */
-#settings-section-cloud [hidden] { display: none !important; }
+#settings-section-cloud [hidden], #settings-section-ai [hidden] { display: none !important; }
 #cloud-account-options [aria-pressed="true"] { border-color: var(--primary-color, #507254); font-weight: 700; }
 #cloud-login-form [aria-invalid="true"] { border-color: #b54535; }
 /* Mail links remain usable on a device that has not finished onboarding. */
@@ -108,3 +108,61 @@ html:has(#wishlist-detail-modal:not(.hidden)), body:has(#wishlist-detail-modal:n
     .ollama-command { grid-template-columns: minmax(0, 1fr); }
     .ollama-command button { justify-self: start; }
 }
+
+#settings-panel .service-status:empty,
+#settings-panel .service-note:empty,
+#settings-panel #example-garden-status:empty { display: none; }
+
+/* Quiet hover feedback for settings controls. */
+.settings-panel .settings-collapse > summary,
+.settings-panel .settings-field input:not([type="checkbox"]),
+.settings-panel .settings-field select,
+.settings-panel .settings-garden-place-options label,
+.settings-panel .auto-sync-switch,
+.settings-panel .ai-profile-consent,
+.settings-panel .settings-faq-section summary,
+.settings-panel #cloud-details > summary,
+.settings-panel .settings-secondary-button,
+.settings-panel .layout-toggle-btn,
+.settings-panel .theme-choice {
+    transition: background-color .15s ease, border-color .15s ease;
+}
+.settings-panel .settings-collapse > summary:hover,
+.settings-panel .settings-field input:not([type="checkbox"]):hover,
+.settings-panel .settings-field select:hover,
+.settings-panel .settings-garden-place-options label:hover,
+.settings-panel .auto-sync-switch:hover,
+.settings-panel .ai-profile-consent:hover,
+.settings-panel .settings-faq-section summary:hover,
+.settings-panel #cloud-details > summary:hover,
+.settings-panel button:not(.settings-primary-button):not(.settings-danger-button):not(.layout-toggle-btn):not(.theme-choice):hover,
+.settings-panel .settings-secondary-button:hover,
+.settings-panel .layout-toggle-btn:not(.active):hover,
+.settings-panel .theme-choice:not(.active):hover {
+    background: color-mix(in srgb, var(--accent-primary) 7%, var(--card-background));
+}
+.settings-panel .settings-collapse > summary,
+.settings-panel .settings-garden-place-options label,
+.settings-panel .auto-sync-switch,
+.settings-panel .ai-profile-consent,
+.settings-panel .settings-faq-section summary,
+.settings-panel #cloud-details > summary { border-radius: 8px; }
+.settings-panel .settings-primary-button:hover,
+.settings-panel .layout-toggle-btn.active:hover {
+    background: color-mix(in srgb, var(--button-background) 92%, var(--card-background));
+    filter: none;
+}
+.settings-panel .theme-choice.active:hover {
+    background: color-mix(in srgb, var(--accent-primary) 14%, var(--card-background));
+}
+.settings-panel .settings-danger-button:hover {
+    color: var(--error-color);
+    background: color-mix(in srgb, var(--error-color) 8%, var(--card-background));
+}
+
+.settings-backup-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+.settings-storage-extra { margin: 12px 0; }
+.settings-storage-extra > summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+.settings-storage-extra[open] > summary { margin-bottom: 8px; }
+.settings-reset-action { margin-top: 20px; }
+.settings-reset-action .settings-danger-button { padding: 7px 10px; font-size: 12px; }

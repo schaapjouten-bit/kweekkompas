@@ -46,7 +46,7 @@
             cancel();
             io.storage.setItem(GUARD, JSON.stringify({ reason, nonce: io.nonce() }));
             if (account) { const s = read(account); s.paused = reason; write(account, s); }
-            message = reason === 'example' ? 'Voorbeelden geladen. Kies bewust welke tuin je verder wilt synchroniseren.' : 'Gegevens teruggezet. Kies bewust welke tuin je verder wilt synchroniseren.';
+            message = reason === 'example' ? 'Voorbeelden geladen. Kies bewust welke tuin je verder wilt synchroniseren.' : 'De lokale tuin is gewijzigd. Kies welke tuin je verder wilt synchroniseren.';
             emit();
         }
         function changed() {

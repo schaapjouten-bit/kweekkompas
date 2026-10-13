@@ -11,6 +11,8 @@ test('backend: login, sessievernieuwing, accountisolatie, syncconflict en beide 
     const fixture = await startFixtures(); configureFixtures(fixture);
     process.env.GEMINI_API_KEY = 'test-gemini-secret';
     const originalFetch = global.fetch;
+    const originalLocalAPI = globalThis.KweekLocalAPI;
+    globalThis.KweekLocalAPI = { get: () => ({ address: process.env.OPENAI_COMPATIBLE_BASE_URL, model: 'test-model', apiKey: process.env.OPENAI_COMPATIBLE_API_KEY }) };
     global.fetch = (url, options) => originalFetch(String(url).startsWith('https://generativelanguage.googleapis.com/') ? fixture.base + '/gemini' : url, options);
     try {
         assert.equal((await auth(event('POST', { action: 'login', email: 'a@example.test', password: 'wrong' }))).statusCode, 401);
@@ -64,5 +66,5 @@ test('backend: login, sessievernieuwing, accountisolatie, syncconflict en beide 
         process.env.KWEEK_LOCAL_DEV = 'false';
         const secureLogin = await auth({ ...event('POST', { action: 'login', email: 'a@example.test', password: 'test-password' }, '', 'https://localhost:4173') });
         assert(secureLogin.multiValueHeaders['Set-Cookie'].every(value => value.endsWith('; Secure')));
-    } finally { global.fetch = originalFetch; await fixture.stop(); }
+    } finally { global.fetch = originalFetch; globalThis.KweekLocalAPI = originalLocalAPI; await fixture.stop(); }
 });

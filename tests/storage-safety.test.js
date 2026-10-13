@@ -104,10 +104,10 @@ function loadImportHooks(storage = createStorage()) {
 function createSeed(id = 'seed-1') {
     return {
         id, naam: 'Tomaat', status: 'Voorraad', type: 'Groente', standplaats: 'Zon', water: 'Gemiddeld',
-        code: '', beschrijving: '', ervaringen: '', featuredImageUrl: '', image: '', shopLink: '',
+        code: '', beschrijving: '', voeding: '', ervaringen: '', featuredImageUrl: '', image: '', shopLink: '',
         zaaitijd: '', oogsttijd: '', tags: [], images: [], isFavorite: false,
         fase_gezaaid: false, fase_groeit: false, fase_geoogst: false, ervaringScore: 0,
-        purchaseYear: null, lastSownYear: null
+        purchaseYear: null, lastSownYear: null, sownAt: null
     };
 }
 
@@ -268,7 +268,10 @@ test('IndexedDB-falen laat getAllSeeds veilig falen', async () => {
 
 test('accepteert een geldige oude backup zonder backupVersion', () => {
     const { normalizeImportedBackup } = loadImportHooks();
-    const value = normalizeImportedBackup({ seeds: [createSeed()] });
+    const legacySeed = createSeed();
+    delete legacySeed.voeding;
+    delete legacySeed.sownAt;
+    const value = normalizeImportedBackup({ seeds: [legacySeed] });
 
     assert.equal(value.backupVersion, 1);
     assert.deepEqual(JSON.parse(JSON.stringify(value.seeds)), [createSeed()]);
@@ -313,6 +316,8 @@ test('vult ontbrekende optionele seedvelden veilig aan voor de kaartweergave', (
     assert.equal(seed.water, 'Gemiddeld');
     assert.deepEqual(JSON.parse(JSON.stringify(seed.tags)), []);
     assert.deepEqual(JSON.parse(JSON.stringify(seed.images)), []);
+    assert.equal(seed.voeding, '');
+    assert.equal(seed.sownAt, null);
 });
 
 test('accepteert een geldige versie-1-backup', () => {

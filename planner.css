@@ -134,6 +134,24 @@
   gap: 20px;
 }
 
+.seeds-status-context {
+  max-width: none;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 16px;
+  font-weight: 700;
+}
+
+.seeds-status-context .context-reset-btn {
+  width: auto;
+  height: auto;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 [data-theme="dark"] .seeds-month-context {
   background: rgba(76, 175, 80, 0.12);
 }

@@ -838,6 +838,7 @@ input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--pri
 .badge.gezaaid { color: #666; background-color: #f5f5f5; border-color: #e0e0e0; }
 .badge.groeit { color: #666; background-color: #f5f5f5; border-color: #e0e0e0; }
 .badge.geoogst { color: #666; background-color: #f5f5f5; border-color: #e0e0e0; }
+.badge.meerjarig { color: #666; background-color: #f5f5f5; border-color: #e0e0e0; }
 .badge.voorraad { color: #666; background-color: #f5f5f5; border-color: #e0e0e0; }
 .badge.wishlist { color: #666; background-color: #f5f5f5; border-color: #e0e0e0; }
 .badge.late { color: #C62828 !important; background-color: #FFEBEE !important; border-color: #FFCDD2 !important; }
@@ -846,6 +847,7 @@ input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--pri
 [data-theme="dark"] .badge.gezaaid { color: #999 !important; background-color: rgba(255,255,255,0.05) !important; border-color: rgba(255,255,255,0.1) !important; }
 [data-theme="dark"] .badge.groeit { color: #999 !important; background-color: rgba(255,255,255,0.05) !important; border-color: rgba(255,255,255,0.1) !important; }
 [data-theme="dark"] .badge.geoogst { color: #999 !important; background-color: rgba(255,255,255,0.05) !important; border-color: rgba(255,255,255,0.1) !important; }
+[data-theme="dark"] .badge.meerjarig { color: #999 !important; background-color: rgba(255,255,255,0.05) !important; border-color: rgba(255,255,255,0.1) !important; }
 [data-theme="dark"] .badge.voorraad { color: #999 !important; background-color: rgba(255,255,255,0.05) !important; border-color: rgba(255,255,255,0.1) !important; }
 [data-theme="dark"] .badge.wishlist { color: #999 !important; background-color: rgba(255,255,255,0.05) !important; border-color: rgba(255,255,255,0.1) !important; }
 [data-theme="dark"] .badge.late { color: #E57373 !important; background-color: rgba(198, 40, 40, 0.2) !important; border-color: rgba(198, 40, 40, 0.3) !important; }
@@ -3173,7 +3175,7 @@ input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--pri
 
 .lightbox-img {
   max-width: 90%;
-  max-height: 80vh;
+  max-height: 94vh;
   object-fit: contain;
   box-shadow: 0 0 30px rgba(0,0,0,0.5);
   border-radius: 4px;
@@ -3871,6 +3873,35 @@ input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--pri
 
 .unified-gallery-card.selected {
   border-color: var(--primary-color);
+  cursor: grab;
+}
+
+.unified-gallery-card.selected:active {
+  cursor: grabbing;
+}
+
+.unified-gallery-card.is-dragging {
+  opacity: 0.45;
+}
+
+.unified-gallery-card.drag-target {
+  outline: 3px solid var(--primary-color);
+  outline-offset: 3px;
+}
+
+.gallery-drag-hint {
+  position: absolute;
+  left: 50%;
+  top: 5px;
+  transform: translateX(-50%);
+  z-index: 4;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  color: #24382e;
+  font-size: 17px;
+  line-height: 20px;
+  pointer-events: none;
 }
 
 .selected-check {
@@ -6075,7 +6106,7 @@ textarea:focus-visible, [tabindex]:focus-visible {
 [data-theme="playful"] {
   --page-background: #F2E8CC;
   --workspace-background: #FFF9EA;
-  --sidebar-background: #315747;
+  --sidebar-background: #46543D;
   --card-background: #FFFFFF;
   --card-elevated: #FFFDF7;
   --primary-text: #173A2B;
@@ -6105,8 +6136,18 @@ textarea:focus-visible, [tabindex]:focus-visible {
 
 [data-theme="playful"] .shell-nav-item.active {
   color: #FFFFFF;
-  background: #4B8062;
-  border-color: #B8D9A6;
+  background: #667954;
+  border-color: #D7C892;
+}
+
+[data-theme="playful"] .sidebar-brand-mark {
+  color: #F0D99E;
+  background: rgba(240, 217, 158, 0.12);
+  border-color: rgba(240, 217, 158, 0.28);
+}
+
+[data-theme="playful"] .shell-nav-item.active svg {
+  color: #F0D99E;
 }
 
 [data-theme="playful"] .theme-choice:hover,
@@ -6351,6 +6392,12 @@ textarea:focus-visible, [tabindex]:focus-visible {
   background: var(--accent-secondary) !important;
 }
 
+#btn-latest-seeds[aria-pressed="true"] {
+  color: #fff !important;
+  background: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+}
+
 .seed-filter-chips {
   gap: 7px;
   margin: 0 0 24px;
@@ -6459,6 +6506,22 @@ textarea:focus-visible, [tabindex]:focus-visible {
 .card-favorite-button:hover {
   border-color: var(--accent-primary);
   transform: scale(1.04);
+}
+
+[data-theme="light"] .card-favorite-button,
+[data-theme="light"] .card-favorite-button.active {
+  width: 26px;
+  height: 26px;
+  color: #B58D3F;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(181, 141, 63, 0.68);
+  font-size: 18px;
+}
+
+[data-theme="light"] .card-favorite-button:hover {
+  color: #906718;
+  border-color: #906718;
+  background: rgba(255, 255, 255, 0.86);
 }
 
 .seed-card .card-content {
@@ -7833,23 +7896,14 @@ textarea:focus-visible, [tabindex]:focus-visible {
 #view-sowing-grid .planner-activities-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 8px;
   margin-bottom: 12px;
 }
 #view-sowing-grid .planner-activities-heading h3 {
   margin: 3px 0 0;
   color: var(--primary-text);
   font-size: 17px;
-}
-#view-sowing-grid .planner-activity-count {
-  flex: 0 0 auto;
-  padding: 5px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 999px;
-  color: var(--secondary-text);
-  font-size: 10px;
-  font-weight: 700;
 }
 #view-sowing-grid .planner-activities-content {
   display: grid;
@@ -8058,7 +8112,7 @@ textarea:focus-visible, [tabindex]:focus-visible {
 #view-home .home-later-tasks .status-group { margin-top: 12px; }
 #view-home .home-reminder-task { gap: 12px; }
 #view-home .home-reminder-task .mini-card-content { flex: 1; display: grid; gap: 5px; }
-#view-home .home-plant-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--workspace-background); margin-bottom: 14px; }
+#view-home .home-plant-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--workspace-background); margin-bottom: 14px; }
 #view-home .home-plant-tabs button { min-width: 0; width: 100%; padding: 11px 3px; border: 0; border-bottom: 2px solid transparent; border-radius: 9px; background: transparent; color: var(--secondary-text); font-size: 14px; font-weight: 600; }
 #view-home .home-plant-tabs button[aria-selected="true"] { color: var(--primary-text); border-bottom-color: var(--accent-primary); background: color-mix(in srgb, var(--accent-primary) 12%, var(--card-background)); }
 #view-home .home-plant-tabs button span { display: inline-block; padding: 2px 5px; margin-left: 3px; border-radius: 20px; background: color-mix(in srgb, var(--accent-primary) 10%, var(--card-background)); }
@@ -8087,6 +8141,7 @@ body:has(#view-home:not(.hidden)) .toast-container .toast { position: relative; 
 #view-home .home-ai-provider:focus-visible,
 #view-home .home-later-tasks summary:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 @media (max-width: 700px) {
+  #view-home .home-plant-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #view-home .home-task-empty { padding: 22px 12px; min-height: 260px; }
   #view-home .home-task-empty > p { font-size: 16px; }
   #view-home .home-task-empty .home-task-empty-detail { font-size: 13px; }
@@ -8226,8 +8281,23 @@ body:has(#view-home:not(.hidden)) .toast-container .toast { position: relative; 
 #view-detail .recipe-card-v2 span { overflow-wrap: anywhere; }
 #view-detail .recipe-card-v2 .plant-detail-icon { width: 17px; height: 17px; color: var(--accent-primary); }
 #view-detail .detail-carousel-section { margin: 0; padding: 0; min-width: 0; }
-#view-detail .detail-carousel { gap: 8px; padding: 3px 3px 10px; }
-#view-detail .detail-carousel-item { flex: 0 0 86px; width: 86px; height: 86px; padding: 0; border: 1px solid var(--border-color); border-radius: 10px; background: var(--workspace-background); }
+#view-detail .detail-carousel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 454px;
+  gap: 8px;
+  overflow: visible;
+  padding: 3px;
+}
+#view-detail .detail-carousel-item {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--workspace-background);
+}
 /* Warm keeps its palette; the existing edit fields use the same rounded surfaces. */
 [data-theme="playful"] #view-add input[type="text"],
 [data-theme="playful"] #view-add input[type="url"],
@@ -8264,27 +8334,29 @@ body:has(#view-home:not(.hidden)) .toast-container .toast { position: relative; 
 #view-home .home-overdue-tasks .home-reminder-task { border-left: 3px solid var(--accent-primary); }
 .service-form { display: grid; gap: 14px; min-width: 0; }
 /* One Planning entry, shared selection and the existing task form. */
-.planning-header { margin: 0 0 14px; }
-.planning-heading, .planning-toolbar, .planning-date-nav { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.planning-header { margin: 0 0 14px; padding: 22px 24px 0; border: 1px solid var(--border-color); border-radius: 18px; background: var(--card-background); }
+.planning-heading, .planning-toolbar, .planning-toolbar-actions, .planning-date-nav { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .planning-heading, .planning-toolbar { justify-content: space-between; }
-.planning-heading { margin-bottom: 8px; }
+.planning-heading { margin-bottom: 20px; }
 .planning-heading .planner-eyebrow { margin: 0 0 3px; font-size: 11px; line-height: 1.3; }
 .planning-heading h1 { margin: 0; font-size: 28px; color: var(--primary-text); }
-.planning-heading > button { width: auto; flex: none; }
+.planning-toolbar-actions > button { width: auto; flex: none; }
 .planning-tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--border-color); background: var(--card-background); border-radius: 12px; }
-.planning-tabs button, .planning-date-nav button, .planning-advice-add, .planning-edit { width: auto; border: 1px solid var(--border-color); background: var(--card-background); color: var(--primary-text); border-radius: 8px; padding: 8px 12px; font: inherit; cursor: pointer; }
+.planning-tabs button, .planning-date-nav button, #planning-today, #planning-add, #btn-cal-sow-tips, .planning-advice-add, .planning-edit { width: auto; border: 1px solid var(--border-color); background: var(--card-background); color: var(--primary-text); border-radius: 8px; padding: 8px 12px; font: inherit; cursor: pointer; }
 .planning-tabs button { border-color: transparent; }
 .planning-tabs [aria-selected="true"] { background: var(--accent-primary); color: var(--text-on-accent, #fff); }
 .planning-date-nav { gap: 6px; }
+#btn-cal-sow-tips { background: color-mix(in srgb, var(--accent-primary) 12%, var(--card-background)); font-weight: 600; }
 #planning-period { min-width: 100px; text-align: center; font-weight: 600; }
-.planning-selection { margin: 7px 0 0; font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+.planning-selection { margin: 5px 0 0; font-size: 13px; color: var(--text-muted); line-height: 1.5; text-transform: capitalize; }
+.planning-toolbar { padding-bottom: 20px; }
+@media (max-width: 600px) {
+  .planning-header { padding: 16px 14px 0; }
+}
 #view-calendar .calendar-page-header { display: none; }
 #view-sowing-grid .sowing-planner-header > div:first-child { display: none; }
 #view-sowing-grid .sowing-planner-header { justify-content: flex-end; margin-bottom: 12px; }
 #view-sowing-grid .sowing-planner-header { display: none; }
-.planning-header .planner-year-select-label { font-size: 0; }
-.planning-header #planner-year-input { font: inherit; font-size: 14px; width: 85px; min-height: 40px; padding: 8px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-background); color: var(--primary-text); box-sizing: border-box; }
-.planning-header[data-tab="month"] .planner-year-select-label, .planning-header:not([data-tab="month"]) #planning-period { display: none; }
 #view-calendar .calendar-header #cal-prev, #view-calendar .calendar-header #cal-next, #view-calendar .calendar-header #cal-today, #view-calendar #cal-month-title { display: none; }
 #view-calendar .calendar-header { margin-bottom: 12px; justify-content: flex-start; }
 #planner-this-month { display: none; }
@@ -8327,12 +8399,16 @@ body:has(#view-home:not(.hidden)) .toast-container .toast { position: relative; 
 /* Prompt 2.1: own dated tasks first; advice is general plant information. */
 #view-sowing-grid .planner-tasks-content { margin-bottom: 14px; }
 #view-sowing-grid .planner-tasks-content .planner-saved-planning { padding: 16px; background: var(--card-background); }
+#view-sowing-grid .planner-tasks-content .planner-activity-group-heading h4 { flex: 0 1 auto; }
+#view-sowing-grid .planner-tasks-content .planner-activity-group-heading > span:last-child { min-width: 25px; height: 25px; padding: 0 4px; border: 1px solid var(--border-color); background: color-mix(in srgb, var(--accent-primary) 10%, var(--card-background)); box-sizing: border-box; }
 #view-sowing-grid .planner-activities-content { grid-template-columns: minmax(0, 1fr); gap: 16px; }
 #view-sowing-grid #planner-activities-content .planner-activity-group { border: 0; border-radius: 0; background: transparent; padding: 0; }
-#view-sowing-grid #planner-activities-content .planner-activity-group + .planner-activity-group { border-top: 1px solid var(--border-color); padding-top: 14px; }
+#view-sowing-grid #planner-activities-content .planner-activity-group + .planner-activity-group { padding-top: 14px; }
+#view-sowing-grid #planner-activities-content .planner-activity-group-heading h4 { flex: 0 1 auto; font-size: 16px; line-height: 1.3; font-weight: 700; }
+#view-sowing-grid #planner-activities-content .planner-activity-group-heading > span:last-child { min-width: 25px; height: 25px; padding: 0 4px; border: 1px solid var(--border-color); background: color-mix(in srgb, var(--accent-primary) 10%, var(--card-background)); box-sizing: border-box; }
 .planner-advice-note { margin: 0 0 10px; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
-#view-sowing-grid #planner-activities-content .planning-advice-row { display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: 12px; border-bottom: 1px solid var(--border-color); }
-#view-sowing-grid #planner-activities-content .planning-advice-row:last-child { border-bottom: 0; }
+#view-sowing-grid #planner-activities-content .planning-advice-row { display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: 12px; padding: 0 10px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--accent-primary) 9%, var(--card-background)); }
+#view-sowing-grid #planner-activities-content .planner-plant-list > .planning-advice-row:nth-child(even) { background: color-mix(in srgb, var(--accent-primary) 15%, var(--card-background)); }
 #view-sowing-grid #planner-activities-content .planner-plant-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 120px; gap: 12px; align-items: center; border: 0; border-radius: 6px; background: transparent; padding: 10px 0; width: 100%; }
 #view-sowing-grid #planner-activities-content .planner-plant-meta { display: contents; text-align: left; }
 #view-sowing-grid #planner-activities-content .planner-plant-name { width: auto; font-size: 13px; }
@@ -8341,13 +8417,37 @@ body:has(#view-home:not(.hidden)) .toast-container .toast { position: relative; 
 .planning-heading > button { padding: 9px 13px; min-height: 38px; }
 .planning-tabs button { padding: 7px 11px; }
 #view-calendar .calendar-period-group { background: transparent; padding: 8px 0; border-radius: 0; }
-#view-calendar .calendar-period-group + .calendar-period-group { border-top: 1px solid var(--border-color); }
+#view-calendar .calendar-period-group + .calendar-period-group { margin-top: 14px; }
 #view-calendar .calendar-period-group li { display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: 10px; padding: 6px 0; }
 .calendar-advice-copy { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
 .calendar-advice-copy .calendar-period-plant { font-weight: 600; }
+.calendar-advice-copy > .badge { justify-self: start; width: max-content; max-width: 100%; }
 .calendar-period-status { color: var(--text-muted); font-size: 11px; }
+/* Planning: consistent hover feedback across the three views. */
+.planning-header .planning-tabs button:not([aria-selected="true"]):hover,
+.planning-header :is(#planning-today, .planning-date-nav button, #btn-cal-sow-tips):hover,
+#view-sowing-grid .planning-advice-add:hover,
+#view-calendar .planning-advice-add:hover,
+#view-agenda .planning-edit:hover {
+  background: color-mix(in srgb, var(--accent-primary) 16%, var(--card-background));
+}
+.planning-header .planning-tabs button[aria-selected="true"]:hover,
+.planning-header #planning-add:hover {
+  background: color-mix(in srgb, var(--accent-primary) 85%, var(--card-background));
+}
+#view-sowing-grid .month-card:is(.current, .selected):hover,
+#view-sowing-grid #planner-activities-content .planning-advice-row:hover,
+#view-sowing-grid #planner-activities-content .planner-plant-list > .planning-advice-row:nth-child(even):hover,
+#view-sowing-grid .planner-tasks-content .planner-plant-row:hover,
+#view-calendar .calendar-period-group li:hover,
+#view-calendar .calendar-period-group li:nth-child(even):hover,
+#view-calendar .reminder-row:hover,
+#view-agenda .reminder-row:hover {
+  background: color-mix(in srgb, var(--accent-primary) 23%, var(--card-background));
+}
+#view-sowing-grid #planner-activities-content .planning-advice-row:hover .planner-plant-row { background: transparent; }
 @media (max-width: 700px) {
-  #view-sowing-grid #planner-activities-content .planning-advice-row { gap: 8px; align-items: end; padding: 8px 0; }
+  #view-sowing-grid #planner-activities-content .planning-advice-row { gap: 8px; align-items: end; padding: 8px 10px; }
   #view-sowing-grid #planner-activities-content .planner-plant-row { grid-template-columns: minmax(0, 1fr); gap: 5px; padding: 0; }
   #view-sowing-grid #planner-activities-content .planner-plant-meta .badge { font-size: 10px; }
   #view-sowing-grid #planner-activities-content .planning-advice-add { align-self: center; }
@@ -8355,10 +8455,134 @@ body:has(#view-home:not(.hidden)) .toast-container .toast { position: relative; 
 }
 .service-status { margin: 10px 0; color: var(--text-color); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .service-note { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.6; }
+.ai-profile-consent { display: flex; align-items: center; gap: 10px; margin-top: 16px; color: var(--primary-text); font-weight: 600; cursor: pointer; }
+.ai-profile-consent input { width: 18px; height: 18px; accent-color: var(--accent-primary); }
 .service-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
 .service-actions[hidden], .service-form[hidden] { display: none; }
 .service-form .settings-field, .service-form input, .service-form select { min-width: 0; max-width: 100%; }
 @media (max-width: 600px) {
     .service-actions { flex-direction: column; }
     .service-actions button, .service-form > button { width: 100%; }
+}
+
+/* Workspace width follows the setting within the sidebar layout. */
+@media (min-width: 769px) {
+  body.layout-standard #main-content > :is(#view-home, #view-list, #view-calendar, #view-sowing-grid, #view-agenda, #view-wishlist) {
+    width: 100%;
+    max-width: 1100px;
+    margin-inline: auto;
+  }
+
+  body:is(.layout-wide, .layout-full) #main-content > :is(#view-home, #view-list, #view-calendar, #view-sowing-grid, #view-agenda, #view-wishlist) {
+    width: 100%;
+    max-width: none;
+    margin-inline: auto;
+  }
+}
+
+/* Month tips use the same surfaces and colors as the rest of each theme. */
+#planner-month-modal {
+  --month-focus-bg: color-mix(in srgb, var(--accent-primary) 10%, var(--card-background));
+  --month-alert-bg: color-mix(in srgb, #c66b5c 10%, var(--card-background));
+  --month-tip-bg: color-mix(in srgb, #5e9b84 10%, var(--card-background));
+  background: rgba(16, 35, 27, 0.58);
+}
+
+#planner-month-modal .planner-modal-content {
+  width: min(100%, 600px);
+  max-width: 600px;
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  background: var(--card-background);
+  color: var(--primary-text);
+}
+
+#planner-month-modal .planner-modal-header,
+#planner-month-modal .planner-modal-body,
+#planner-month-modal .planner-modal-footer {
+  background: var(--card-background);
+  border-color: var(--border-color);
+}
+
+#planner-month-modal .planner-modal-header { padding: 20px 24px; padding-right: 60px; }
+#planner-month-modal .planner-modal-body { padding: 20px 24px 26px; max-height: 74vh; }
+#planner-month-modal .planner-modal-footer { padding: 14px 24px 20px; }
+#planner-month-modal .planner-header-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent-primary) 12%, var(--card-background));
+  color: var(--accent-primary);
+}
+#planner-month-modal .planner-header-icon svg { width: 21px; height: 21px; }
+#planner-month-modal .planner-header-text h2,
+#planner-month-modal .planner-section h3,
+#planner-month-modal .planner-seed-name,
+#planner-month-modal .planner-card-content h4 { color: var(--primary-text); }
+#planner-month-modal .planner-header-text p,
+#planner-month-modal #planner-seeds-count,
+#planner-month-modal .planner-card-content p { color: var(--secondary-text); }
+#planner-month-modal .planner-card-content p { font-size: 14px; line-height: 1.55; }
+#planner-month-modal .planner-seeds-list { margin-bottom: 20px; gap: 8px; }
+#planner-month-modal .planner-seed-item {
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--workspace-background);
+}
+#planner-month-modal .planner-seed-item:hover {
+  background: var(--month-focus-bg);
+  border-color: var(--accent-primary);
+  transform: none;
+}
+#planner-month-modal .planner-info-card {
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--month-focus-bg);
+}
+#planner-month-modal .planner-info-cards { gap: 14px; }
+#planner-month-modal .planner-info-card.alert { background: var(--month-alert-bg); }
+#planner-month-modal .planner-info-card.tip { background: var(--month-tip-bg); }
+#planner-month-modal .planner-card-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  color: var(--accent-primary);
+  opacity: 1;
+}
+#planner-month-modal .planner-card-icon svg { width: 21px; height: 21px; }
+#planner-month-modal .planner-info-card.alert .planner-card-icon { color: #b56b55; }
+#planner-month-modal .planner-info-card.tip .planner-card-icon { color: #6c8c65; }
+#planner-month-modal .planner-modal-close,
+#planner-month-modal .planner-btn-secondary {
+  border: 1px solid var(--border-color);
+  background: var(--workspace-background);
+  color: var(--primary-text);
+}
+#planner-month-modal .planner-btn-primary {
+  border-radius: 10px;
+  background: var(--button-background);
+  color: var(--button-text);
+  box-shadow: none;
+}
+#planner-month-modal .planner-btn-secondary { border-radius: 10px; }
+
+[data-theme="playful"] #planner-month-modal {
+  --month-focus-bg: #fcf3d8;
+  --month-alert-bg: #fbeae5;
+  --month-tip-bg: #edf4e5;
+}
+
+[data-theme="dark"] #planner-month-modal {
+  --month-focus-bg: #294438;
+  --month-alert-bg: #493936;
+  --month-tip-bg: #25463f;
 }

@@ -7,13 +7,15 @@ const endpointPath = require.resolve('../netlify/functions/_shared/ai-models');
 const model = (id, methods = ['generateContent']) => ({ name: 'models/' + id, displayName: id.replace('gemini-', 'Gemini '), supportedGenerationMethods: methods });
 async function isolated(fn) {
     const oldFetch = global.fetch;
-    const names = ['GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_MODELS', 'OLLAMA_BASE_URL', 'OLLAMA_MODEL', 'OLLAMA_MODELS', 'OPENAI_COMPATIBLE_BASE_URL', 'OPENAI_COMPATIBLE_MODEL', 'OPENAI_COMPATIBLE_MODELS'];
+    const names = ['GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_MODELS', 'OLLAMA_BASE_URL', 'OLLAMA_MODEL', 'OLLAMA_MODELS', 'OPENAI_COMPATIBLE_BASE_URL', 'OPENAI_COMPATIBLE_MODEL', 'OPENAI_COMPATIBLE_MODELS', 'KWEEK_LOCAL_DEV'];
+    const oldLocalAPI = globalThis.KweekLocalAPI;
     const before = names.map(name => [name, process.env[name]]);
     process.env.GEMINI_API_KEY = 'dummy-model-list-secret';
     delete require.cache[modelPath]; delete require.cache[endpointPath];
     try { await fn(require(modelPath), require(endpointPath).handler); }
     finally {
         global.fetch = oldFetch;
+        globalThis.KweekLocalAPI = oldLocalAPI;
         for (const [name, value] of before) { if (value === undefined) delete process.env[name]; else process.env[name] = value; }
     }
 }
@@ -118,13 +120,14 @@ test('provider configuration retains Ollama and custom API; no implicit Gemini 2
     delete process.env.GEMINI_MODEL;
     process.env.OLLAMA_BASE_URL = 'http://127.0.0.1:11434'; process.env.OLLAMA_MODEL = 'llama3:latest'; process.env.OLLAMA_MODELS = 'llama3:latest,qwen3:8b';
     process.env.OPENAI_COMPATIBLE_BASE_URL = 'https://api.example.test/v1'; process.env.OPENAI_COMPATIBLE_MODEL = 'my-model';
+    process.env.KWEEK_LOCAL_DEV = 'true';
+    globalThis.KweekLocalAPI = { get: () => ({ address: process.env.OPENAI_COMPATIBLE_BASE_URL, model: process.env.OPENAI_COMPATIBLE_MODEL }) };
     const config = providerConfig();
     assert.equal(config.gemini.model, '');
     assert.equal(config.ollama.model, 'llama3:latest'); assert.deepEqual(config.ollama.models, ['llama3:latest', 'qwen3:8b']);
     assert.equal(config['openai-compatible'].model, 'my-model');
     // Both helpers still delegate through the shared, freshly read preference.
-    const services = fs.readFileSync('services.js', 'utf8');
-    assert.match(services, /requestAI: \(route, body\) => request\(route, \{ \.\.\.body, ai: readPreferences\(\) \}\)/);
+    // Actual preference routing is exercised by the isolated browser checks.
     const app = fs.readFileSync('app-v132.js', 'utf8');
     assert.match(app, /KweekServices\.requestAI\('seed-info'/);
     assert.match(app, /KweekServices\.requestAI\('gemini-ai'/);

@@ -496,6 +496,7 @@
   box-shadow: var(--calendar-card-shadow);
   box-sizing: border-box;
 }
+#view-calendar .calendar-container > .calendar-header { display: none; }
 
 #view-calendar .calendar-header {
   display: grid;
@@ -685,6 +686,7 @@
 }
 
 #view-calendar .day-panel-card,
+.calendar-plant-periods,
 .calendar-upcoming-panel {
   margin: 0;
   padding: 19px;
@@ -694,6 +696,7 @@
   box-shadow: var(--calendar-card-shadow);
   box-sizing: border-box;
 }
+#view-calendar .calendar-plant-periods { min-width: 0; }
 
 #view-calendar .day-panel-header,
 .calendar-upcoming-header {
@@ -760,7 +763,7 @@
   display: block;
   margin: 0 0 8px;
   color: var(--text-main);
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 750;
 }
 
@@ -888,10 +891,26 @@
 }
 
 .calendar-period-group h5 {
-  margin: 0 0 5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
   color: var(--text-main);
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 750;
+}
+.calendar-period-count {
+  display: inline-grid;
+  min-width: 25px;
+  height: 25px;
+  padding: 0 4px;
+  place-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--card-background));
+  color: var(--secondary-text);
+  box-sizing: border-box;
+  font-size: 10px;
 }
 
 .calendar-period-group ul {
@@ -911,6 +930,14 @@
   font-size: 12px;
   line-height: 1.4;
 }
+#view-calendar .calendar-period-group li {
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent-primary) 9%, var(--card-background));
+}
+#view-calendar .calendar-period-group li:nth-child(even) {
+  background: color-mix(in srgb, var(--accent-primary) 15%, var(--card-background));
+}
+#view-calendar .calendar-period-group li { padding: 8px 10px; }
 
 .calendar-period-action {
   color: var(--text-muted);
@@ -1233,6 +1260,7 @@
   }
 
   #view-calendar .day-panel-card,
+  #view-calendar .calendar-plant-periods,
   .calendar-upcoming-panel {
     width: 100%;
     padding: 15px !important;

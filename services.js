@@ -1,8 +1,11 @@
 /* Optional services. Local data stays under the existing app's storage/backup logic. */
 (() => {
     const PREFS_KEY = 'kweekkompas_ai';
+    const PROFILE_AI_CONSENT_KEY = 'kweekkompas_ai_profile_consent';
+    const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+    const GEMINI_FLASH_MODEL = 'gemini-3.8-flash';
     const OWNER_KEY = 'kweekkompas_local_owner';
-    const providers = ['gemini', 'ollama', 'openai-compatible'];
+    const providers = ['gemini', 'ollama', 'openai-compatible', 'chatgpt'];
     let config = null;
     let user = null;
     let accountVersion = 0;
@@ -45,14 +48,13 @@
     let busy = false;
     let prefs = {};
     let configPromise = null;
-    let geminiCatalog = null;
-    let geminiModelsPromise = null;
     function readPreferences() {
       const defaultProvider = config?.defaultProvider || (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) ? 'ollama' : 'gemini');
       const defaults = { provider: defaultProvider, model: config?.providers?.[defaultProvider]?.model || (defaultProvider === 'ollama' ? 'llama3:latest' : '') };
       try {
         const saved = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
         prefs = providers.includes(saved?.provider) && typeof saved.model === 'string' ? { provider: saved.provider, model: saved.model } : defaults;
+        if (prefs.provider === 'gemini' && ![GEMINI_MODEL, GEMINI_FLASH_MODEL].includes(prefs.model)) prefs.model = GEMINI_MODEL;
       } catch { prefs = defaults; }
       return { ...prefs };
     }
@@ -72,7 +74,7 @@
         };
         const display = () => {
             const provider = prefs.provider || config?.defaultProvider;
-            const labels = { gemini: 'Gemini', ollama: 'Lokale AI (Ollama)', 'openai-compatible': 'Eigen API' };
+            const labels = { gemini: 'Gemini', ollama: 'Lokale AI (Ollama)', 'openai-compatible': 'Eigen API', chatgpt: 'ChatGPT' };
             const directStatus = provider === 'ollama' && window.KweekBrowserOllama?.direct ? window.KweekBrowserOllama.status().state : null;
             const suffix = directStatus === 'reachable' ? ' · verbonden op deze computer' : directStatus === 'blocked' ? ' · verbinding controleren' : directStatus ? ' · nog niet getest' : '';
             button.textContent = `${labels[provider] || 'AI-instellingen'}${suffix} ⌄`;
@@ -105,30 +107,31 @@
     }
     const ollamaCommandHTML = () => `<div class="ollama-command"><input aria-label="Commando om het standaardmodel te downloaden" value="ollama pull llama3:latest" readonly><button type="button" class="settings-secondary-button" data-ollama-copy>Kopiëren</button><span class="ollama-copy-status" role="status"></span></div>`;
     const localHelpHTML = () => `<details id="local-ai-help" class="local-ai-help"><summary>Lokale AI gebruiken</summary>
-        <p>Met Lokale AI (Ollama) gebruik je een model op je eigen computer, zonder Gemini-tegoed. Je computer moet blijven aanstaan terwijl je AI gebruikt.</p>
-        <ol><li><a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Download Ollama</a> voor je besturingssysteem en installeer het.</li>
-        <li>Open PowerShell of Terminal en download het standaardmodel:${ollamaCommandHTML()}Wacht tot de download klaar is. Hiervoor heb je internet en voldoende schijfruimte nodig.</li>
-        <li>Start Ollama en laat het draaien. Op Windows kun je Ollama via het Startmenu openen. Als je de opdrachtregelversie gebruikt, start je de server met <code>ollama serve</code>. Start geen tweede server als Ollama al draait.</li>
-        <li>Open KweekKompas online op deze computer, of start de lokale app met <code>npm start</code>. Ga naar Instellingen → AI. Kies <strong>Lokale AI (Ollama)</strong> en <code>llama3:latest</code>, of een ander model dat je zelf hebt gedownload. Sla je AI-keuze op.</li>
-        <li>Klik op <strong>Verbinding testen</strong>. De test leest alleen de modellenlijst; hij stelt geen AI-vraag. Een geslaagde test bevestigt bereikbaarheid en modelbeschikbaarheid, niet de snelheid of kwaliteit van antwoorden.</li></ol>
-        <h4>Lokaal, online en op een ander apparaat</h4>
-        <p><strong>Lokale app:</strong> de browser praat met de lokale KweekKompas-server. Die bereikt Ollama op dezelfde computer, standaard via poort 11434.</p>
-        <p><strong>Online app op dezelfde computer:</strong> uitsluitend bij Lokale AI maakt de browser rechtstreeks verbinding met <code>http://127.0.0.1:11434</code>. Modellen controleren en beide AI-hulpen gebruiken die verbinding; Ollama-vragen gaan dan niet via Netlify. Netlify zelf bereikt jouw localhost niet. Er is geen automatische omschakeling naar Gemini bij een fout.</p>
-        <p><strong>Telefoon of ander apparaat:</strong> 127.0.0.1 verwijst naar het apparaat waarop de browser draait. Een telefoon bereikt hiermee dus niet Ollama op je pc. Gebruik voor deze koppeling de browser op dezelfde computer. Zet Ollama niet publiek of op alle netwerkinterfaces open; laat het standaardadres 127.0.0.1 behouden.</p>
-        <h4>Windows: de online site toestaan</h4>
-        <ol><li>Sluit Ollama volledig af via het systeemvak → Quit/Afsluiten. Bij <code>ollama serve</code> in een terminal: beëindig die server met Ctrl+C. Controleer zo nodig in Taakbeheer dat de Ollama-server is gestopt.</li>
-        <li>Open Start, zoek <strong>Omgevingsvariabelen voor uw account bewerken</strong> en open de gebruikersvariabelen. Bewerk of maak <code>OLLAMA_ORIGINS</code>.</li>
-        <li>Voeg exact <code>https://kweekkompas.netlify.app</code> toe, zonder afsluitende slash. Behoud andere expliciet toegestane origins als kommagescheiden waarden. Verwijder wildcardwaarden zoals <code>*</code>; gebruik geen wildcard. Als er nog geen expliciete origins zijn, is de volledige waarde alleen de onderstaande origin.
-        <div class="ollama-command"><input aria-label="Exacte toegestane KweekKompas-origin" readonly value="https://kweekkompas.netlify.app"><button type="button" class="settings-secondary-button" data-ollama-copy>Kopieer origin</button><span class="ollama-copy-status" role="status"></span></div></li>
-        <li>Bevestig alle vensters met OK. Start Ollama opnieuw via Start. Alleen een tabblad herladen is onvoldoende: de server leest deze instelling bij het starten. Voor een terminalserver: open een nieuwe PowerShell, zet <code>$env:OLLAMA_ORIGINS = [Environment]::GetEnvironmentVariable('OLLAMA_ORIGINS','User')</code> en start <code>ollama serve</code>.</li>
-        <li>Herlaad KweekKompas en klik op Verbinding testen. Vraagt Chrome/Edge om lokale-netwerktoegang, sta dit alleen voor deze site toe. Bij eerder weigeren: open de site-instellingen via het pictogram naast het adres, controleer lokale-netwerktoegang en test opnieuw.</li></ol>
-        <h4>Als het niet werkt</h4>
-        <ul><li><strong>Server niet bereikbaar:</strong> start Ollama op dezelfde computer en test opnieuw. Alleen voor de lokaal gestarte app moet ook de KweekKompas-server draaien; een afwijkend adres staat daar in de backend. De online browserroute gebruikt altijd 127.0.0.1:11434. Een fetch-fout bewijst niet afzonderlijk dat de server gestopt is.</li>
-        <li><strong>Model ontbreekt:</strong> download het gekozen model, of kies de exacte naam uit <code>ollama list</code>. Het standaardcommando downloadt alleen <code>llama3:latest</code>; een ander opgeslagen model blijft je eigen keuze.</li>
-        <li><strong>Browserrechten:</strong> de online verbinding kan toestemming voor lokale-netwerktoegang vereisen. Een geweigerde toestemming wordt waar mogelijk apart gemeld; controleer de site-instellingen. De lokale backendroute heeft deze directe browsertoegang niet nodig.</li>
-        <li><strong>CORS of HTTPS naar loopback:</strong> loopback-HTTP kan vanuit HTTPS werken, maar browserbeleid, versie of bedrijfsbeheer kan toegang blokkeren. De browserconsole toont soms de concrete CORS-, lokale-netwerk- of mixed-contentmelding. Een algemene fetch-fout maakt CORS en een gestopte server niet afzonderlijk zichtbaar. Controleer de exacte origin en herstart Ollama; schakel browserbeveiliging niet uit. Als jouw browser dit aantoonbaar blokkeert, blijft de lokaal gestarte app bruikbaar.</li></ul>
-        <figure><img src="assets/help/local-ai-settings.png" alt="Voorbeeld van Lokale AI-instellingen met provider Lokale AI (Ollama), model llama3:latest, downloadlink, kopieercommando, verbindingstest en installatiehulp; zonder persoonlijke gegevens." width="366" loading="lazy"><figcaption>Actuele instellingen met neutrale testgegevens. De getoonde verbinding is een voorbeeld.</figcaption></figure>
-        <p class="service-note">Meer uitleg: <a href="https://docs.ollama.com/api/tags" target="_blank" rel="noopener noreferrer">modellenlijst</a> en <a href="https://docs.ollama.com/faq" target="_blank" rel="noopener noreferrer">Ollama-installatie en bereikbaarheid</a>.</p>
+        <p>Ollama draait op je eigen computer en gebruikt geen Gemini-tegoed. Gebruik KweekKompas op dezelfde computer en laat Ollama draaien.</p>
+        <ol>
+            <li><a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Download en installeer Ollama</a>.</li>
+            <li>Open PowerShell of Terminal en download het model:${ollamaCommandHTML()}Wacht tot de download klaar is.</li>
+            <li>Ga naar <strong>Instellingen → AI</strong>. Kies <strong>Lokale AI (Ollama)</strong> en <code>llama3:latest</code>. Klik op <strong>AI-keuze opslaan</strong>.</li>
+            <li>Klik op <strong>Verbinding testen</strong>.</li>
+        </ol>
+        <details><summary>Online gebruiken op Windows</summary>
+            <ol>
+                <li>Sluit Ollama af via het systeemvak. Open via Start <strong>Omgevingsvariabelen voor uw account bewerken</strong>.</li>
+                <li>Maak of bewerk de gebruikersvariabele <code>OLLAMA_ORIGINS</code> en voeg dit adres toe. Behoud eventuele andere site-adressen, gescheiden door komma’s; vervang <code>*</code> door het site-adres.
+                    <div class="ollama-command"><input aria-label="KweekKompas-siteadres voor Ollama" readonly value="https://kweekkompas.netlify.app"><button type="button" class="settings-secondary-button" data-ollama-copy>Kopieer adres</button><span class="ollama-copy-status" role="status"></span></div>
+                </li>
+                <li>Klik op OK, start Ollama opnieuw en test de verbinding. Geef toestemming als je browser om lokale-netwerktoegang vraagt.</li>
+            </ol>
+        </details>
+        <details><summary>Verbinding lukt niet?</summary>
+            <ul>
+                <li><strong>Niet bereikbaar:</strong> open Ollama via Start, of gebruik <code>ollama serve</code> in de terminal als het nog niet draait.</li>
+                <li><strong>Model ontbreekt:</strong> controleer de modelnaam met <code>ollama list</code> of download het model met <code>ollama pull modelnaam</code>.</li>
+                <li><strong>Online geblokkeerd:</strong> controleer de Windows-instelling hierboven en lokale-netwerktoegang in je browser. Je kunt ook de lokale app gebruiken via <code>npm start</code>.</li>
+            </ul>
+            <p>Vanaf je telefoon werkt deze verbinding met Ollama op je pc niet.</p>
+            <a href="https://docs.ollama.com/faq" target="_blank" rel="noopener noreferrer">Meer hulp bij Ollama</a>
+        </details>
     </details>`;
     function openLocalHelp() {
         window.openSettingsSection?.('faq');
@@ -141,31 +144,42 @@
     }
     const settingsHTML = () => `
         <section class="settings-page-section" id="settings-section-ai" aria-labelledby="settings-ai-title" tabindex="-1">
-            <div class="settings-section-heading"><div><p class="settings-section-eyebrow">AI</p><h3 id="settings-ai-title">Provider en model</h3><p>Deze keuze geldt voor de tuinassistent en de zadenhulp. Vragen en meegestuurde tuingegevens worden door de gekozen provider verwerkt.</p></div></div>
+            <div class="settings-section-heading"><div><p class="settings-section-eyebrow">AI</p><h3 id="settings-ai-title">Provider en model</h3></div></div>
             <form id="ai-settings-form" class="service-form">
                 <div class="settings-form-grid">
-                    <label class="settings-field"><span>Provider</span><select id="ai-provider"><option value="gemini">Gemini</option><option value="ollama">Lokale AI (Ollama)</option><option value="openai-compatible" hidden disabled>Eigen API</option><option value="" hidden disabled>Kies een beschikbare provider</option></select></label>
-                    <label class="settings-field" id="ai-standard-model"><span>Model</span><select id="ai-gemini-model" aria-describedby="ai-provider-status" required></select><input id="ai-model" list="ai-model-options" maxlength="160" placeholder="Modelnaam" hidden disabled><datalist id="ai-model-options"></datalist></label>
+                    <label class="settings-field"><span>Provider</span><select id="ai-provider"><option value="gemini">Gemini</option><option value="ollama">Lokale AI (Ollama)</option><option value="chatgpt" hidden disabled>ChatGPT</option><option value="openai-compatible" hidden disabled>Eigen API</option><option value="" hidden disabled>Kies een beschikbare provider</option></select></label>
+                    <label class="settings-field" id="ai-standard-model"><span>Model</span><select id="ai-gemini-model" aria-describedby="ai-provider-status" required></select><select id="ai-chatgpt-model" aria-describedby="chatgpt-status" hidden disabled></select><input id="ai-model" list="ai-model-options" maxlength="160" placeholder="Modelnaam" hidden disabled><datalist id="ai-model-options"></datalist></label>
+                </div>
+                <div id="chatgpt-setup" hidden>
+                    <div id="chatgpt-entry" class="service-actions"><button id="chatgpt-login" class="settings-secondary-button" type="button">Doorgaan met ChatGPT</button></div>
+                    <details id="chatgpt-management" hidden><summary>Account</summary>
+                    <p id="chatgpt-account" class="service-note"></p>
+                    <label id="chatgpt-accounts-field" class="settings-field" hidden><span>ChatGPT-account</span><select id="chatgpt-accounts"></select></label>
+                    <div id="chatgpt-management-actions" class="service-actions"><button id="chatgpt-other-account" class="settings-secondary-button" type="button" hidden>Ander account</button><button id="chatgpt-logout" class="settings-secondary-button" type="button" hidden>Uitloggen</button><button id="chatgpt-reload" class="settings-secondary-button" type="button" hidden>Modellen vernieuwen</button></div>
+                    </details>
+                    <button id="chatgpt-cancel" class="settings-secondary-button" type="button" hidden>Annuleren</button>
+                    <p id="chatgpt-status" class="service-status" role="status" aria-live="polite"></p>
+                    <p id="chatgpt-welcome" hidden>Je gebruikt je ChatGPT-abonnement voor KweekKompas. <button id="chatgpt-acknowledge" type="button" class="settings-secondary-button">Begrepen</button></p>
                 </div>
                 <details id="custom-api-setup" hidden><summary>Geavanceerd</summary>
-                    <p class="service-note">Alleen lokaal. De sleutel blijft bij de lokale backend. Gebruik het basisadres van de OpenAI-compatibele API, bijvoorbeeld met /v1; de backend voegt /chat/completions toe.</p>
                     <label class="settings-field"><span>API-adres</span><input id="custom-api-address" type="url" maxlength="2048" placeholder="https://dienst.example/v1" autocomplete="off"></label>
                     <label class="settings-field"><span>Model</span><input id="custom-api-model" maxlength="160" autocomplete="off"></label>
                     <label class="settings-field"><span>API-sleutel</span><input id="custom-api-key" type="password" maxlength="8192" autocomplete="off" spellcheck="false" placeholder="Nieuwe sleutel (optioneel)"></label>
                     <p id="custom-api-key-status" class="service-note"></p>
-                    <p class="service-note">Een leeg sleutelveld behoudt de opgeslagen sleutel bij hetzelfde adres. Bij een ander adres moet je de sleutel opnieuw invoeren. Testen gebruikt de opgeslagen instellingen en kan kosten maken.</p>
                     <div class="ollama-actions"><button id="custom-api-save" class="settings-primary-button" type="button">Opslaan</button><button id="custom-api-delete" class="settings-secondary-button" type="button">Sleutel verwijderen</button><button id="custom-api-test" class="settings-secondary-button" type="button">Verbinding testen</button></div>
                     <p id="custom-api-status" class="service-status" role="status" aria-live="polite"></p>
                 </details>
-                <div id="ollama-setup" hidden><p>Gebruik AI op je eigen computer, zonder Gemini-tegoed te verbruiken. Installeer Ollama en laat het draaien.</p>
+                <div id="ollama-setup" hidden>
                 <p><a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Download Ollama</a></p>${ollamaCommandHTML()}
                 <div class="ollama-actions"><button id="ollama-test" class="settings-secondary-button" type="button">Verbinding testen</button><button class="ollama-help-link" type="button" data-ollama-help>Lees de installatiehulp</button></div>
-                <p id="ollama-test-status" class="service-status" role="status" aria-live="polite"></p><p id="ollama-route-note" class="service-note"></p></div>
-                <p id="ai-provider-status" class="service-status" role="status">Backendconfiguratie laden…</p>
-                <p class="service-note">Gemini en Eigen API gebruiken de backend. Online Lokale AI gebruikt rechtstreeks Ollama op deze computer; de lokaal gestarte app blijft de backend gebruiken.</p>
+                <p id="ollama-test-status" class="service-status" role="status" aria-live="polite"></p></div>
+                <p id="ai-provider-status" class="service-status" role="status"></p>
                 <button class="settings-primary-button" type="submit">AI-keuze opslaan</button>
                 <p id="ai-save-status" class="service-status" role="status"></p>
+                <p id="chatgpt-usage" class="service-note" hidden><a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">ChatGPT-abonnement beheren</a></p>
             </form>
+            <label class="ai-profile-consent"><input id="ai-profile-consent" type="checkbox"><span>Mijn tuinprofiel gebruiken voor AI-advies</span></label>
+            <p class="service-note">Stuurt klimaat, licht, tuinplek en ervaring mee bij AI-vragen. Naam en foto gaan niet mee. Deze keuze geldt alleen op dit apparaat.</p>
         </section>
         <section class="settings-page-section compact-account" id="settings-section-cloud" aria-labelledby="settings-cloud-title" tabindex="-1">
 <h3 id="settings-cloud-title">Account & synchronisatie</h3><p id="cloud-account-name">Je werkt lokaal</p>
@@ -176,7 +190,7 @@
 <div id="cloud-auto-choices" class="service-actions" hidden><button class="settings-secondary-button" type="button" data-auto-choice="local">Lokale tuin gebruiken</button><button class="settings-secondary-button" id="cloud-auto-choose-remote" type="button" data-auto-choice="cloud">Cloudtuin gebruiken</button></div>
 <div id="cloud-actions" class="service-actions" hidden><button class="settings-primary-button" type="button" data-cloud-action="upload">Uploaden</button><button class="settings-secondary-button" type="button" data-cloud-action="download">Cloudkopie terughalen</button><button class="settings-secondary-button" type="button" data-cloud-action="logout">Uitloggen</button></div>
 <div id="cloud-conflict-actions" class="service-actions" hidden><button class="settings-secondary-button" type="button" data-cloud-action="download">Cloudkopie kiezen</button><button class="settings-secondary-button" type="button" data-cloud-action="replace">Lokale tuin naar cloud sturen</button></div>
-<p id="cloud-last-sync" class="service-note"></p><p id="cloud-local-status" class="service-note"></p><details id="cloud-details"><summary>Details</summary><p id="cloud-error-detail" class="service-note"></p><p id="cloud-login-status" class="service-note"></p><p id="cloud-copy-size" class="service-note"></p><p class="service-note">Foto’s worden zo nodig verkleind; lokale originelen blijven intact. Downloadbare back-ups bevatten de foto’s.</p><button class="settings-secondary-button" type="button" data-cloud-action="status">Cloudstatus vernieuwen</button></details>
+<p id="cloud-last-sync" class="service-note"></p><p id="cloud-local-status" class="service-note"></p><div hidden><p id="cloud-error-detail"></p><p id="cloud-login-status"></p><p id="cloud-copy-size"></p></div>
 </section>`;
     function say(id, message, panel = document) {
         const el = panel.querySelector('#' + id);
@@ -222,13 +236,13 @@
         const accountId = user?.id;
         const saved = lastSync(accountId);
         say('cloud-login-status', user ? `Ingelogd als ${user.email}.` : 'Niet ingelogd · lokaal gebruik zonder account.', panel);
-        say('cloud-last-sync', !user ? 'Synchronisatie is niet actief: er is geen account ingelogd.' : saved?.completedAt ? `Laatste geslaagde synchronisatie op dit apparaat: ${new Date(saved.completedAt).toLocaleString('nl-NL')} (${saved.direction === 'upload' ? 'geüpload' : 'teruggehaald'}, versie ${saved.revision}).` : 'Nog geen geslaagde synchronisatie op dit apparaat voor dit account.', panel);
+        say('cloud-last-sync', user && saved?.completedAt ? `Laatste synchronisatie: ${new Date(saved.completedAt).toLocaleString('nl-NL')}` : '', panel);
         try {
             const payload = await window.KweekLocalData.captureCloud();
             const currentHash = user ? await fingerprint(payload) : null;
             if (requestId !== localStatusRequest || accountId !== user?.id) return;
             localSame = !!saved?.hash && currentHash === saved.hash;
-            say('cloud-local-status', !user ? 'Je tuin staat lokaal op dit apparaat. Log in om handmatig te synchroniseren.' : !saved?.hash ? 'Lokale tuin nog niet gesynchroniseerd voor dit account.' : currentHash === saved.hash ? 'Geen lokale wijzigingen sinds de laatste geslaagde synchronisatie.' : 'Lokale wijzigingen: je tuin verschilt van de laatst gesynchroniseerde versie.', panel);
+            say('cloud-local-status', '', panel);
             const status = panel.querySelector('#cloud-status');
             if (status && !busy) status.textContent = hasConflict() ? 'Conflict — kies een versie' : user && saved?.hash === currentHash ? 'Gesynchroniseerd' : 'Opgeslagen op dit apparaat';
             renderAutoUI(panel);
@@ -252,11 +266,10 @@
         control.closest('label').hidden = mode !== 'normal';
         panel.querySelector('#cloud-auto-choices').hidden = mode === 'normal' || manualConflict;
         panel.querySelector('#cloud-conflict-actions').hidden = !manualConflict;
-        panel.querySelector('#cloud-details').hidden = mode !== 'normal';
         panel.querySelector('#cloud-auto-choose-remote').hidden = !(cloud ? !!cloud.payload : state?.remoteExists ?? autoRemote);
         panel.querySelectorAll('[data-auto-choice]').forEach(button => { button.disabled = !!autoReport?.busy; });
         panel.querySelector('#cloud-auto-choose-remote').disabled = !autoRemote || !!autoReport?.busy;
-        const notes = { manual: 'Handmatige actie uitgevoerd. Zet de schakelaar opnieuw aan om automatisch verder te gaan.', choose: 'Kies het uitgangspunt. Er wordt nog niets vervangen.', conflict: 'Beide tuinen zijn gewijzigd. Kies bewust welke je wilt behouden.', example: 'Voorbeelden geladen. Automatisch synchroniseren is gepauzeerd; kies bewust hoe verder.', import: 'Gegevens teruggezet. Automatisch synchroniseren is gepauzeerd; kies bewust hoe verder.', account: 'Account gewijzigd of uitgelogd. Zet de schakelaar opnieuw aan om een uitgangspunt te kiezen.', error: 'Automatisch synchroniseren is gepauzeerd. Zet de schakelaar opnieuw aan na het oplossen van de fout.', offline: 'Pogingen tijdelijk gestopt. Bij terugkeer van de verbinding wordt opnieuw geprobeerd.' };
+        const notes = { manual: 'Handmatige actie uitgevoerd. Zet de schakelaar opnieuw aan om automatisch verder te gaan.', choose: 'Kies het uitgangspunt. Er wordt nog niets vervangen.', conflict: 'Beide tuinen zijn gewijzigd. Kies bewust welke je wilt behouden.', example: 'Voorbeelden geladen. Automatisch synchroniseren is gepauzeerd; kies bewust hoe verder.', import: 'De lokale tuin is gewijzigd. Automatisch synchroniseren is gepauzeerd; kies welke tuin je wilt gebruiken.', account: 'Account gewijzigd of uitgelogd. Zet de schakelaar opnieuw aan om een uitgangspunt te kiezen.', error: 'Automatisch synchroniseren is gepauzeerd. Zet de schakelaar opnieuw aan na het oplossen van de fout.', offline: 'Pogingen tijdelijk gestopt. Bij terugkeer van de verbinding wordt opnieuw geprobeerd.' };
         say('cloud-auto-note', ((state?.enabled || autoChoice || autoReport?.fatal) ? notes[state?.paused] : '') || (!navigator.locks && user ? 'Deze browser ondersteunt geen veilige wachtrijvergrendeling. Gebruik handmatige synchronisatie.' : ''), panel);
         if (autoReport?.message && (state?.enabled || autoChoice || autoReport.fatal) && state?.paused !== 'manual') say('cloud-error-detail', autoReport.message, panel);
         const note = panel.querySelector('#cloud-auto-note');
@@ -326,55 +339,28 @@
     window.addEventListener('pagehide', () => auto.cancel());
     window.addEventListener('pageshow', () => { updateLocalStatus(); auto.online(); });
     setInterval(() => { if (document.visibilityState === 'visible') auto.tick(); }, 60000);
-    function loadGeminiModels() {
-        // One attempt per page session, including errors. Opening settings or
-        // switching providers must not retry a rejected credential.
-        geminiModelsPromise ||= request('ai-models').then(data => {
-            if (!Array.isArray(data.models)) throw new Error();
-            geminiCatalog = { ...data, state: data.models.length ? 'ready' : 'empty' };
-        }).catch(() => {
-            geminiCatalog = { models: [], state: 'error' };
-        });
-        return geminiModelsPromise;
-    }
-    function renderGeminiModel(panel, current) {
+    function renderGeminiModel(panel) {
         const select = panel.querySelector('#ai-gemini-model');
-        const catalog = geminiCatalog;
-        const models = catalog?.models || [];
-        const saved = current.replace(/^models\//, '');
-        const savedAvailable = models.some(item => item.id === saved);
         select.replaceChildren();
-        if (!models.length || (saved && !savedAvailable)) {
-            const placeholder = document.createElement('option');
-            placeholder.value = '';
-            placeholder.disabled = true;
-            placeholder.textContent = !catalog ? 'Modellen controleren?' : models.length ? 'Kies een model' : 'Geen getest model';
-            select.append(placeholder);
-        }
-        for (const item of models) {
+        for (const [value, label] of [[GEMINI_MODEL, '3.5 Flash-Lite'], [GEMINI_FLASH_MODEL, '3.8 Flash']]) {
             const option = document.createElement('option');
-            option.value = item.id;
-            option.textContent = item.label;
+            option.value = value;
+            option.textContent = label;
             select.append(option);
         }
-        select.value = savedAvailable ? saved : saved ? '' : catalog?.defaultModel || models[0]?.id || '';
-        select.disabled = !models.length;
-        const submit = panel.querySelector('#ai-settings-form button[type="submit"]');
-        const checkSelection = () => { submit.disabled = !select.value; };
-        select.onchange = () => { checkSelection(); say('ai-save-status', '', panel); };
-        checkSelection();
-        say('ai-provider-status', !catalog ? 'Beschikbare Gemini-modellen controleren?'
-            : catalog.state === 'error' ? 'Modellenlijst niet beschikbaar. Je opgeslagen keuze blijft behouden; Ollama blijft bruikbaar.'
-            : !models.length ? 'Geen kandidaat gaf een geldig antwoord met de ingestelde sleutel.'
-            : saved && !savedAvailable ? 'Je opgeslagen model staat niet in de geteste selectie. Kies een getest model; je keuze wordt pas bij opslaan gewijzigd.'
-            : catalog.state === 'configured' ? 'Ingestelde Gemini-modellen. Beschikbaarheid wordt bij een eigen AI-vraag gecontroleerd; deze lijst voert geen testgeneratie uit.'
-            : 'Deze modellen zijn met een kleine generateContent-aanvraag gecontroleerd.', panel);
+        select.value = prefs.provider === 'gemini' ? prefs.model : GEMINI_MODEL;
+        select.disabled = panel.querySelector('#ai-provider').value !== 'gemini';
+        say('ai-provider-status', '', panel);
     }
     async function updateModel(panel, reset = false) {
         const providerInput = panel.querySelector('#ai-provider');
-        const localCustom = Boolean(config?.providers?.['openai-compatible']?.localAvailable);
+        const localCustom = false; // Eigen API voorlopig uit de providerkeuze.
         const customOption = providerInput.querySelector('[value="openai-compatible"]');
         customOption.hidden = customOption.disabled = !localCustom;
+        const localGPT = Boolean(config?.providers?.chatgpt?.localAvailable);
+        const gptOption = providerInput.querySelector('[value="chatgpt"]');
+        gptOption.hidden = gptOption.disabled = !localGPT;
+        if (providerInput.value === 'chatgpt' && !localGPT) providerInput.value = '';
         if (providerInput.value === 'openai-compatible' && !localCustom) providerInput.value = '';
         const provider = providerInput.value;
         const isCustom = provider === 'openai-compatible' && localCustom;
@@ -384,35 +370,34 @@
         const model = panel.querySelector('#ai-model');
         const select = panel.querySelector('#ai-gemini-model');
         const isGemini = provider === 'gemini';
+        const isGPT = provider === 'chatgpt';
+        panel.querySelector('#chatgpt-setup').hidden = !isGPT;
+        panel.querySelector('#chatgpt-usage').hidden = !isGPT || !info?.configured;
+        const gptModel = panel.querySelector('#ai-chatgpt-model');
+        gptModel.hidden = !isGPT; gptModel.disabled = !isGPT; gptModel.required = isGPT;
         panel.querySelector('#ollama-setup').hidden = provider !== 'ollama';
         say('ollama-test-status', '', panel);
         const directOllama = window.KweekBrowserOllama?.direct;
-        say('ollama-route-note', directOllama ? 'Online verbindt deze browser rechtstreeks met Ollama op deze computer via 127.0.0.1:11434. Dit bereikt niet automatisch je pc vanaf een telefoon.' : 'Deze lokale app gebruikt de bestaande KweekKompas-backendroute naar Ollama.', panel);
-        model.hidden = isGemini || isCustom; model.disabled = isGemini || isCustom || !provider; model.required = !isGemini && !isCustom && Boolean(provider);
+        model.hidden = isGemini || isCustom || isGPT; model.disabled = isGemini || isCustom || isGPT || !provider; model.required = !isGemini && !isCustom && !isGPT && Boolean(provider);
         select.hidden = !isGemini; select.required = isGemini; select.disabled = !isGemini;
         panel.querySelector('#ai-settings-form button[type="submit"]').disabled = false;
         panel.querySelector('#ai-settings-form button[type="submit"]').hidden = isCustom;
         if (!provider) {
             select.hidden = true; select.disabled = true; select.required = false;
             panel.querySelector('#ai-settings-form button[type="submit"]').disabled = true;
-            say('ai-provider-status', 'Eigen API is alleen beschikbaar in de lokale app. Je opgeslagen keuze blijft behouden; kies hier een beschikbare provider.', panel);
+            say('ai-provider-status', 'Deze provider is alleen beschikbaar in de lokale app. Kies hier een beschikbare provider.', panel);
             return;
         }
+        if (isGPT) { say('ai-provider-status', '', panel); loadChatGPT(panel); return; }
         if (isCustom) {
             select.hidden = true; select.disabled = true; select.required = false;
-            say('ai-provider-status', 'Eigen API: instellingen uitsluitend op deze lokale backend.', panel);
+            say('ai-provider-status', '', panel);
             if (reset) loadCustomAPI(panel);
             return;
         }
         const saved = prefs.provider === provider ? prefs.model : '';
         if (isGemini) {
-            const backendModel = info?.model;
-            const current = reset ? saved || backendModel || '' : select.value || saved || backendModel || '';
-            renderGeminiModel(panel, current);
-            await loadGeminiModels();
-            if (select.isConnected && panel.querySelector('#ai-provider').value === 'gemini') {
-                renderGeminiModel(panel, select.value || current);
-            }
+            renderGeminiModel(panel);
             return;
         }
         if (reset) model.value = saved || info?.model || (provider === 'ollama' ? 'llama3:latest' : '');
@@ -422,13 +407,74 @@
             const option = document.createElement('option'); option.value = name; options.append(option);
         }
         say('ai-provider-status', info ? (info.configured ? `${info.label}: backend ingesteld. ${info.available === false ? 'De Ollama-server is momenteel niet bereikbaar.' : 'Beschikbaarheid van het model wordt bij de aanvraag gecontroleerd.'}` : `${info.label}: backendconfiguratie ontbreekt.`) : 'Backend niet beschikbaar.', panel);
-        if (provider === 'ollama') say('ai-provider-status', directOllama ? window.KweekBrowserOllama.status().message : 'Gebruik Verbinding testen om bereikbaarheid en het gekozen model te controleren, zonder een AI-vraag.', panel);
+        if (provider === 'ollama') say('ai-provider-status', '', panel);
+    }
+    function renderChatGPT(panel, value) {
+        const select = panel.querySelector('#ai-chatgpt-model');
+        const current = select.value || (prefs.provider === 'chatgpt' ? prefs.model : '');
+        const ready = value.connected && !value.pending;
+        panel.querySelector('#chatgpt-account').textContent = value.email || '';
+        panel.querySelector('#chatgpt-account').hidden = !value.email;
+        panel.querySelector('#chatgpt-management').hidden = !value.connected && !value.accounts?.length;
+        panel.querySelector(value.connected ? '#chatgpt-management-actions' : '#chatgpt-entry').append(panel.querySelector('#chatgpt-login'));
+        panel.querySelector('#chatgpt-entry').hidden = value.connected;
+        panel.querySelector('#chatgpt-login').textContent = value.connected ? 'Opnieuw inloggen' : 'Doorgaan met ChatGPT';
+        panel.querySelector('#chatgpt-login').disabled = value.pending;
+        panel.querySelector('#chatgpt-other-account').hidden = !value.accounts?.length;
+        panel.querySelector('#chatgpt-other-account').disabled = value.pending;
+        panel.querySelector('#chatgpt-logout').hidden = !value.connected;
+        panel.querySelector('#chatgpt-cancel').hidden = !value.pending;
+        panel.querySelector('#chatgpt-reload').hidden = !ready;
+        panel.querySelector('#chatgpt-usage').hidden = !value.connected;
+        panel.querySelector('#chatgpt-welcome').hidden = !value.welcome;
+        const accounts = panel.querySelector('#chatgpt-accounts');
+        const selected = accounts.value || value.selected;
+        accounts.replaceChildren();
+        for (const account of value.accounts || []) { const option = document.createElement('option'); option.value = account.id; option.textContent = account.label; accounts.append(option); }
+        if ([...accounts.options].some(option => option.value === selected)) accounts.value = selected;
+        panel.querySelector('#chatgpt-accounts-field').hidden = accounts.options.length < 2;
+        if (value.models || !ready) {
+            select.replaceChildren();
+            for (const item of value.models || []) { const option = document.createElement('option'); option.value = item.id; option.textContent = item.label; select.append(option); }
+            if ([...select.options].some(option => option.value === current)) select.value = current;
+            else if (current && select.options.length) { const option = document.createElement('option'); option.value = ''; option.textContent = 'Kies een beschikbaar model'; option.disabled = true; select.prepend(option); select.value = ''; }
+        }
+        select.disabled = !ready || !select.options.length;
+        panel.querySelector('#ai-settings-form button[type="submit"]').disabled = !ready || !select.value;
+        say('chatgpt-status', value.pending ? 'Rond de login af in het geopende venster.' : value.connected && value.message === 'Verbonden met ChatGPT.' ? '' : value.message || '', panel);
+        if (config?.providers?.chatgpt) config.providers.chatgpt.configured = value.connected;
+    }
+    async function loadChatGPT(panel) {
+        const version = panel._chatgptVersion = (panel._chatgptVersion || 0) + 1;
+        const valid = () => panel.isConnected && panel._chatgptVersion === version && panel.querySelector('#ai-provider').value === 'chatgpt';
+        try {
+            const value = await request('chatgpt', { action: 'status' });
+            if (!valid()) return;
+            renderChatGPT(panel, value);
+            if (value.pending) { setTimeout(() => { if (valid()) loadChatGPT(panel); }, 1500); return; }
+            if (value.connected) {
+                const catalog = await request('chatgpt', { action: 'models' });
+                if (valid()) { renderChatGPT(panel, catalog); if (!catalog.models.length) say('chatgpt-status', 'Er zijn geen ChatGPT-modellen beschikbaar voor dit account.', panel); }
+            }
+        } catch (error) { if (valid()) { panel.querySelector('#ai-chatgpt-model').disabled = true; panel.querySelector('#ai-settings-form button[type="submit"]').disabled = true; say('chatgpt-status', error.message, panel); } }
+    }
+    async function chatGPTAction(panel, action, newAccount = false) {
+        ++panel._chatgptVersion;
+        let popup;
+        if (action === 'login') { popup = window.open('about:blank', '_blank', 'popup,width=620,height=760'); if (!popup) { say('chatgpt-status', 'Sta het inlogvenster toe en probeer opnieuw.', panel); return; } popup.opener = null; }
+        panel.querySelectorAll('#chatgpt-setup button').forEach(button => { button.disabled = true; });
+        try {
+            const value = await request('chatgpt', { action, ...(newAccount ? { newAccount: true } : action === 'login' ? { accountId: panel.querySelector('#chatgpt-accounts').value || undefined } : {}) });
+            if (popup && value.authorizationURL) popup.location.href = value.authorizationURL;
+            if (panel.isConnected && panel.querySelector('#ai-provider').value === 'chatgpt') { renderChatGPT(panel, value); loadChatGPT(panel); }
+        } catch (error) { popup?.close(); if (panel.isConnected) say('chatgpt-status', error.message, panel); }
+        finally { panel.querySelectorAll('#chatgpt-setup button').forEach(button => { button.disabled = false; }); }
     }
     function showCustomMetadata(panel, value) {
         panel.querySelector('#custom-api-address').value = value.address;
         panel.querySelector('#custom-api-model').value = value.model;
         panel.querySelector('#custom-api-key').value = '';
-        say('custom-api-key-status', value.keyConfigured ? 'Sleutel ingesteld (wordt niet aan de browser teruggegeven).' : 'Geen sleutel ingesteld.', panel);
+        say('custom-api-key-status', value.keyConfigured ? 'Sleutel ingesteld.' : 'Geen sleutel ingesteld.', panel);
     }
     async function loadCustomAPI(panel) {
         try {
@@ -496,7 +542,6 @@
         say('cloud-account-name', user ? user.email : 'Je werkt lokaal', panel);
         panel.querySelector('#cloud-open-account').hidden = Boolean(user) && !recovery;
         panel.querySelector('#cloud-actions').hidden = !user || recovery;
-        panel.querySelector('#cloud-details').hidden = !user || recovery;
         say('cloud-status', !configured ? 'Accountservice niet beschikbaar. Je tuin blijft lokaal bewaard.' : recovery ? 'Stel je nieuwe wachtwoord in via de accountpopup.' : user ? 'Cloudstatus laden…' : '', panel);
         panel.querySelector('#cloud-conflict-actions').hidden = !hasConflict() || !user || recovery;
         updateLocalStatus(panel); renderAutoUI(panel);
@@ -772,21 +817,34 @@
         readPreferences();
         const providerInput = panel.querySelector('#ai-provider');
         if (!providerInput) return;
+        const profileConsent = panel.querySelector('#ai-profile-consent');
+        profileConsent.checked = localStorage.getItem(PROFILE_AI_CONSENT_KEY) === 'true';
+        profileConsent.onchange = () => {
+            try { localStorage.setItem(PROFILE_AI_CONSENT_KEY, String(profileConsent.checked)); }
+            catch { profileConsent.checked = false; say('ai-save-status', 'Deze keuze kon niet worden opgeslagen.', panel); }
+        };
         panel.querySelector('#ollama-test').onclick = () => testOllama(panel);
+        panel.querySelector('#chatgpt-login').onclick = () => chatGPTAction(panel, 'login');
+        panel.querySelector('#chatgpt-other-account').onclick = () => chatGPTAction(panel, 'login', true);
+        panel.querySelector('#chatgpt-logout').onclick = () => chatGPTAction(panel, 'logout');
+        panel.querySelector('#chatgpt-cancel').onclick = () => chatGPTAction(panel, 'cancel');
+        panel.querySelector('#chatgpt-reload').onclick = () => loadChatGPT(panel);
+        panel.querySelector('#chatgpt-acknowledge').onclick = () => chatGPTAction(panel, 'acknowledge');
+        panel.querySelector('#ai-chatgpt-model').onchange = () => { panel.querySelector('#ai-settings-form button[type="submit"]').disabled = !panel.querySelector('#ai-chatgpt-model').value; };
         panel.querySelector('#custom-api-save').onclick = () => customAPIAction(panel, 'save');
         panel.querySelector('#custom-api-delete').onclick = () => customAPIAction(panel, 'delete-key');
         panel.querySelector('#custom-api-test').onclick = () => customAPIAction(panel, 'test');
         providerInput.value = prefs.provider;
         panel.querySelector('#ai-model').value = prefs.model || '';
         if (config || providerInput.value !== 'gemini') updateModel(panel, true);
-        else renderGeminiModel(panel, prefs.model || '');
+        else renderGeminiModel(panel);
         providerInput.onchange = () => updateModel(panel, true);
         panel.querySelector('#ai-settings-form').onsubmit = event => {
             event.preventDefault();
             const provider = providerInput.value;
             if (provider === 'openai-compatible') { customAPIAction(panel, 'save'); return; }
             if (!providers.includes(provider)) return;
-            const model = panel.querySelector(provider === 'gemini' ? '#ai-gemini-model' : '#ai-model').value.trim();
+            const model = panel.querySelector(provider === 'gemini' ? '#ai-gemini-model' : provider === 'chatgpt' ? '#ai-chatgpt-model' : '#ai-model').value.trim();
             if (provider === 'gemini' && !panel.querySelector('#ai-gemini-model').selectedOptions.length) return;
             if (!/^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,159}$/.test(model)) return say('ai-save-status', 'Vul een geldige modelnaam in.', panel);
             try {
@@ -857,12 +915,24 @@
     });
     async function requestAI(route, body) {
         const choice = readPreferences();
+        const useProfile = localStorage.getItem(PROFILE_AI_CONSENT_KEY) === 'true' &&
+            (route === 'seed-info' || route === 'tuinassistent' || route === 'gemini-ai' && ['fill_seed_info', 'garden_assistant'].includes(body?.mode));
+        const profile = useProfile ? window.userProfile : null;
+        const shortText = value => typeof value === 'string' ? value.trim().slice(0, 120) : '';
+        const gardenContext = profile ? {
+            climate: shortText(profile.climate),
+            light: shortText(profile.light),
+            gardenType: shortText(profile.gardenType),
+            gardenPlaces: Array.isArray(profile.gardenPlaces) ? profile.gardenPlaces.filter(value => typeof value === 'string').slice(0, 5).map(shortText) : [],
+            experience: shortText(profile.experience)
+        } : null;
+        const aiBody = gardenContext ? { ...body, gardenContext } : body;
         try {
             if (choice.provider === 'ollama' && window.KweekBrowserOllama?.direct) {
-                try { return await window.KweekBrowserOllama.generate(route, body, choice.model || 'llama3:latest'); }
+                try { return await window.KweekBrowserOllama.generate(route, aiBody, choice.model || 'llama3:latest'); }
                 finally { updateDashboardProvider(); }
             }
-            return await request(route, { ...body, ai: choice });
+            return await request(route, { ...aiBody, ai: choice });
         }
         catch (error) {
             if (choice.provider === 'ollama') {

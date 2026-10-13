@@ -1,19 +1,25 @@
-const { env, HttpError } = require('./http');
+const { env, HttpError, readBody } = require('./http');
 const { configured, authenticate } = require('./supabase');
 const { getGeminiModels } = require('./gemini-models');
 const { ollamaBase } = require('./ollama');
 const contract = require('../../../../ai-contract');
-const providers = ['gemini', 'ollama', 'openai-compatible'];
+const providers = ['gemini', 'ollama', 'openai-compatible', 'chatgpt'];
 function providerConfig() {
     const localAPI = env('KWEEK_LOCAL_DEV') === 'true' && globalThis.KweekLocalAPI;
     const custom = localAPI ? localAPI.get() : {};
     return {
         gemini: { label: 'Gemini', configured: Boolean(env('GEMINI_API_KEY')), model: env('GEMINI_MODEL') || '', models: [] },
+        chatgpt: { label: 'ChatGPT', localAvailable: Boolean(env('KWEEK_LOCAL_DEV') === 'true' && globalThis.KweekChatGPT), configured: Boolean(env('KWEEK_LOCAL_DEV') === 'true' && globalThis.KweekChatGPT?.status().connected), model: '', models: [] },
         ollama: { label: 'Lokale AI (Ollama)', configured: Boolean(env('OLLAMA_BASE_URL') || env('KWEEK_LOCAL_DEV') === 'true'), model: env('OLLAMA_MODEL') || 'llama3:latest', models: (env('OLLAMA_MODELS') || '').split(',').filter(Boolean) },
         'openai-compatible': { label: 'Eigen API', localAvailable: Boolean(localAPI), configured: Boolean(custom.address), model: custom.model || '', models: [] }
     };
 }
 async function authorizeAI(event) {
+    // A personal ChatGPT login is independent of the garden's cloud account.
+    if (env('KWEEK_LOCAL_DEV') === 'true' && globalThis.KweekChatGPT && readBody(event).ai?.provider === 'chatgpt') {
+        if (!globalThis.KweekChatGPT.status().connected) throw new HttpError(401, 'Log eerst in met ChatGPT bij Instellingen → AI.');
+        return [];
+    }
     if (configured()) return (await authenticate(event)).cookies;
     if (env('KWEEK_LOCAL_DEV') !== 'true') throw new HttpError(503, 'Configureer Supabase om AI veilig beschikbaar te maken.');
     return [];
@@ -22,6 +28,11 @@ async function callAI(body, system, prompt) {
     const provider = body.ai?.provider || (env('KWEEK_LOCAL_DEV') === 'true' ? 'ollama' : 'gemini');
     if (!providers.includes(provider)) throw new HttpError(400, 'Kies een geldige AI-provider.');
     const config = providerConfig()[provider];
+    if (provider === 'chatgpt') {
+        if (!config.localAvailable) throw new HttpError(503, 'ChatGPT is voorlopig alleen beschikbaar in de lokale app.');
+        try { return contract.parse(await globalThis.KweekChatGPT.generate(body.ai?.model, system, prompt)); }
+        catch (error) { if (error.status) throw new HttpError(error.status, error.message); throw new HttpError(502, 'ChatGPT kon het antwoord niet afronden. Probeer opnieuw.'); }
+    }
     const custom = provider === 'openai-compatible' && globalThis.KweekLocalAPI && env('KWEEK_LOCAL_DEV') === 'true' ? globalThis.KweekLocalAPI.get() : null;
     let model = custom ? custom.model : body.ai?.model || config.model;
     if (provider === 'gemini' && !model) {
