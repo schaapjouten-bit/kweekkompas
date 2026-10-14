@@ -512,7 +512,7 @@ function renderSettingsPanel() {
         });
         applySettingsPanelValues(panel);
         window.KweekServices?.mount(panel);
-        window.refreshExampleCollections?.(panel);
+        window.KweekLocalBackupManager?.render(panel);
         if (content) content.scrollTop = previousScroll;
         updatePanelInteraction(panel, true, { focus: focusSelector ? panel.querySelector(focusSelector) : panel.querySelector('.settings-close-button'), close: window.toggleSettingsPanel_REPAIR_V131 });
     } else {
@@ -1041,7 +1041,6 @@ function getDataStorageHTML() {
 
       <h2 class="modal-title">💾 Data & Opslag</h2>
       <p class="modal-subtitle">Je gegevens worden automatisch op dit apparaat opgeslagen. Een account is niet nodig.</p>
-      <button class="data-button" onclick="document.getElementById('settings-generic-modal')?.remove(); openSettingsSection('storage')">Voorbeeldcollecties bekijken</button>
 
       <div class="data-section">
         <h4>💾 Backup maken</h4>
@@ -1275,26 +1274,36 @@ function getSettingsHTML() {
                 <section class="settings-page-section" id="settings-section-storage" aria-labelledby="settings-storage-title" tabindex="-1">
                     <div class="settings-section-heading"><div><p class="settings-section-eyebrow">Data & opslag</p><h3 id="settings-storage-title">Opgeslagen op dit apparaat</h3></div></div>
 
+                    <div class="settings-local-backup">
+                        <div class="settings-local-backup-copy">
+                            <h4>Automatische back-upmap</h4>
+                            <p>Kies een map. Na elke opgeslagen wijziging werkt KweekKompas daar het JSON-back-upbestand bij.</p>
+                            <p id="local-backup-status" class="settings-local-backup-status" role="status" aria-live="polite">Back-upstatus laden…</p>
+                        </div>
+                        <button id="local-backup-choose" class="settings-secondary-button" type="button" onclick="window.KweekLocalBackupManager?.chooseDirectory()">Kies back-upmap</button>
+                    </div>
+
                     <div class="settings-backup-actions">
                         <button class="settings-primary-button" type="button" onclick="exportData()">Back-up downloaden</button>
                         <button class="settings-secondary-button" type="button" onclick="restoreBackup()">Back-up herstellen</button>
                     </div>
-                    <details class="settings-storage-extra">
-                        <summary>Herstel</summary>
-                        <button class="settings-secondary-button" type="button" data-cloud-action="recover">Veiligheidskopie terugzetten</button>
-                        <p id="cloud-recover-status" role="status" class="service-status"></p>
-                    </details>
-                    <details class="settings-example-collections settings-storage-extra" aria-labelledby="example-collections-title">
-                        <summary id="example-collections-title">Voorbeeldcollecties</summary>
-                        <div id="example-collections-list" class="settings-data-grid" aria-busy="true"></div>
-                        <p id="example-garden-status" role="status" aria-live="polite">Voorbeeldcollecties ophalen…</p>
-                    </details>
                     <div class="settings-reset-action">
                         <button class="settings-danger-button" type="button" onclick="resetApp()">Alles verwijderen</button>
                     </div>
                 </section>
 
-                <section class="settings-page-section settings-faq-section" id="settings-section-faq" aria-labelledby="settings-faq-title" tabindex="-1"><div class="settings-section-heading"><div><p class="settings-section-eyebrow">Hulp</p><h3 id="settings-faq-title">Veelgestelde vragen</h3></div></div><details><summary>Worden mijn gegevens opgeslagen?</summary><p>Ja, automatisch op dit apparaat. Als je inlogt en Automatisch synchroniseren aanzet, wordt ook een cloudkopie bijgehouden.</p></details><details><summary>Kan ik een back-up maken?</summary><p>Ja. Gebruik Back-up downloaden en bewaar het bestand op een veilige plek.</p></details>${window.KweekServices?.localHelpHTML?.() || ''}</section>
+                <section class="settings-page-section settings-faq-section" id="settings-section-faq" aria-labelledby="settings-faq-title" tabindex="-1">
+                    <div class="settings-section-heading"><div><p class="settings-section-eyebrow">Hulp</p><h3 id="settings-faq-title">Veelgestelde vragen</h3></div></div>
+                    <details>
+                        <summary>Wat wordt gedeeld als ik AI gebruik?</summary>
+                        <p>Je vraag gaat naar de gekozen AI-dienst om een antwoord te maken. Je tuinprofiel wordt alleen meegestuurd als je die optie aanzet. Dan gaan alleen klimaat, licht, tuinplek en ervaring mee; je profielnaam en profielfoto niet. Cloudsync staat uit.</p>
+                    </details>
+                    <details>
+                        <summary>Hoe maak en herstel ik een back-up?</summary>
+                        <p>Je tuin wordt in de browser op dit apparaat bewaard. Wis je de websitegegevens van KweekKompas, dan kan die lokale tuin verdwijnen. Kies bij Instellingen → Data & opslag een map voor automatische back-ups, of download daar zelf een JSON-back-up. Mapback-ups zijn afhankelijk van je browser; als map kiezen niet beschikbaar is, kun je de JSON-back-up gebruiken. Het bestand kan plantfoto’s bevatten en daardoor groot zijn. Bij herstellen worden de gegevens vervangen die in het bestand staan; andere gegevens blijven bewaard.</p>
+                    </details>
+                    ${window.KweekServices?.localHelpHTML?.() || ''}
+                </section>
 
                 <section class="settings-page-section" id="settings-section-about" aria-labelledby="settings-about-title" tabindex="-1">
                     <h3 id="settings-about-title" hidden>KweekKompas</h3>
@@ -1324,14 +1333,15 @@ window.toggleLayoutWidth = function(type) {
 }
 
 const tagCategories = {
-    "Groei": ["Voorzaaien", "Direct zaaien", "Klimplant", "Snelle groeier"],
+    "Groei": ["Voorzaaien", "Direct zaaien", "Klimplant", "Snelle groeier", "Zelf uitzaaiend", "Veel ruimte nodig"],
     "Levenscyclus": ["Eenjarig", "Tweejarig", "Vaste plant", "Winterhard"],
-    "Gebruik": ["Eetbaar", "Kruidenplant", "Sierplant", "Snijbloem", "Droogbloem", "Potten", "Border"],
-    "Ecosysteem": ["Bijvriendelijk", "Vlinderplant", "Insectwerend", "Companion plant"],
+    "Gebruik": ["Eetbaar", "Kruidenplant", "Sierplant", "Snijbloem", "Droogbloem", "Potten", "Border", "Geschikt om in te maken", "Geschikt om in te vriezen", "Oogst lang te bewaren"],
+    "Ecosysteem": ["Bijvriendelijk", "Vlinderplant", "Insectwerend", "Companion plant", "Waardplant voor rupsen", "Voedsel voor vogels", "Schuilplek voor dieren"],
+    "Teeltomstandigheden": ["Droogtebestendig", "Warmte nodig"],
     "Moeilijkheid": ["Beginner", "Makkelijk", "Weinig onderhoud", "Gevoelig voor vorst", "Niet verplanten", "Lastige kiemer"]
 };
 
-const tagCategoryOrder = ["Groei", "Levenscyclus", "Gebruik", "Ecosysteem", "Moeilijkheid"];
+const tagCategoryOrder = ["Groei", "Levenscyclus", "Gebruik", "Ecosysteem", "Teeltomstandigheden", "Moeilijkheid"];
 
 const mockData = {
     "tomaat": { type: "Groente", zaaitijd: "Maart - April", oogsttijd: "Juli - Oktober", standplaats: "Kas", water: "Veel", tips: "Heel veel zon en warmte (Kas is perfect). Geef ruim water en dief wekelijks de okselscheuten. Vraagt veel voeding (vruchtgroente-mest).", tags: ["Voorzaaien", "Eenjarig", "Eetbaar", "Potten", "Snelle groeier"] },
@@ -1474,48 +1484,6 @@ function replaceAllSeedsAtomic(seedsToRestore, { check = () => {}, signal } = {}
         } catch (error) {
             cleanup();
             try { transaction?.abort(); } catch (abortError) { /* already closed */ }
-            reject(error);
-        }
-    });
-}
-
-function addExampleSeedsAtomic(examples, collectionId = 'voorbeeldtuin') {
-    globalThis.KweekCloudStatus?.external('example');
-    if (!db) return Promise.reject(new Error('Lokale opslag is niet beschikbaar.'));
-    const nameKey = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('nl-NL');
-    // Read and add in one transaction: simultaneous tabs cannot overwrite user
-    // edits or add the same example twice. Existing records are never written.
-    return new Promise((resolve, reject) => {
-        let transaction;
-        let added = 0;
-        try {
-            transaction = db.transaction(STORE_NAME, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME);
-            const request = store.getAll();
-            request.onsuccess = () => {
-                try {
-                    const existing = request.result;
-                    const ids = new Set(existing.map(plant => String(plant.id)));
-                    const names = new Set(existing.map(plant => nameKey(plant.naam)));
-                    const keys = new Set(existing.map(plant => plant.examplePlantKey).filter(Boolean));
-                    for (const example of examples) {
-                        // Keep the original garden identity for already loaded examples.
-                        const key = collectionId === 'voorbeeldtuin' ? String(example.id) : `${collectionId}:${example.id}`;
-                        const name = nameKey(example.naam);
-                        if (keys.has(key) || names.has(name)) continue;
-                        let id = key;
-                        let suffix = 2;
-                        while (ids.has(id)) id = `${key}-${suffix++}`;
-                        store.add({ ...example, id, examplePlantKey: key });
-                        ids.add(id); names.add(name); keys.add(key); added++;
-                    }
-                } catch { transaction.abort(); }
-            };
-            transaction.oncomplete = () => { globalThis.KweekCloudStatus?.changed('restore-internal'); resolve(added); };
-            transaction.onerror = () => reject(new Error('Voorbeeldtuin opslaan is mislukt. Er is niets toegevoegd.'));
-            transaction.onabort = () => reject(new Error('Voorbeeldtuin opslaan is afgebroken. Er is niets toegevoegd.'));
-        } catch (error) {
-            try { transaction?.abort(); } catch { /* already closed */ }
             reject(error);
         }
     });
@@ -1710,30 +1678,6 @@ function appendHighlightedText(container, value, query) {
         return match;
     });
     if (cursor < text.length) container.appendChild(document.createTextNode(text.slice(cursor)));
-}
-
-function groupUpcomingCalendarReminders(reminderList, todayStr) {
-    const groups = [
-        { label: 'Vandaag', items: [] },
-        { label: 'Binnenkort', items: [] },
-        { label: 'Later', items: [] }
-    ];
-    if (typeof todayStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(todayStr)) return groups;
-
-    const [year, month, day] = todayStr.split('-').map(Number);
-    const today = new Date(year, month - 1, day);
-    if (today.getFullYear() !== year || today.getMonth() !== month - 1 || today.getDate() !== day) return groups;
-    const soonEnd = new Date(year, month - 1, day);
-    soonEnd.setDate(soonEnd.getDate() + 7);
-    const soonEndStr = `${soonEnd.getFullYear()}-${String(soonEnd.getMonth() + 1).padStart(2, '0')}-${String(soonEnd.getDate()).padStart(2, '0')}`;
-    const openReminders = (Array.isArray(reminderList) ? reminderList : [])
-        .filter(reminder => !reminder?.done && typeof reminder?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(reminder.date) && reminder.date >= todayStr)
-        .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
-
-    groups[0].items = openReminders.filter(reminder => reminder.date === todayStr);
-    groups[1].items = openReminders.filter(reminder => reminder.date > todayStr && reminder.date <= soonEndStr);
-    groups[2].items = openReminders.filter(reminder => reminder.date > soonEndStr);
-    return groups;
 }
 
 function buildReminderRow(item, handlers = {}) {
@@ -2144,19 +2088,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 oogsttijd: "Juli - September",
                 status: "Voorraad",
                 tags: ["Zoet", "Productief", "Starter"],
-                image: "assets/starters/tomaat.png",
-                isFavorite: true
-            },
-            {
-                id: Date.now() + 2,
-                naam: "Radijs 'Cherry Belle'",
-                type: "Groente",
-                standplaats: onboardingLight || 'Halfschaduw',
-                zaaitijd: "Maart - Augustus",
-                oogsttijd: "April - September",
-                status: "Voorraad",
-                tags: ["Snel", "Krokant", "Makkelijk"],
-                image: "assets/starters/radijs.png"
+                image: "assets/starters/tomaat.png"
             },
             {
                 id: Date.now() + 3,
@@ -2190,24 +2122,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 status: "Voorraad",
                 tags: ["Aromatisch", "Keuken", "Pot"],
                 image: "assets/starters/basilicum.png"
-            },
-            {
-                id: Date.now() + 6,
-                naam: "Regenboog Snijbiet",
-                type: "Groente",
-                standplaats: "Halfschaduw",
-                zaaitijd: "Maart - Augustus",
-                oogsttijd: "Juni - November",
-                status: "Voorraad",
-                tags: ["Kleurrijk", "Vitamines", "Makkelijk"],
-                image: "assets/starters/snijbiet.png"
             }
         ];
-        // Only add if not already present by name
+        // Add examples only to a genuinely empty garden; restored gardens stay intact.
         const existingSeeds = await getAllSeeds();
-        for (let s of starters) {
-            const exists = existingSeeds.some(es => es.naam.toLowerCase() === s.naam.toLowerCase());
-            if (!exists) {
+        if (existingSeeds.length === 0) {
+            for (const s of starters) {
                 await saveSeed(s);
             }
         }
@@ -2574,22 +2494,39 @@ document.addEventListener('DOMContentLoaded', async () => {
     let newestSeedsFirst = false;
     let activePlantStatus = null;
     let dashboardPlantStatus = 'Groeit';
+    let filteredSeedIdsForDetail = [];
+    let detailNavigationSeedIds = [];
+    let detailNavigationIndex = -1;
     let activeMonthFilter = null; // null or 0-11
     let showAllMissed = false;
 
     // --- LIGHTBOX LOGIC ---
     let currentLightboxIdx = 0;
     let currentLightboxImages = [];
+    let lightboxReturnFocus = null;
+
+    function renderLightboxImage() {
+        const image = currentLightboxImages[currentLightboxIdx];
+        const img = document.getElementById('lightbox-img');
+        if (!image || !img) return;
+        img.src = image.url || image;
+        img.alt = `${image.alt || image.caption || 'Plantfoto'} (${currentLightboxIdx + 1} van ${currentLightboxImages.length})`;
+        const hasMultiple = currentLightboxImages.length > 1;
+        document.getElementById('lightbox-prev')?.classList.toggle('hidden', !hasMultiple);
+        document.getElementById('lightbox-next')?.classList.toggle('hidden', !hasMultiple);
+    }
 
     function openLightbox(images, idx) {
-        currentLightboxImages = images;
-        currentLightboxIdx = idx;
+        currentLightboxImages = Array.isArray(images) ? images.filter(image => image && (image.url || typeof image === 'string')) : [];
+        if (!currentLightboxImages.length) return;
+        currentLightboxIdx = Math.max(0, Math.min(Number(idx) || 0, currentLightboxImages.length - 1));
         const lb = document.getElementById('lightbox');
-        const img = document.getElementById('lightbox-img');
-        if (lb && img && currentLightboxImages[idx]) {
-            img.src = currentLightboxImages[idx].url || currentLightboxImages[idx];
-            lb.classList.remove('hidden');
-        }
+        if (!lb) return;
+        lightboxReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        renderLightboxImage();
+        lb.classList.remove('hidden');
+        document.body.classList.add('lightbox-open');
+        requestAnimationFrame(() => document.getElementById('lightbox-close')?.focus({ preventScroll: true }));
     }
     window.openLightbox = openLightbox;
 
@@ -2605,23 +2542,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     function closeLightbox() {
-        document.getElementById('lightbox')?.classList.add('hidden');
+        const lb = document.getElementById('lightbox');
+        if (!lb || lb.classList.contains('hidden')) return;
+        lb.classList.add('hidden');
+        document.body.classList.remove('lightbox-open');
+        if (lightboxReturnFocus?.isConnected) lightboxReturnFocus.focus({ preventScroll: true });
+        lightboxReturnFocus = null;
     }
     window.closeLightbox = closeLightbox;
 
     function nextLightboxImage() {
-        if (currentLightboxImages.length === 0) return;
+        if (currentLightboxImages.length < 2) return;
         currentLightboxIdx = (currentLightboxIdx + 1) % currentLightboxImages.length;
-        const img = document.getElementById('lightbox-img');
-        if (img) img.src = currentLightboxImages[currentLightboxIdx].url || currentLightboxImages[currentLightboxIdx];
+        renderLightboxImage();
     }
     window.nextLightboxImage = nextLightboxImage;
 
     function prevLightboxImage() {
-        if (currentLightboxImages.length === 0) return;
+        if (currentLightboxImages.length < 2) return;
         currentLightboxIdx = (currentLightboxIdx - 1 + currentLightboxImages.length) % currentLightboxImages.length;
-        const img = document.getElementById('lightbox-img');
-        if (img) img.src = currentLightboxImages[currentLightboxIdx].url || currentLightboxImages[currentLightboxIdx];
+        renderLightboxImage();
     }
     window.prevLightboxImage = prevLightboxImage;
 
@@ -2631,6 +2571,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('lightbox-prev')?.addEventListener('click', prevLightboxImage);
     document.getElementById('lightbox')?.addEventListener('click', (e) => {
         if (e.target.id === 'lightbox') closeLightbox();
+    });
+    document.addEventListener('keydown', event => {
+        const lightbox = document.getElementById('lightbox');
+        if (!lightbox || lightbox.classList.contains('hidden')) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeLightbox();
+        } else if (event.key === 'ArrowRight' && currentLightboxImages.length > 1) {
+            event.preventDefault();
+            nextLightboxImage();
+        } else if (event.key === 'ArrowLeft' && currentLightboxImages.length > 1) {
+            event.preventDefault();
+            prevLightboxImage();
+        } else if (event.key === 'Tab') {
+            const focusable = Array.from(lightbox.querySelectorAll('button:not(.hidden):not(:disabled)'));
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (!first || !last) {
+                event.preventDefault();
+                lightbox.focus({ preventScroll: true });
+            } else if (!lightbox.contains(document.activeElement)) {
+                event.preventDefault();
+                first.focus();
+            } else if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        }
     });
 
     // --- CATEGORY FILTER LISTENERS ---
@@ -3001,6 +2972,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnSubmitForm = document.getElementById('btn-submit-form');
     const btnDetailEdit = document.getElementById('btn-detail-edit');
     const btnDetailBack = document.getElementById('btn-detail-back');
+    const detailPlantNavigation = document.getElementById('detail-plant-navigation');
+    const btnDetailPlantPrev = document.getElementById('btn-detail-plant-prev');
+    const btnDetailPlantNext = document.getElementById('btn-detail-plant-next');
     const btnDetailDelete = document.getElementById('btn-detail-delete');
     const btnQuickPhoto = document.getElementById('btn-quick-photo-search');
     if (inputNaam && btnQuickPhoto) {
@@ -3298,19 +3272,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        if (activeCategory !== 'Alles' && !activePlantStatus) {
-            items.filter(seed => seed.isFavorite).forEach(seed => seedGrid.appendChild(createSeedCard(seed)));
-            items.filter(seed => !seed.isFavorite).forEach(seed => seedGrid.appendChild(createSeedCard(seed)));
-            return;
-        }
-
-        if (activePlantStatus || newestSeedsFirst) {
-            items.forEach(seed => seedGrid.appendChild(createSeedCard(seed)));
-            return;
-        }
-
         const favorites = items.filter(seed => seed.isFavorite);
         const others = items.filter(seed => !seed.isFavorite);
+
+        // Keep favorites first in every sort and filter mode. Category/status
+        // results stay compact, without an extra Favorites heading.
+        if (activeCategory !== 'Alles' || activePlantStatus) {
+            favorites.concat(others).forEach(seed => seedGrid.appendChild(createSeedCard(seed)));
+            return;
+        }
+
         const addSectionHeader = (label, className) => {
             const header = document.createElement('div');
             header.className = `list-section-header${className ? ` ${className}` : ''}`;
@@ -3473,9 +3444,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- DETAIL VIEW ---
-    function openDetailView(seed) {
+    function updateDetailPlantNavigation(seed, preserveOrder = false) {
+        const currentId = String(seed.id);
+        if (!preserveOrder) {
+            const fromVisibleList = viewList && !viewList.classList.contains('hidden');
+            const sourceIds = fromVisibleList
+                ? filteredSeedIdsForDetail
+                : seeds.map(item => String(item.id));
+            detailNavigationSeedIds = [...new Set(sourceIds.filter(Boolean))];
+            if (!detailNavigationSeedIds.includes(currentId)) detailNavigationSeedIds.unshift(currentId);
+        }
+
+        detailNavigationIndex = detailNavigationSeedIds.indexOf(currentId);
+        if (detailPlantNavigation) detailPlantNavigation.hidden = detailNavigationSeedIds.length < 2;
+        const setNeighbor = (button, direction) => {
+            if (!button) return;
+            const neighborId = detailNavigationSeedIds[detailNavigationIndex + direction];
+            const neighbor = seeds.find(item => String(item.id) === neighborId);
+            button.disabled = !neighbor;
+            button.setAttribute('aria-label', neighbor
+                ? `${direction < 0 ? 'Vorige' : 'Volgende'} plant: ${neighbor.naam}`
+                : direction < 0 ? 'Geen vorige plant' : 'Geen volgende plant');
+            button.title = neighbor?.naam || (direction < 0 ? 'Geen vorige plant' : 'Geen volgende plant');
+        };
+        setNeighbor(btnDetailPlantPrev, -1);
+        setNeighbor(btnDetailPlantNext, 1);
+    }
+
+    function navigateDetailPlant(direction) {
+        const targetId = detailNavigationSeedIds[detailNavigationIndex + direction];
+        const target = seeds.find(item => String(item.id) === targetId);
+        if (target) openDetailView(target, { preserveNavigationOrder: true });
+    }
+
+    btnDetailPlantPrev?.addEventListener('click', () => navigateDetailPlant(-1));
+    btnDetailPlantNext?.addEventListener('click', () => navigateDetailPlant(1));
+
+    function openDetailView(seed, options = {}) {
         const focusedAction = document.activeElement?.closest('#view-detail .btn-action-chip')?.dataset.detailAction;
         viewDetail.dataset.currentSeedId = seed.id;
+        updateDetailPlantNavigation(seed, options.preserveNavigationOrder === true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
 
         const sowingMonthsSet = getActiveMonths(seed);
@@ -4499,10 +4507,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Link top save button
     const btnSaveTop = document.getElementById('btn-save-top');
+    const btnSeedFormTop = document.getElementById('btn-seed-form-top');
+    const updateSeedFormTopButton = () => {
+        if (!btnSeedFormTop || !viewAdd) return;
+        btnSeedFormTop.classList.toggle('hidden', viewAdd.classList.contains('hidden') || window.scrollY < 420);
+    };
+    window.addEventListener('scroll', updateSeedFormTopButton, { passive: true });
+    if (viewAdd && typeof MutationObserver !== 'undefined') {
+        new MutationObserver(updateSeedFormTopButton).observe(viewAdd, { attributes: true, attributeFilter: ['class'] });
+    }
+    btnSeedFormTop?.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+
     if (btnSaveTop && typeof seedForm !== 'undefined') {
         btnSaveTop.onclick = (e) => {
              e.preventDefault();
-             console.log("Top save button clicked");
              // Directly call submit instead of dispatchEvent for better reliability
              const form = document.getElementById('seed-form');
              if (form) {
@@ -4943,7 +4961,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     curCalDate = new Date(); selectedDateStr = formatDate(curCalDate);
                     switchView('calendar', { taskWeek: true }); focusInsightDestination('selected-date-label');
                 } },
-                { icon: 'leaf', label: 'Binnenkort zaaien', value: selection.soon.length, open: () => {
+                { icon: 'leaf', label: 'Volgende maand zaaien', value: selection.soon.length, open: () => {
                     plannerSoonDate = new Date(today);
                     plannerSelectedMonth = (plannerSoonDate.getMonth() + 1) % 12;
                     plannerSelectedYear = new Date(today.getFullYear(), today.getMonth() + 1, 1).getFullYear();
@@ -5181,10 +5199,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 3. Search query
         if (q) {
-            filtered = filtered.filter(s => s.naam.toLowerCase().includes(q));
+            filtered = filtered.filter(s => s.naam.toLowerCase().includes(q)
+                || (Array.isArray(s.tags) && s.tags.some(tag => typeof tag === 'string' && tag.toLowerCase().includes(q))));
         }
 
         if (newestSeedsFirst) filtered = [...filtered].sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+        filteredSeedIdsForDetail = filtered.map(seed => String(seed.id));
         renderSeeds(filtered);
         const statusBanner = document.getElementById('seeds-context-banner');
         if (activePlantStatus && statusBanner) {
@@ -5535,44 +5555,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const plannerSeasonalAdvice = [
-        { title: "Januari - Winterrust en planning", sub: "Maak je tuinplan en bestel je zaden voor het nieuwe jaar", focus: "Plannen en zaden inventariseren", alert: "Bescherm kranen en planten tegen strenge vorst", tip: "Maak een schets van je wisselteelt. Noteer waar vorig jaar dezelfde plantenfamilies stonden, zodat je de vakken kunt afwisselen.", icon: "❄️" },
-        { title: "Februari - De eerste kriebels", sub: "De eerste zaden kunnen binnen onder glas worden gezaaid", focus: "Voorbereiden van kweekbakken", alert: "Pas op voor te natte grond in de moestuin", tip: "Wil je pepers of paprika's voorzaaien? Geef de zaden een warme plek en zet de zaailingen na opkomst zo licht mogelijk.", icon: "🌱" },
-        { title: "Maart - De lente ontwaakt", sub: "Veel zaden kunnen nu direct de volle grond in", focus: "Bodem verbeteren met compost", alert: "Houd rekening met plotselinge nachtvorst", tip: "Zaai doperwten of peultjes buiten zodra de grond bewerkbaar is. Zet meteen steun klaar en houd jonge planten in de gaten bij vorst.", icon: "🌸" },
-        { title: "April - Drukke zaaimaand", sub: "Tijd voor voorzaaien, afharden en de eerste snelle groeiers", focus: "Voorzaaien van zomergroenten", alert: "Slakken worden nu ook weer actief", tip: "Zet klimrekken en stokken klaar voordat klimplanten hard groeien. Laat binnen opgekweekte planten geleidelijk wennen aan buitenlucht en zon.", icon: "☀️" },
-        { title: "Mei - Na de IJsheiligen", sub: "Controleer het weer voordat vorstgevoelige planten naar buiten gaan", focus: "Planten uitplanten in de volle grond", alert: "Zorg voor voldoende water bij droge dagen", tip: "Plant tomaten en courgettes pas buiten als de kans op nachtvorst voorbij is. Geef na het uitplanten water bij de wortels.", icon: "🏡" },
-        { title: "Juni - Groei en bloei", sub: "Houd de tuin bij en geniet van de eerste oogst", focus: "Watergeven en onkruid wieden", alert: "Valse meeldauw bij aardappelen", tip: "Leg mulch op vochtige grond om uitdroging en onkruid te beperken. Geef liever gericht water bij de wortels dan elke dag een klein beetje.", icon: "🌿" },
-        { title: "Juli - Oogsttijd", sub: "Blijf oogsten voor meer groei", focus: "Oogsten en bewaren van groenten", alert: "Tomatenplanten kunnen last krijgen van neusrot", tip: "Oogst courgettes, bonen en andere vruchten regelmatig. Controleer potten bij warm weer vaker op droogte, vooral op zonnige plekken.", icon: "🥗" },
-        { title: "Augustus - Nazomeren", sub: "Geniet van de overvloed en win je eigen zaden", focus: "Zaden oogsten voor volgend jaar", alert: "Witte vlieg houdt van warm weer", tip: "Bewaar zaden van gezonde, goed afgerijpte planten. Laat ze goed drogen en schrijf de plantnaam en het oogstjaar op het zakje.", icon: "☀️" },
-        { title: "September - Herfst voorbereiden", sub: "Tijd om de tuin klaar te maken voor najaar", focus: "Laatste zomeroogst binnenhalen", alert: "Schimmelgroei door hoge vochtigheid", tip: "Haal de laatste rijpe zomeroogst binnen en ruim ziek plantenmateriaal apart op. Gezonde resten kunnen op de composthoop.", icon: "🍂" },
-        { title: "Oktober - De tuin vertraagt", sub: "Ruim op waar nodig, maar laat ook wat natuur liggen", focus: "Opruimen en composteren", alert: "Eerste nachtvorst kan bloeiers raken", tip: "Plant voorjaarsbollen volgens de plantdiepte op de verpakking. Laat waar mogelijk bladeren liggen als bescherming en schuilplek voor tuindieren.", icon: "🍄" },
-        { title: "November - Grondbewerking", sub: "Bedek de bodem en maak je gereedschap schoon", focus: "Winterklaar maken van de borders", alert: "Buitenkranen afsluiten tegen vorst", tip: "Laat gezonde uitgebloeide stengels nog staan voor vogels en insecten. Controleer tegelijk of potten en vorstgevoelige planten beschutting nodig hebben.", icon: "🌧️" },
-        { title: "December - Winterrust", sub: "Reflecteer op het jaar en plan alvast vooruit", focus: "Gereedschap onderhoud en olie", alert: "Sneeuwdruk op structuren", tip: "Bekijk je tuinaantekeningen: wat groeide goed en wat wil je volgend jaar anders doen? Bewaar zaden droog en controleer hun houdbaarheid.", icon: "❄️" }
+        { title: "Januari - Winterrust en planning", sub: "Een rustige maand om vooruit te kijken en je voorraad na te lopen", focus: "Plan je wisselteelt en controleer je zadenvoorraad", alert: "Werk niet op natte grond: die verdicht snel en herstelt langzaam", tip: "Maak een eenvoudig schema per plantenfamilie en noteer waar die vorig jaar stond. Zo kun je straks makkelijk afwisselen en voorkom je dat dezelfde gewassen steeds op dezelfde plek groeien." },
+        { title: "Februari - De eerste kriebels", sub: "Begin binnen met gewassen die lang nodig hebben", focus: "Zaai warmtekiemers en maak potjes en trays schoon", alert: "Zaailingen hebben na opkomst vooral veel licht nodig", tip: "Zaai pepers, paprika's en aubergines warm voor. Zet ze na het kiemen licht en iets koeler; zo voorkom je lange, slappe stengels." },
+        { title: "Maart - De lente ontwaakt", sub: "Start met vroege teelten zodra de grond goed te bewerken is", focus: "Bereid de bodem voor en zaai de eerste buitengewassen", alert: "Een zonnige dag betekent nog geen vorstvrije nacht", tip: "Zaai erwten en peulen zodra de grond kruimelig is en niet meer plakt. Plaats steun meteen en houd vliesdoek klaar om jonge planten bij een koude nacht af te dekken." },
+        { title: "April - Drukke zaaimaand", sub: "Zaai in kleine porties en laat binnenplanten geleidelijk wennen", focus: "Zaai snelle groenten en hard zaailingen rustig af", alert: "Let op slakken en late nachtvorst", tip: "Zaai sla, radijs en wortel in korte rijen met tussenpozen van ongeveer twee weken. Dan valt de oogst niet tegelijk en is uitdunnen makkelijker." },
+        { title: "Mei - Naar buiten", sub: "Laat vorstgevoelige planten pas naar buiten als de nachten zacht genoeg zijn", focus: "Hard zaailingen af en plant sterke jonge planten uit", alert: "Tomaat, courgette en komkommer verdragen geen nachtvorst", tip: "Laat zaailingen ongeveer een week overdag buiten wennen, eerst in de schaduw en uit de wind. Haal ze bij koude nachten weer naar binnen en geef na het uitplanten water bij de wortels." },
+        { title: "Juni - Groei en bloei", sub: "Houd vocht vast, wied op tijd en geniet van de eerste oogst", focus: "Geef diep water en houd de bodem bedekt", alert: "Warmte en langdurig nat blad kunnen schimmelziekten bevorderen", tip: "Geef liever minder vaak en royaal water bij de voet van de plant dan elke dag een beetje. Leg mulch op al vochtige grond om uitdroging en opspattende aarde te beperken." },
+        { title: "Juli - Oogsttijd", sub: "Regelmatig plukken houdt veel gewassen productief", focus: "Oogst op tijd en controleer potten extra vaak", alert: "Bij tomaten kan wisselend bodemvocht problemen met de vruchten geven", tip: "Pluk courgettes, bonen en tomaten zodra ze rijp zijn en controleer planten meteen op beschadigde bladeren. Potten drogen bij warm, zonnig weer snel uit; voel daarom dagelijks even aan de potgrond." },
+        { title: "Augustus - Nazomeren", sub: "Oogst volop en maak plek voor gewassen voor het najaar", focus: "Zaai najaarsgroenten en verzamel rijp zaad", alert: "Warmte en droogte vragen extra aandacht bij potten en jonge zaailingen", tip: "Bewaar alleen zaad van gezonde, goed afgerijpte planten en laat het volledig drogen. Bij F1-hybriden lijkt de volgende generatie vaak niet betrouwbaar op de ouderplant." },
+        { title: "September - Herfst voorbereiden", sub: "Haal rijpe zomeroogst binnen en houd de bodem in gebruik", focus: "Rond de zomeroogst af en zaai waar nog ruimte is", alert: "Koele, vochtige dagen maken ventilatie en gezond blad belangrijk", tip: "Controleer de verpakking of er nog geschikte najaarszaai mogelijk is, bijvoorbeeld van veldsla. Haal ziek blad weg en composteer alleen gezond plantenmateriaal." },
+        { title: "Oktober - De tuin vertraagt", sub: "Ruim gericht op en laat gezonde natuur staan", focus: "Plant voorjaarsbollen en verbeter lege vakken", alert: "De eerste nachtvorst kan vorstgevoelige planten beschadigen", tip: "Plant voorjaarsbollen op de diepte die op de verpakking staat. Laat gezonde bladeren onder struiken liggen als bodembedekking en schuilplek; haal aangetast blad wel weg." },
+        { title: "November - Grond en gereedschap", sub: "Bescherm de bodem en maak je tuin klaar voor koude dagen", focus: "Bedek kale grond en berg schoon gereedschap droog op", alert: "Sluit buitenkranen af en bescherm kwetsbare potten tegen vorst", tip: "Laat stevige, gezonde uitgebloeide stengels staan: zaden zijn voedsel voor vogels en holle stengels bieden insecten een schuilplek. Verwijder alleen delen die ziek zijn of wegrotten." },
+        { title: "December - Winterrust", sub: "Kijk terug op het seizoen en leg plannen voor volgend jaar klaar", focus: "Controleer zaden en maak je teeltplan", alert: "Voorkom dat potten langdurig in water blijven staan of kapotvriezen", tip: "Noteer wat goed groeide en wat je volgend jaar anders wilt proberen. Bewaar zaden koel en droog, en controleer of potten vrije afwateringsgaten hebben." }
     ];
 
     function openPlannerMonthModal(mIndex, year = plannerSelectedYear) {
         const modal = document.getElementById('planner-month-modal');
         const title = document.getElementById('planner-month-title');
         const subtitle = document.getElementById('planner-month-subtitle');
-        const icon = document.getElementById('planner-month-header-icon');
         const focusText = document.getElementById('planner-focus-text');
         const alertText = document.getElementById('planner-alert-text');
         const tipText = document.getElementById('planner-tip-text');
         const list = document.getElementById('planner-seeds-list');
         const count = document.getElementById('planner-seeds-count');
-        const focusIcon = document.getElementById('planner-focus-icon');
 
         if (!modal) return;
 
         const advice = plannerSeasonalAdvice[mIndex];
         title.textContent = `${advice.title} · ${year}`;
         subtitle.textContent = advice.sub;
-        icon.replaceChildren(createPlantDetailIcon('calendar'));
         focusText.textContent = advice.focus;
         alertText.textContent = advice.alert;
         tipText.textContent = advice.tip;
-        focusIcon.replaceChildren(createPlantDetailIcon('sprout'));
-        document.getElementById('planner-alert-icon')?.replaceChildren(createPlantDetailIcon('warning'));
-        document.getElementById('planner-tip-icon')?.replaceChildren(createPlantDetailIcon('tip'));
 
         const plants = seeds.filter(s => getActiveMonths(s).has(mIndex));
         count.textContent = `${plants.length} planten`;
@@ -5719,28 +5733,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     cancelWishDraft.id = 'btn-cancel-wish-draft'; cancelWishDraft.type = 'button'; cancelWishDraft.className = 'btn-secondary'; cancelWishDraft.textContent = 'Annuleren';
     document.getElementById('btn-wish-save').before(cancelWishDraft);
     cancelWishDraft.onclick = async () => { const key = wishDraftKey(); wishDraftActive = false; await window.KweekDrafts?.drop(key).catch(draftError); closeWishModal(); };
-    async function resumeLastDraft() {
-        const key = window.KweekDrafts?.last();
-        if (!key) return;
-        const draft = await window.KweekDrafts.get(key);
-        if (!draft) return;
-        if (key.startsWith('seed:')) {
-            const id = draft.values.editingId;
-            if (id === null) openAddForm();
-            else { const seed = seeds.find(seed => String(seed.id) === String(id)); if (seed) openEditView(seed); }
-        } else if (key.startsWith('wish:')) {
-            const id = key.slice(5);
-            if (wishlist.some(item => String(item.id) === id)) { switchView('wishlist'); openWishModal(id); }
-        } else if (key === 'wish-quick') {
-            switchView('wishlist');
-            ['wishlist-quick-input', 'wishlist-empty-input'].forEach(id => { const field = document.getElementById(id); if (field) field.value = draft.values.title || ''; });
-            cancelQuickWish.classList.remove('hidden');
-        } else if (key === 'task') {
-            switchView('planning', { tab: draft.values.tab || 'month' });
-            await openPlanningForm({}, draft.values);
-        }
-    }
-
     // Form logic simple
     seedForm.onsubmit = async (e) => {
         e.preventDefault();
@@ -6234,89 +6226,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
-    // --- DATA MANAGEMENT LOGIC ---
-    const exampleDirectory = 'assets/example-collections/';
-    let availableExampleCollections = new Map();
-    let exampleCatalogRequest = 0;
-    const exampleStatus = message => {
-        const element = document.getElementById('example-garden-status');
-        if (element) element.textContent = message;
-    };
-    async function readExampleFile(file) {
-        const response = await fetch(exampleDirectory + file, { cache: 'no-store' });
-        if (!response.ok) throw new Error(response.status === 404 ? `Het voorbeeldbestand ${file} ontbreekt. Controleer de bestandsnaam en bouw opnieuw.` : `Het voorbeeldbestand ${file} kan niet worden geladen. Probeer de lijst opnieuw te vernieuwen.`);
-        try { return await response.json(); }
-        catch { throw new Error(`Het voorbeeldbestand ${file} bevat ongeldige JSON. Er is niets toegevoegd.`); }
-    }
-    function validateExampleFile(input) {
-        window.KweekExampleCollections.collection(input);
-        // Reuse the same complete plant validation as file import/restore.
-        return normalizeImportedBackup(input).seeds;
-    }
-    window.refreshExampleCollections = async function(panel = document.getElementById('settings-panel')) {
-        const list = panel?.querySelector('#example-collections-list');
-        if (!list) return;
-        const request = ++exampleCatalogRequest;
-        list.setAttribute('aria-busy', 'true');
-        exampleStatus('Voorbeeldcollecties ophalen…');
-        try {
-            const entries = window.KweekExampleCollections.manifest(await readExampleFile('manifest.json'));
-            const results = await Promise.all(entries.map(async entry => {
-                try { return { entry, count: validateExampleFile(await readExampleFile(entry.file)).length }; }
-                catch (error) { return { entry, error: error.name === 'BackupValidationError' ? 'Het voorbeeldbestand is niet geldig. Controleer de plantgegevens.' : error.message }; }
-            }));
-            if (request !== exampleCatalogRequest || !list.isConnected) return;
-            availableExampleCollections = new Map(entries.map(entry => [entry.id, entry]));
-            list.replaceChildren();
-            for (const { entry, count, error } of results) {
-                const card = document.createElement('article'); card.className = 'settings-data-card';
-                const info = document.createElement('div');
-                const title = document.createElement('h4'); title.textContent = entry.name;
-                const amount = document.createElement('p'); amount.textContent = error || `${count} planten`;
-                const button = document.createElement('button'); button.type = 'button'; button.className = 'settings-secondary-button';
-                button.dataset.collectionId = entry.id;
-                button.textContent = entry.id === 'voorbeeldtuin' ? 'Voorbeeldtuin laden' : `${entry.name} laden`;
-                button.disabled = !!error; button.setAttribute('aria-describedby', 'example-garden-status');
-                if (entry.id === 'voorbeeldtuin') { button.id = 'load-example-garden'; button.setAttribute('onclick', 'loadExampleGarden(this)'); }
-                else button.onclick = () => window.loadExampleCollection(entry.id, button);
-                info.append(title, amount); card.append(info, button); list.append(card);
-            }
-            exampleStatus(entries.length ? (results.some(result => result.error) ? 'Niet alle voorbeeldcollecties zijn beschikbaar. Controleer de melding bij de collectie.' : '') : 'Er zijn nog geen voorbeeldcollecties beschikbaar.');
-        } catch (error) {
-            if (request !== exampleCatalogRequest || !list.isConnected) return;
-            availableExampleCollections.clear(); list.replaceChildren(); exampleStatus(error.message);
-        } finally {
-            if (request === exampleCatalogRequest) list.setAttribute('aria-busy', 'false');
-        }
-    };
-    let exampleGardenLoading = false;
-    window.loadExampleGarden = button => window.loadExampleCollection('voorbeeldtuin', button);
-    window.loadExampleCollection = async function(collectionId, button) {
-        if (exampleGardenLoading) return;
-        exampleGardenLoading = true;
-        if (button) button.disabled = true;
-        const status = exampleStatus;
-        try {
-            const entry = availableExampleCollections.get(collectionId);
-            if (!entry) throw new Error('Deze voorbeeldcollectie is niet beschikbaar. Vernieuw eerst de lijst.');
-            status(`${entry.name} laden…`);
-            const examples = validateExampleFile(await readExampleFile(entry.file));
-            if (!confirm(`“${entry.name}”: ${examples.length} voorbeeldplanten aan je tuin toevoegen? Je eigen planten blijven bewaard. Planten die er al staan worden overgeslagen. Dit voegt alleen lokaal planten toe; er wordt niets naar de cloud geüpload.`)) {
-                status(`${entry.name} laden geannuleerd.`);
-                return;
-            }
-            const added = await addExampleSeedsAtomic(examples, entry.id);
-            seeds = await getAllSeeds();
-            renderHome();
-            status(`${added} voorbeeldplanten toegevoegd.${added === 0 ? ' Deze planten staan al in je tuin.' : ''}`);
-        } catch (error) {
-            status(error?.name === 'BackupValidationError' ? 'Het voorbeeldbestand is niet geldig. Er is niets toegevoegd.' : error.message || 'Voorbeeldtuin laden is mislukt.');
-        } finally {
-            exampleGardenLoading = false;
-            if (button?.isConnected) button.disabled = false;
-        }
-    };
+    window.KweekLocalBackupManager = window.KweekLocalBackup?.create({
+        capture: () => window.KweekLocalData.capture()
+    }) || null;
+    window.KweekLocalBackupManager?.connect(window.KweekCloudStatus);
+    void window.KweekLocalBackupManager?.init();
 
+    // --- DATA MANAGEMENT LOGIC ---
     window.exportData = async function() {
         try {
             const data = await getAllSeeds();
@@ -6356,6 +6272,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.importData = function() {
         const input = document.getElementById('import-file');
         if (input) {
+            input.value = '';
             input.click();
         }
     };
@@ -6383,7 +6300,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const inputImportRelocated = document.getElementById('import-file');
     if (inputImportRelocated) {
         inputImportRelocated.onchange = (e) => {
-            const file = e.target.files[0];
+            const file = e.target.files?.[0];
             if (!file) return;
             const r = new FileReader();
             r.onload = async (evt) => {
@@ -6396,7 +6313,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                     await restoreBackupData(normalizedBackup);
 
-                    showToast(`${normalizedBackup.seeds.length} zaden en alle instellingen hersteld!`);
+                    globalThis.KweekCloudStatus?.changed('restore-internal');
+                    showToast(`${normalizedBackup.seeds?.length || 0} planten en de gekozen gegevens hersteld!`);
                     setTimeout(() => location.reload(), 1500);
                     inputImportRelocated.value = '';
                     return;
@@ -6418,8 +6336,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 inputImportRelocated.value = '';
             };
+            r.onerror = () => {
+                showToast('Het back-upbestand kon niet worden gelezen. Er is niets gewijzigd.');
+                inputImportRelocated.value = '';
+            };
             r.readAsText(file);
         };
+        inputImportRelocated.oncancel = () => { inputImportRelocated.value = ''; };
     }
 
     // --- WISHLIST LOGIC (Redesigned) ---
@@ -6839,17 +6762,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const today = new Date();
         const todayStr = formatDate(today);
         const title = document.getElementById('cal-month-title');
-        const currentMonthLabel = document.getElementById('cal-current-month-indicator');
-        const currentYearLabel = document.getElementById('cal-current-year-indicator');
-
         if (!aiPlanningDraft && !calendarHasRendered && !selectedDateStr && year === today.getFullYear() && month === today.getMonth()) {
             selectedDateStr = todayStr;
         }
         calendarHasRendered = true;
 
         if (title) title.textContent = `${calMonthNames[month]} ${year}`;
-        if (currentMonthLabel) currentMonthLabel.textContent = calMonthNames[today.getMonth()];
-        if (currentYearLabel) currentYearLabel.textContent = `Tuinjaar ${today.getFullYear()}`;
 
 
         grid.replaceChildren();
@@ -6900,7 +6818,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('ai-planning-cancel')?.classList.toggle('hidden', !aiPlanningDraft);
         const addButton = document.getElementById('btn-add-reminder');
         if (addButton) addButton.textContent = 'Opslaan';
-        document.querySelector('.calendar-upcoming-panel')?.classList.toggle('hidden', calendarTaskWeek);
         document.querySelector('#day-details .day-input-area')?.classList.toggle('hidden', calendarTaskWeek);
         const periodsHeading = document.getElementById('calendar-periods-heading');
         if (periodsHeading) periodsHeading.textContent = calendarTaskWeek ? 'Zaaitaken deze week' : 'Plantperiodes deze maand';
@@ -7049,7 +6966,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sections = [
             { label: 'Zaaien', ids: ['indoor-sow', 'outdoor-sow', 'sow'] },
             { label: 'Uitplanten', ids: ['transplant'] },
-            { label: 'Oogstperiodes · plantinformatie', ids: ['harvest'] }
+            { label: 'Oogsten', ids: ['harvest'] }
         ];
         let activityCount = 0;
 
@@ -7088,6 +7005,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const count = document.createElement('span');
                 count.className = 'calendar-period-count';
                 count.textContent = String(list.childElementCount);
+                const countLabel = `${list.childElementCount} ${list.childElementCount === 1 ? 'plant' : 'planten'}`;
+                count.setAttribute('aria-label', countLabel);
+                count.title = countLabel;
                 heading.appendChild(count);
                 block.appendChild(list);
             }
@@ -7102,69 +7022,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function renderUpcomingReminders(todayStr) {
-        const container = document.getElementById('calendar-upcoming-list');
-        if (!container) return;
-        container.replaceChildren();
-
-        const groups = groupUpcomingCalendarReminders(reminders, todayStr);
-
-        groups.forEach(group => {
-            const section = document.createElement('section');
-            section.className = 'calendar-upcoming-group';
-            const heading = document.createElement('h3');
-            heading.textContent = group.label;
-            section.appendChild(heading);
-            if (group.items.length === 0) {
-                const emptyMessage = document.createElement('p');
-                emptyMessage.className = 'calendar-upcoming-empty';
-                emptyMessage.textContent = 'Geen open herinneringen';
-                section.appendChild(emptyMessage);
-            } else {
-                group.items.forEach(reminder => {
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'calendar-upcoming-item';
-                    const title = document.createElement('span');
-                    title.className = 'calendar-upcoming-title';
-                    title.textContent = typeof reminder.title === 'string' ? reminder.title : '';
-                    const date = document.createElement('span');
-                    date.className = 'calendar-upcoming-date';
-                    const parsedDate = parseCalendarDate(reminder.date);
-                    date.textContent = parsedDate ? parsedDate.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' }) : reminder.date;
-                    button.append(title, date);
-                    button.setAttribute('aria-label', `${title.textContent}, ${date.textContent}. Open deze dag`);
-                    button.addEventListener('click', () => {
-                        const selectedDate = parseCalendarDate(reminder.date);
-                        if (!selectedDate) return;
-                        selectedDateStr = reminder.date;
-                        curCalDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
-                        renderCalendar();
-                    });
-                    section.appendChild(button);
-                });
-            }
-            container.appendChild(section);
-        });
-    }
-
     // saveReminders moved to top for dashboard access
 
 
     const btnCalPrev = document.getElementById('cal-prev');
     const btnCalNext = document.getElementById('cal-next');
-    if (btnCalPrev) btnCalPrev.onclick = () => { calendarTaskWeek = false; setPlanningPeriod(curCalDate.getFullYear(), curCalDate.getMonth() - 1); renderCalendar(); };
-    if (btnCalNext) btnCalNext.onclick = () => { calendarTaskWeek = false; setPlanningPeriod(curCalDate.getFullYear(), curCalDate.getMonth() + 1); renderCalendar(); };
-
-    const btnCalToday = document.getElementById('cal-today');
-    if (btnCalToday) btnCalToday.onclick = () => {
-        calendarTaskWeek = false;
-        const today = new Date();
-        curCalDate = new Date(today.getFullYear(), today.getMonth(), 1);
-        selectedDateStr = formatDate(today);
-        renderCalendar();
-        rememberCurrentPage('calendar');
-    };
+    if (btnCalPrev) btnCalPrev.onclick = () => { calendarTaskWeek = false; plannerSoonDate = null; setPlanningPeriod(curCalDate.getFullYear(), curCalDate.getMonth() - 1); refreshPlanning(); };
+    if (btnCalNext) btnCalNext.onclick = () => { calendarTaskWeek = false; plannerSoonDate = null; setPlanningPeriod(curCalDate.getFullYear(), curCalDate.getMonth() + 1); refreshPlanning(); };
 
     const btnAddReminder = document.getElementById('btn-add-reminder');
     const reminderInput = document.getElementById('new-reminder-input');
@@ -7230,9 +7094,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
     }
 
-    const btnFab = document.getElementById('btn-add-event-fab');
-    if (btnFab) btnFab.onclick = () => openPlanningForm();
-
     // Planning uses the existing reminders, save hook and device-only drafts.
     function setPlanningPeriod(year, month) {
         const period = new Date(year, month, 1);
@@ -7254,9 +7115,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const year = curCalDate.getFullYear(), month = curCalDate.getMonth();
         document.getElementById('planning-header').dataset.tab = planningTab;
         document.getElementById('btn-cal-sow-tips').onclick = () => openPlannerMonthModal(month, year);
+        document.getElementById('btn-cal-sow-tips').hidden = planningTab === 'agenda';
         document.getElementById('planning-period').textContent = planningTab === 'month' ? `${calMonthNames[month]} ${year}` : String(year);
-        const today = new Date();
-        document.getElementById('planning-selection').textContent = today.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         document.querySelectorAll('[data-planning-tab]').forEach(button => {
             const active = button.dataset.planningTab === planningTab;
             button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1;
@@ -7558,6 +7418,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function stelAIHulpVraag(vraag) {
         const input = document.getElementById('ai-question-input');
         const btn = document.getElementById('btn-ask-ai');
+        const clearBtn = document.getElementById('btn-clear-ai');
         const output = document.getElementById('ai-assistant-output');
         if (!output) return;
 
@@ -7585,6 +7446,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             btn.classList.add('btn-loading');
             btn.innerText = "Even denken...";
         }
+        if (clearBtn) clearBtn.disabled = true;
 
         output.innerHTML = '<div class="ai-loading-text">🪄 Tuinassistent denkt even...</div>';
         output.style.display = 'block';
@@ -7653,11 +7515,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                 btn.classList.remove('btn-loading');
                 btn.textContent = "Vraag AI";
             }
+            if (clearBtn) clearBtn.disabled = false;
         }
     }
 
     const btnAskAi = document.getElementById('btn-ask-ai');
 if (btnAskAi) btnAskAi.onclick = () => stelAIHulpVraag();
+
+const btnClearAi = document.getElementById('btn-clear-ai');
+if (btnClearAi) btnClearAi.onclick = () => {
+    const input = document.getElementById('ai-question-input');
+    const output = document.getElementById('ai-assistant-output');
+    if (!input || !output || btnClearAi.disabled) return;
+    input.value = '';
+    output.replaceChildren();
+    output.style.display = 'none';
+    delete output.dataset.active;
+    input.focus();
+};
 
 const aiInput = document.getElementById('ai-question-input');
 if (aiInput) {
@@ -7982,8 +7857,6 @@ window.applyMonthFilter = applyMonthFilter;
         } else {
             switchView('home');
         }
-        await resumeLastDraft();
-        if (savedView === 'add' && viewList && !viewList.classList.contains('hidden')) openAddForm();
     }
 });
 

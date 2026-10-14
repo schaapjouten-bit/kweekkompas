@@ -45,11 +45,20 @@ const checks = [], errors = [];
     assert.deepEqual((await capture()).reminders, original);
     await go('month'); await page.locator('#calendar-grid .calendar-day').filter({hasText:/^31$/}).count();
     await page.getByRole('button',{name:'14 Oktober 2026',exact:true}).click();
-    for (const tab of ['year','agenda','month']) { await go(tab); assert.match(await page.locator('#planning-selection').innerText(),/14 oktober 2026/); }
+    for (const tab of ['year','agenda','month']) {
+      await go(tab);
+      assert.equal(await page.locator('#planning-selection').count(),0);
+      assert.equal(await page.locator('.calendar-page-header').count(),0);
+      assert.equal(await page.locator('.planning-heading h1').innerText(),'Planning');
+    }
+    await go('month'); assert.match(await page.locator('#selected-date-label').innerText(),/14 oktober 2026/i);
+    assert.deepEqual(await page.locator('.planning-toolbar-actions > *').evaluateAll(nodes=>nodes.map(node=>node.innerText.trim())),['Vandaag','Maand\nJaar\nAgenda','+ Inplannen','Maandtips']);
+    await go('agenda'); assert.equal(await page.locator('#btn-cal-sow-tips').isVisible(),false);
+    await go('year'); assert.equal(await page.locator('#btn-cal-sow-tips').isVisible(),true);
     await go('year'); await page.selectOption('#planner-month-select','11');
     await page.click('#planner-next-month'); assert.match(await page.locator('#planner-active-month-title').innerText(),/Januari 2027/);
     await go('month'); assert.match(await page.locator('#cal-month-title').innerText(),/Januari 2027/);
-    await page.click('#planning-prev'); assert.match(await page.locator('#cal-month-title').innerText(),/December 2026/);
+    await page.click('#cal-prev'); assert.match(await page.locator('#cal-month-title').innerText(),/December 2026/);
     await go('year'); assert.match(await page.locator('#planner-active-month-title').innerText(),/December 2026/);
     await page.click('#planning-today'); checks.push('Tabs preserve selected day; both month arrows cross December/January; Today resets all views.');
     for (const tab of ['year','month','agenda']) {

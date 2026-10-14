@@ -7,6 +7,7 @@ const root = path.join(__dirname, '..');
 const appSource = fs.readFileSync(path.join(root, 'app-v132.js'), 'utf8');
 const indexSource = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const styleSource = fs.readFileSync(path.join(root, 'styles.css'), 'utf8');
+const servicesSource = fs.readFileSync(path.join(root, 'services.js'), 'utf8');
 
 test('kompasbranding staat in sidebar, mobiele header en onboarding als inline SVG', () => {
     assert.equal((indexSource.match(/class="compass-logo"/g) || []).length, 4);
@@ -51,9 +52,26 @@ test('Data & opslag toont back-upacties en een afzonderlijke resetactie', () => 
     assert.match(appSource, /Wat in het bestand staat vervangt de bijbehorende gegevens; de rest blijft bewaard/);
     assert.match(appSource, /Je bevestigt dit eerst/);
     assert.match(appSource, /Opgeslagen op dit apparaat/);
-    assert.match(appSource, /Worden mijn gegevens opgeslagen\?/);
-    assert.match(appSource, /button\.setAttribute\('onclick', 'loadExampleGarden\(this\)'\)/);
-    assert.match(appSource, /id="example-collections-title"/);
+    assert.doesNotMatch(appSource, /Waar wordt mijn tuin opgeslagen\?/);
+    assert.match(appSource, /Hoe maak en herstel ik een back-up\?/);
+    assert.match(appSource, /Wis je de websitegegevens van KweekKompas/);
+    assert.match(appSource, /Wat wordt gedeeld als ik AI gebruik\?/);
+    assert.match(appSource, /Cloudsync staat uit/);
+    assert.doesNotMatch(appSource, /loadExampleGarden|example-collections-title|load-example-garden/);
+});
+
+test('cloudtuinkeuzes staan tijdelijk uit de app terwijl synchronisatiecode bewaard blijft', () => {
+    assert.match(servicesSource, /const CLOUD_SYNC_ENABLED = false/);
+    assert.match(servicesSource, /const cloudSettingsHTML = \(\) =>/);
+    assert.match(servicesSource, /Lokale tuin gebruiken[\s\S]*Cloudtuin gebruiken/);
+    assert.match(servicesSource, /CLOUD_SYNC_ENABLED \? cloudSettingsHTML\(\) : ''/);
+    assert.match(servicesSource, /if \(CLOUD_SYNC_ENABLED\) \{[\s\S]*startAccountChoice/);
+    assert.match(servicesSource, /window\.KweekCloudStatus\.changed\(source\)/);
+    assert.match(appSource, /id="local-backup-choose"/);
+    assert.match(appSource, /onclick="restoreBackup\(\)"/);
+    assert.match(appSource, /onclick="exportData\(\)"/);
+    assert.doesNotMatch(appSource, /Veiligheidskopie terugzetten|data-cloud-action="recover"/);
+    assert.match(servicesSource, /kind === 'recover'/);
 });
 
 test('Instellingen-secties zijn bereikbaar zonder oude afzonderlijke settingsmodals te gebruiken', () => {

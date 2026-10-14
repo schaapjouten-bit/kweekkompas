@@ -79,7 +79,9 @@ const report = { checks: [], screenshots: [], errors: [] };
       assert.equal(await page.locator('.calendar-day').filter({ hasText: /^16$/ }).getAttribute('aria-label'), '16 Oktober 2031, 1 herinnering');
       // Month modal must retain the calendar's selected year when returning.
       await page.click('#btn-cal-sow-tips'); assert.match(await page.locator('#planner-month-title').innerText(), /2031/);
-      await page.click('#planner-month-modal .btn-goto-calendar'); assert.equal(await page.locator('#cal-month-title').innerText(), 'Oktober 2031');
+      assert.deepEqual(await page.locator('#planner-month-modal button').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label') || button.textContent.trim())), ['Sluit maandtips']);
+      assert.equal(await page.locator('#planner-month-modal .planner-card-icon, #planner-month-modal .planner-header-icon').count(), 0);
+      await page.click('#planner-month-modal .planner-modal-close'); assert.equal(await page.locator('#cal-month-title').innerText(), 'Oktober 2031');
       await planner(); await chooseYear(2024);
       assert.deepEqual(await planned(), ['Historische planning']);
       assert.match(await page.locator('.planner-saved-planning').innerText(), /12 oktober 2024.*Afgerond/s);

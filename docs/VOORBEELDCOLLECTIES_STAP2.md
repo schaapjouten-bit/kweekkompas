@@ -1,5 +1,7 @@
 # Voorbeeldcollecties — stap 2
 
+**Historisch verslag.** De Voorbeeldcollecties-functie is op 14 oktober 2026 verwijderd. Dit document beschrijft de oude implementatie.
+
 Lokaal uitgevoerd op 3 oktober 2026. Niets committen, pushen of publiceren.
 
 ## Vindbaarheid

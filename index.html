@@ -159,7 +159,12 @@
             <div class="dashboard-section dashboard-assistant-section">
               <div class="section-header">
                 <h3><svg class="home-section-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 4.5 13h5l-1 7.5L19.5 10h-5l1-6.5Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.7"/></svg>Tuinassistent</h3>
-                <button id="home-ai-provider" class="home-ai-provider" type="button" aria-label="Open AI-instellingen">AI laden…</button>
+                <div class="home-ai-heading-actions">
+                  <button id="btn-clear-ai" class="home-ai-reset" type="button" aria-label="Tuinassistent leegmaken" title="Vraag en antwoord wissen">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5.8 9A7 7 0 0 1 18 6l2 6M4 12l2 6a7 7 0 0 0 12.2-3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg>
+                  </button>
+                  <button id="home-ai-provider" class="home-ai-provider" type="button" aria-label="Open AI-instellingen">AI laden…</button>
+                </div>
               </div>
               <div class="ai-assistant-panel">
                 <div class="home-ai-input-row">
@@ -192,7 +197,7 @@
       </section>
 
       <header id="planning-header" class="planning-header hidden">
-        <div class="planning-heading"><div><h1>Planning</h1><p id="planning-selection" class="planning-selection"></p></div></div>
+        <div class="planning-heading"><h1>Planning</h1></div>
         <div class="planning-toolbar">
           <div class="planning-toolbar-actions">
             <button id="planning-today" type="button">Vandaag</button>
@@ -210,32 +215,14 @@
       <section id="view-agenda" class="view hidden" role="tabpanel" aria-labelledby="planning-tab-agenda"><div id="planning-agenda-list"></div></section>
       <!-- CALENDAR VIEW -->
       <section id="view-calendar" class="view hidden" role="tabpanel" aria-labelledby="planning-tab-month">
-        <header class="calendar-page-header">
-          <div>
-            <h1>Kalender</h1>
-            <p class="calendar-page-intro">Bekijk herinneringen en plantperiodes voor vandaag en de komende tijd.</p>
-          </div>
-          <div class="calendar-header-actions">
-            <div class="calendar-current-indicator" aria-live="polite">
-              <span id="cal-current-month-indicator">Deze maand</span>
-              <span id="cal-current-year-indicator">Tuinjaar</span>
-            </div>
-            <button id="btn-add-event-fab" class="calendar-add-reminder-button" type="button" title="Herinnering toevoegen">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/></svg>
-              <span>Herinnering toevoegen</span>
-            </button>
-          </div>
-        </header>
-
         <div class="calendar-dashboard">
           <section class="calendar-main-panel" aria-label="Maandkalender">
             <div class="calendar-container">
               <header class="calendar-header">
                 <button id="cal-prev" class="cal-nav-btn" type="button" title="Vorige maand" aria-label="Vorige maand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 5-7 7 7 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></button>
                 <div class="calendar-title-group">
-                  <h2 id="cal-month-title">Maand Jaar</h2>
+                  <h2 id="cal-month-title" aria-live="polite" aria-atomic="true">Maand Jaar</h2>
                 </div>
-                <button id="cal-today" class="calendar-today-button" type="button">Vandaag</button>
                 <button id="cal-next" class="cal-nav-btn" type="button" title="Volgende maand" aria-label="Volgende maand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 5 7 7-7 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></button>
               </header>
 
@@ -361,13 +348,12 @@
             <label class="seed-search-field" for="search-input">
               <span class="seed-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/></svg></span>
               <span class="sr-only">Zoek in Mijn zaden</span>
-              <input type="text" id="search-input" placeholder="Zoek op plantnaam..." autocomplete="off">
+              <input type="text" id="search-input" placeholder="Zoek op plantnaam of kenmerk..." autocomplete="off">
             </label>
             <button id="btn-latest-seeds" class="btn-secondary seed-scan-button" type="button" aria-pressed="false" aria-controls="seed-grid" title="Toon laatst toegevoegde planten eerst">Laatst toegevoegd</button>
             <button id="btn-scan-notes" class="btn-secondary seed-scan-button" type="button" title="Scan notities voor planten">Notities scannen</button>
           </div>
 
-          <div id="grid-header" class="grid-header"></div>
           <div class="category-filters seed-filter-chips" id="category-filters" aria-label="Filter je zaden">
              <button class="filter-chip active" data-filter="Alles" type="button">Alle zaden</button>
              <button class="filter-chip" data-filter="Groente" type="button">Groente</button>
@@ -553,6 +539,10 @@
             <button type="button" class="btn-delete-icon hidden" id="btn-form-delete" onclick="deleteCurrentSeed()" title="Verwijder zaadje">🗑️</button>
           </div>
         </form>
+        <button type="button" id="btn-seed-form-top" class="seed-form-top-button hidden" aria-label="Naar boven" title="Naar boven">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 14 7-7 7 7M12 7v11" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+          <span>Naar boven</span>
+        </button>
       </section>
       
       <!-- ONBOARDING VIEW -->
@@ -657,6 +647,10 @@
       <section id="view-detail" class="view hidden">
         <div class="detail-page-header">
            <button id="btn-detail-back" class="btn-back" type="button"><svg class="plant-detail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 5-7 7 7 7M5 12h15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Overzicht</span></button>
+           <div id="detail-plant-navigation" class="detail-plant-navigation" role="group" aria-label="Andere planten" hidden>
+             <button id="btn-detail-plant-prev" class="detail-plant-nav-button" type="button" aria-label="Vorige plant" title="Vorige plant"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 5-7 7 7 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></button>
+             <button id="btn-detail-plant-next" class="detail-plant-nav-button" type="button" aria-label="Volgende plant" title="Volgende plant"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 5 7 7-7 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></button>
+           </div>
            <button id="btn-detail-edit" class="btn-edit-detail" type="button"><svg class="plant-detail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.8 4.3 4.3-.8L20 7.5 16.5 4 4 16.5Zm10.8-10.8 3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Bewerk</span></button>
         </div>
         <div id="detail-page-body" class="detail-page-body">
@@ -669,11 +663,11 @@
   </div>
 
   <!-- LIGHTBOX MODAL -->
-  <div id="lightbox" class="lightbox hidden">
-    <button id="lightbox-close" class="lightbox-btn lightbox-close" aria-label="Sluit foto">&times;</button>
-    <button id="lightbox-prev" class="lightbox-btn lightbox-prev" aria-label="Vorige foto">&#10094;</button>
+  <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" aria-label="Fotogalerij" tabindex="-1">
+    <button type="button" id="lightbox-close" class="lightbox-btn lightbox-close" aria-label="Sluit foto">&times;</button>
+    <button type="button" id="lightbox-prev" class="lightbox-btn lightbox-prev" aria-label="Vorige foto">&#10094;</button>
     <img id="lightbox-img" class="lightbox-img" src="" alt="Vergrote foto" loading="lazy">
-    <button id="lightbox-next" class="lightbox-btn lightbox-next" aria-label="Volgende foto">&#10095;</button>
+    <button type="button" id="lightbox-next" class="lightbox-btn lightbox-next" aria-label="Volgende foto">&#10095;</button>
   </div>
 
   <div id="toast-container" class="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -769,12 +763,11 @@
   <div id="planner-month-modal" class="modal-overlay hidden">
     <div class="planner-modal-content">
       <div class="planner-modal-header">
-        <span id="planner-month-header-icon" class="planner-header-icon" aria-hidden="true"></span>
         <div class="planner-header-text">
           <h2 id="planner-month-title">Maand</h2>
           <p id="planner-month-subtitle">Sfeertekst...</p>
         </div>
-        <button onclick="closePlannerModal()" class="planner-modal-close">×</button>
+        <button type="button" onclick="closePlannerModal()" class="planner-modal-close" aria-label="Sluit maandtips">×</button>
       </div>
 
       <div class="planner-modal-body">
@@ -792,7 +785,6 @@
               <h4>Focus van deze maand:</h4>
               <p id="planner-focus-text"></p>
             </div>
-            <span id="planner-focus-icon" class="planner-card-icon" aria-hidden="true"></span>
           </div>
 
           <div class="planner-info-card alert">
@@ -800,7 +792,6 @@
               <h4>Let op:</h4>
               <p id="planner-alert-text"></p>
             </div>
-            <span id="planner-alert-icon" class="planner-card-icon" aria-hidden="true"></span>
           </div>
 
           <div class="planner-info-card tip">
@@ -808,13 +799,12 @@
               <h4>Handige tip:</h4>
               <p id="planner-tip-text"></p>
             </div>
-            <span id="planner-tip-icon" class="planner-card-icon" aria-hidden="true"></span>
           </div>
         </div>
       </div>
 
     </div>
-  
+  </div>
 
 
 
@@ -983,7 +973,7 @@
 
 
   <!-- Hidden input for data import -->
-  <input type="file" id="import-file" accept="*/*" style="display:none">
+  <input type="file" id="import-file" accept=".json,application/json" style="display:none">
 
   <!-- NOTE PARSER MODAL -->
   <div id="note-parser-modal" class="modal-overlay hidden">
@@ -1010,12 +1000,12 @@
   <script src="cloud-data.js?v=1"></script>
   <script src="photo-storage.js?v=3"></script>
   <script src="auto-sync.js?v=3"></script>
+  <script src="local-backup.js?v=1"></script>
   <script src="local-drafts.js?v=1"></script>
   <script src="plant-lifecycle.js?v=1"></script>
   <script src="ai-contract.js?v=1"></script>
   <script src="browser-ollama.js?v=1"></script>
   <script src="services.js?v=13"></script>
-  <script src="example-collections.js?v=1" charset="utf-8"></script>
   <script src="app-v132.js?v=7n" charset="utf-8"></script>
 
 </body>

@@ -6,7 +6,7 @@ const { pathToFileURL } = require('node:url');
 const root = path.resolve(__dirname, '..');
 if (fs.existsSync(path.join(root, '.env'))) process.loadEnvFile(path.join(root, '.env'));
 process.env.KWEEK_LOCAL_DEV = 'true';
-const pages = new Set(['index.html', 'app-v132.js', 'plant-lifecycle.js', 'ai-contract.js', 'browser-ollama.js', 'example-collections.js', 'cloud-data.js', 'photo-storage.js', 'auto-sync.js', 'local-drafts.js', 'services.js', 'services.css', 'styles.css', 'calendar.css', 'onboarding.css', 'planner.css', 'wishlist.css']);
+const pages = new Set(['index.html', 'app-v132.js', 'plant-lifecycle.js', 'ai-contract.js', 'browser-ollama.js', 'cloud-data.js', 'photo-storage.js', 'auto-sync.js', 'local-backup.js', 'local-drafts.js', 'services.js', 'services.css', 'styles.css', 'calendar.css', 'onboarding.css', 'planner.css', 'wishlist.css']);
 const routes = new Set(['auth', 'cloud-sync', 'photo-access', 'ai-config', 'ai-models', 'seed-info', 'tuinassistent', 'gemini-ai']);
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
 function createServer({ localAPIFile = path.join(root, '.kweek-local-api.json'), chatGPTFile = path.join(root, '.kweek-chatgpt.json'), chatGPTOptions } = {}) {

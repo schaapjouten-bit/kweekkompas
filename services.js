@@ -2,6 +2,8 @@
 (() => {
     const PREFS_KEY = 'kweekkompas_ai';
     const PROFILE_AI_CONSENT_KEY = 'kweekkompas_ai_profile_consent';
+    // Cloud sync is temporarily out of the app; keep its implementation for a later return.
+    const CLOUD_SYNC_ENABLED = false;
     const GEMINI_MODEL = 'gemini-3.5-flash-lite';
     const GEMINI_FLASH_MODEL = 'gemini-3.8-flash';
     const OWNER_KEY = 'kweekkompas_local_owner';
@@ -12,6 +14,7 @@
     let authMode = 'login';
     let recovery = false;
     let authMessage = '';
+    let ollamaInstalledModels = null;
     // Capture links once, then remove credentials before any network requests.
     let callbackPromise = Promise.resolve();
     function processAuthLink() {
@@ -39,8 +42,10 @@
         else openAccount();
     }
     }
-    processAuthLink();
-    window.addEventListener('hashchange', processAuthLink);
+    if (CLOUD_SYNC_ENABLED) {
+        processAuthLink();
+        window.addEventListener('hashchange', processAuthLink);
+    }
     let cloud = null;
     let conflictAccount = null;
     let localStatusTimer;
@@ -50,7 +55,7 @@
     let configPromise = null;
     function readPreferences() {
       const defaultProvider = config?.defaultProvider || (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) ? 'ollama' : 'gemini');
-      const defaults = { provider: defaultProvider, model: config?.providers?.[defaultProvider]?.model || (defaultProvider === 'ollama' ? 'llama3:latest' : '') };
+      const defaults = { provider: defaultProvider, model: config?.providers?.[defaultProvider]?.model || (defaultProvider === 'ollama' ? 'gemma4:latest' : '') };
       try {
         const saved = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
         prefs = providers.includes(saved?.provider) && typeof saved.model === 'string' ? { provider: saved.provider, model: saved.model } : defaults;
@@ -105,14 +110,13 @@
         }
         return data;
     }
-    const ollamaCommandHTML = () => `<div class="ollama-command"><input aria-label="Commando om het standaardmodel te downloaden" value="ollama pull llama3:latest" readonly><button type="button" class="settings-secondary-button" data-ollama-copy>Kopiëren</button><span class="ollama-copy-status" role="status"></span></div>`;
+    const ollamaCommandHTML = () => `<div class="ollama-command"><input aria-label="Commando om het gekozen Ollama-model te downloaden" data-ollama-model-command value="ollama pull gemma4:latest" readonly><button type="button" class="settings-secondary-button" data-ollama-copy>Kopiëren</button><span class="ollama-copy-status" role="status"></span></div>`;
     const localHelpHTML = () => `<details id="local-ai-help" class="local-ai-help"><summary>Lokale AI gebruiken</summary>
         <p>Ollama draait op je eigen computer en gebruikt geen Gemini-tegoed. Gebruik KweekKompas op dezelfde computer en laat Ollama draaien.</p>
         <ol>
             <li><a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Download en installeer Ollama</a>.</li>
             <li>Open PowerShell of Terminal en download het model:${ollamaCommandHTML()}Wacht tot de download klaar is.</li>
-            <li>Ga naar <strong>Instellingen → AI</strong>. Kies <strong>Lokale AI (Ollama)</strong> en <code>llama3:latest</code>. Klik op <strong>AI-keuze opslaan</strong>.</li>
-            <li>Klik op <strong>Verbinding testen</strong>.</li>
+            <li>Ga naar <strong>Instellingen → AI</strong>. De geïnstalleerde modellen verschijnen automatisch. Kies <strong>Lokale AI (Ollama)</strong> en je model, en klik op <strong>AI-keuze opslaan</strong>.</li>
         </ol>
         <details><summary>Online gebruiken op Windows</summary>
             <ol>
@@ -142,13 +146,25 @@
         const link = document.createElement('button'); link.type = 'button'; link.className = 'ollama-help-link'; link.textContent = 'Lees de installatiehulp'; link.onclick = openLocalHelp;
         container.append(document.createTextNode(' '), link);
     }
+    const cloudSettingsHTML = () => `
+        <section class="settings-page-section compact-account" id="settings-section-cloud" aria-labelledby="settings-cloud-title" tabindex="-1">
+<h3 id="settings-cloud-title">Account & synchronisatie</h3><p id="cloud-account-name">Je werkt lokaal</p>
+<button class="settings-primary-button" id="cloud-open-account" type="button">Inloggen / Registreren</button>
+<label class="auto-sync-switch"><input id="cloud-auto-sync" type="checkbox" role="switch" disabled><span>Automatisch synchroniseren</span></label>
+<p id="cloud-status" class="service-status" role="status" aria-live="polite">Opgeslagen op dit apparaat</p>
+<p id="cloud-auto-note" class="service-note"></p>
+<div id="cloud-auto-choices" class="service-actions" hidden><button class="settings-secondary-button" type="button" data-auto-choice="local">Lokale tuin gebruiken</button><button class="settings-secondary-button" id="cloud-auto-choose-remote" type="button" data-auto-choice="cloud">Cloudtuin gebruiken</button></div>
+<div id="cloud-actions" class="service-actions" hidden><button class="settings-primary-button" type="button" data-cloud-action="upload">Uploaden</button><button class="settings-secondary-button" type="button" data-cloud-action="download">Cloudkopie terughalen</button><button class="settings-secondary-button" type="button" data-cloud-action="logout">Uitloggen</button></div>
+<div id="cloud-conflict-actions" class="service-actions" hidden><button class="settings-secondary-button" type="button" data-cloud-action="download">Cloudkopie kiezen</button><button class="settings-secondary-button" type="button" data-cloud-action="replace">Lokale tuin naar cloud sturen</button></div>
+<p id="cloud-last-sync" class="service-note"></p><p id="cloud-local-status" class="service-note"></p><div hidden><p id="cloud-error-detail"></p><p id="cloud-login-status"></p><p id="cloud-copy-size"></p></div>
+</section>`;
     const settingsHTML = () => `
         <section class="settings-page-section" id="settings-section-ai" aria-labelledby="settings-ai-title" tabindex="-1">
             <div class="settings-section-heading"><div><p class="settings-section-eyebrow">AI</p><h3 id="settings-ai-title">Provider en model</h3></div></div>
             <form id="ai-settings-form" class="service-form">
                 <div class="settings-form-grid">
                     <label class="settings-field"><span>Provider</span><select id="ai-provider"><option value="gemini">Gemini</option><option value="ollama">Lokale AI (Ollama)</option><option value="chatgpt" hidden disabled>ChatGPT</option><option value="openai-compatible" hidden disabled>Eigen API</option><option value="" hidden disabled>Kies een beschikbare provider</option></select></label>
-                    <label class="settings-field" id="ai-standard-model"><span>Model</span><select id="ai-gemini-model" aria-describedby="ai-provider-status" required></select><select id="ai-chatgpt-model" aria-describedby="chatgpt-status" hidden disabled></select><input id="ai-model" list="ai-model-options" maxlength="160" placeholder="Modelnaam" hidden disabled><datalist id="ai-model-options"></datalist></label>
+                    <label class="settings-field" id="ai-standard-model"><span>Model</span><select id="ai-gemini-model" aria-describedby="ai-provider-status" required></select><select id="ai-chatgpt-model" aria-describedby="chatgpt-status" hidden disabled></select><select id="ai-model" aria-describedby="ollama-status" hidden disabled required></select></label>
                 </div>
                 <div id="chatgpt-setup" hidden>
                     <div id="chatgpt-entry" class="service-actions"><button id="chatgpt-login" class="settings-secondary-button" type="button">Doorgaan met ChatGPT</button></div>
@@ -169,29 +185,19 @@
                     <div class="ollama-actions"><button id="custom-api-save" class="settings-primary-button" type="button">Opslaan</button><button id="custom-api-delete" class="settings-secondary-button" type="button">Sleutel verwijderen</button><button id="custom-api-test" class="settings-secondary-button" type="button">Verbinding testen</button></div>
                     <p id="custom-api-status" class="service-status" role="status" aria-live="polite"></p>
                 </details>
-                <div id="ollama-setup" hidden>
-                <p><a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Download Ollama</a></p>${ollamaCommandHTML()}
-                <div class="ollama-actions"><button id="ollama-test" class="settings-secondary-button" type="button">Verbinding testen</button><button class="ollama-help-link" type="button" data-ollama-help>Lees de installatiehulp</button></div>
-                <p id="ollama-test-status" class="service-status" role="status" aria-live="polite"></p></div>
                 <p id="ai-provider-status" class="service-status" role="status"></p>
                 <button class="settings-primary-button" type="submit">AI-keuze opslaan</button>
                 <p id="ai-save-status" class="service-status" role="status"></p>
+                <div id="ollama-setup" hidden>
+                <p><a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Download Ollama</a></p>
+                <details class="ollama-download-details"><summary>Een model downloaden via PowerShell</summary>${ollamaCommandHTML()}</details>
+                <p id="ollama-status" class="service-status" role="status" aria-live="polite"></p></div>
                 <p id="chatgpt-usage" class="service-note" hidden><a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">ChatGPT-abonnement beheren</a></p>
             </form>
             <label class="ai-profile-consent"><input id="ai-profile-consent" type="checkbox"><span>Mijn tuinprofiel gebruiken voor AI-advies</span></label>
-            <p class="service-note">Stuurt klimaat, licht, tuinplek en ervaring mee bij AI-vragen. Naam en foto gaan niet mee. Deze keuze geldt alleen op dit apparaat.</p>
+            <p class="service-note ai-profile-note">(Bij AI-advies worden alleen klimaat, licht, tuinplek en ervaring meegestuurd. Naam en foto niet. Deze keuze geldt alleen op dit apparaat.)</p>
         </section>
-        <section class="settings-page-section compact-account" id="settings-section-cloud" aria-labelledby="settings-cloud-title" tabindex="-1">
-<h3 id="settings-cloud-title">Account & synchronisatie</h3><p id="cloud-account-name">Je werkt lokaal</p>
-<button class="settings-primary-button" id="cloud-open-account" type="button">Inloggen / Registreren</button>
-<label class="auto-sync-switch"><input id="cloud-auto-sync" type="checkbox" role="switch" disabled><span>Automatisch synchroniseren</span></label>
-<p id="cloud-status" class="service-status" role="status" aria-live="polite">Opgeslagen op dit apparaat</p>
-<p id="cloud-auto-note" class="service-note"></p>
-<div id="cloud-auto-choices" class="service-actions" hidden><button class="settings-secondary-button" type="button" data-auto-choice="local">Lokale tuin gebruiken</button><button class="settings-secondary-button" id="cloud-auto-choose-remote" type="button" data-auto-choice="cloud">Cloudtuin gebruiken</button></div>
-<div id="cloud-actions" class="service-actions" hidden><button class="settings-primary-button" type="button" data-cloud-action="upload">Uploaden</button><button class="settings-secondary-button" type="button" data-cloud-action="download">Cloudkopie terughalen</button><button class="settings-secondary-button" type="button" data-cloud-action="logout">Uitloggen</button></div>
-<div id="cloud-conflict-actions" class="service-actions" hidden><button class="settings-secondary-button" type="button" data-cloud-action="download">Cloudkopie kiezen</button><button class="settings-secondary-button" type="button" data-cloud-action="replace">Lokale tuin naar cloud sturen</button></div>
-<p id="cloud-last-sync" class="service-note"></p><p id="cloud-local-status" class="service-note"></p><div hidden><p id="cloud-error-detail"></p><p id="cloud-login-status"></p><p id="cloud-copy-size"></p></div>
-</section>`;
+        ${CLOUD_SYNC_ENABLED ? cloudSettingsHTML() : ''}`;
     function say(id, message, panel = document) {
         const el = panel.querySelector('#' + id);
         if (id === 'cloud-status' && !['Opgeslagen op dit apparaat', 'Synchroniseren…', 'Gesynchroniseerd', 'Offline — wijzigingen wachten', 'Conflict — kies een versie'].includes(message)) {
@@ -319,26 +325,32 @@
         }
     });
     window.KweekCloudStatus = { changed: (source = 'own') => {
+        if (!CLOUD_SYNC_ENABLED) return;
         localSame = false;
         if (source === 'own') { try { auto.changed(); } catch { say('cloud-error-detail', 'De wachtrij kon niet worden bewaard. Je bewerking staat wel lokaal; synchroniseer handmatig.'); } }
         clearTimeout(localStatusTimer); localStatusTimer = setTimeout(() => updateLocalStatus(), 600);
-    }, external: source => auto.external(source) };
-    window.addEventListener('storage', event => {
-        if (event.key === window.KweekAutoSync.GUARD) { auto.cancel(); auto.status(); }
-        if (event.key?.startsWith(window.KweekAutoSync.PREFIX) && event.key !== window.KweekAutoSync.GUARD) {
-            const state = auto.state();
-            if (!state?.enabled || state.paused) auto.cancel();
-            auto.status();
-        }
-        if (event.key === 'moestuin_wishlist' || event.key === 'userProfile' || event.key === 'moestuin_reminders' || event.key === 'moestuin_calendar') auto.status();
-        clearTimeout(localStatusTimer); localStatusTimer = setTimeout(() => updateLocalStatus(), 600);
-    });
-    window.addEventListener('focus', () => { updateLocalStatus(); auto.tick(); });
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') auto.tick(); });
-    window.addEventListener('online', async () => { if (!user) await startAccountChoice(); auto.online(); });
-    window.addEventListener('pagehide', () => auto.cancel());
-    window.addEventListener('pageshow', () => { updateLocalStatus(); auto.online(); });
-    setInterval(() => { if (document.visibilityState === 'visible') auto.tick(); }, 60000);
+    }, external: source => {
+        if (CLOUD_SYNC_ENABLED) auto.external(source);
+        else window.KweekCloudStatus.changed(source);
+    } };
+    if (CLOUD_SYNC_ENABLED) {
+        window.addEventListener('storage', event => {
+            if (event.key === window.KweekAutoSync.GUARD) { auto.cancel(); auto.status(); }
+            if (event.key?.startsWith(window.KweekAutoSync.PREFIX) && event.key !== window.KweekAutoSync.GUARD) {
+                const state = auto.state();
+                if (!state?.enabled || state.paused) auto.cancel();
+                auto.status();
+            }
+            if (event.key === 'moestuin_wishlist' || event.key === 'userProfile' || event.key === 'moestuin_reminders' || event.key === 'moestuin_calendar') auto.status();
+            clearTimeout(localStatusTimer); localStatusTimer = setTimeout(() => updateLocalStatus(), 600);
+        });
+        window.addEventListener('focus', () => { updateLocalStatus(); auto.tick(); });
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') auto.tick(); });
+        window.addEventListener('online', async () => { if (!user) await startAccountChoice(); auto.online(); });
+        window.addEventListener('pagehide', () => auto.cancel());
+        window.addEventListener('pageshow', () => { updateLocalStatus(); auto.online(); });
+        setInterval(() => { if (document.visibilityState === 'visible') auto.tick(); }, 60000);
+    }
     function renderGeminiModel(panel) {
         const select = panel.querySelector('#ai-gemini-model');
         select.replaceChildren();
@@ -351,6 +363,10 @@
         select.value = prefs.provider === 'gemini' ? prefs.model : GEMINI_MODEL;
         select.disabled = panel.querySelector('#ai-provider').value !== 'gemini';
         say('ai-provider-status', '', panel);
+    }
+    function syncOllamaCommand(panel) {
+        const model = panel.querySelector('#ai-model')?.value || 'gemma4:latest';
+        document.querySelectorAll('[data-ollama-model-command]').forEach(input => { input.value = `ollama pull ${model}`; });
     }
     async function updateModel(panel, reset = false) {
         const providerInput = panel.querySelector('#ai-provider');
@@ -376,7 +392,7 @@
         const gptModel = panel.querySelector('#ai-chatgpt-model');
         gptModel.hidden = !isGPT; gptModel.disabled = !isGPT; gptModel.required = isGPT;
         panel.querySelector('#ollama-setup').hidden = provider !== 'ollama';
-        say('ollama-test-status', '', panel);
+        say('ollama-status', '', panel);
         const directOllama = window.KweekBrowserOllama?.direct;
         model.hidden = isGemini || isCustom || isGPT; model.disabled = isGemini || isCustom || isGPT || !provider; model.required = !isGemini && !isCustom && !isGPT && Boolean(provider);
         select.hidden = !isGemini; select.required = isGemini; select.disabled = !isGemini;
@@ -400,12 +416,26 @@
             renderGeminiModel(panel);
             return;
         }
-        if (reset) model.value = saved || info?.model || (provider === 'ollama' ? 'llama3:latest' : '');
-        const options = panel.querySelector('#ai-model-options');
-        options.replaceChildren();
-        for (const name of [...new Set([info?.model, ...(info?.models || [])].filter(Boolean))]) {
-            const option = document.createElement('option'); option.value = name; options.append(option);
+        const installedModels = provider === 'ollama' ? (info?.connection?.installedModels || []) : [];
+        const ollamaIsReachable = provider === 'ollama' && (info?.connection?.state === 'reachable' || ollamaInstalledModels !== null);
+        const modelNames = provider === 'ollama' && ollamaIsReachable
+            ? (ollamaInstalledModels ?? installedModels)
+            : [info?.model, ...(info?.models || [])];
+        const availableModels = [...new Set(modelNames.filter(Boolean))];
+        const preferredModel = reset ? saved || info?.model || (provider === 'ollama' ? 'gemma4:latest' : '') : model.value;
+        model.replaceChildren();
+        for (const name of availableModels) {
+            const option = document.createElement('option'); option.value = name; option.textContent = name; model.append(option);
         }
+        if (!availableModels.length && preferredModel && !ollamaIsReachable) {
+            const option = document.createElement('option'); option.value = preferredModel; option.textContent = preferredModel; model.append(option);
+        }
+        if (provider === 'ollama' && ollamaIsReachable && !availableModels.length) {
+            const option = document.createElement('option'); option.value = ''; option.textContent = 'Geen modellen gevonden'; model.append(option);
+        }
+        model.value = availableModels.includes(preferredModel) ? preferredModel : (availableModels[0] || '');
+        model.disabled = isGemini || isCustom || isGPT || !provider || (provider === 'ollama' && ollamaIsReachable && !availableModels.length);
+        syncOllamaCommand(panel);
         say('ai-provider-status', info ? (info.configured ? `${info.label}: backend ingesteld. ${info.available === false ? 'De Ollama-server is momenteel niet bereikbaar.' : 'Beschikbaarheid van het model wordt bij de aanvraag gecontroleerd.'}` : `${info.label}: backendconfiguratie ontbreekt.`) : 'Backend niet beschikbaar.', panel);
         if (provider === 'ollama') say('ai-provider-status', '', panel);
     }
@@ -503,40 +533,31 @@
         } catch (error) { say('custom-api-status', error.status ? error.message : 'Lokale instellingen zijn niet bereikbaar.', panel); }
         finally { keyInput.value = ''; delete body.apiKey; buttons.forEach(button => { button.disabled = false; }); }
     }
-    async function testOllama(panel) {
-        const button = panel.querySelector('#ollama-test');
-        const model = panel.querySelector('#ai-model').value.trim();
-        if (!model) return say('ollama-test-status', 'Vul eerst een modelnaam in.', panel);
-        button.disabled = true; say('ollama-test-status', 'Verbinding controleren…', panel);
+    async function refreshOllamaModels(panel) {
+        const status = panel.querySelector('#ollama-status');
+        if (!status) return;
+        say('ollama-status', 'Ollama en geïnstalleerde modellen controleren…', panel);
         try {
+            let connection;
             if (window.KweekBrowserOllama?.direct) {
-                const connection = await window.KweekBrowserOllama.inspect(model);
-                if (button.isConnected && panel.querySelector('#ai-provider').value === 'ollama') {
-                    say('ollama-test-status', connection.message, panel);
-                    say('ai-provider-status', connection.message, panel);
-                    if (!connection.modelAvailable) appendOllamaHelp(panel.querySelector('#ollama-test-status'), { code: 'OLLAMA_MODEL_MISSING' });
-                }
-                updateDashboardProvider(); return;
+                connection = await window.KweekBrowserOllama.inspect(panel.querySelector('#ai-model').value.trim());
+            } else {
+                config = await request('ai-config');
+                connection = config.providers?.ollama?.connection;
             }
-            config = await request('ai-config');
-            if (!button.isConnected || panel.querySelector('#ai-provider').value !== 'ollama') return;
-            const connection = config.providers?.ollama?.connection;
-            const state = connection?.state;
-            const normalized = value => value.includes(':') ? value : value + ':latest';
-            const present = connection?.installedModels?.some(name => normalized(name) === normalized(model));
-            const message = state === 'reachable' ? present ? `Verbonden. ${model} is beschikbaar. Er is geen AI-vraag verstuurd.` : `Ollama draait, maar ${model} is niet gedownload. Download dat model of kies een geïnstalleerd model.`
-                : state === 'invalid-config' ? 'Het Ollama-adres in de backend is ongeldig. Controleer de configuratie.'
-                : state === 'unconfigured' ? 'Ollama is niet ingesteld op de online backend. Gebruik de lokale app voor Ollama op je computer.'
-                : state === 'unreachable' ? 'Ollama is niet bereikbaar vanaf de backend. Start Ollama en test opnieuw; controleer ook het adres en de firewall.'
-                : 'De backend kan de Ollama-verbinding niet controleren. Start de lokale app met npm start.';
-            say('ollama-test-status', message, panel);
-            say('ollama-route-note', connection?.runtime === 'hosted' ? 'Online loopt deze test op Netlify. Jouw localhost is daar niet bereikbaar; CORS of browsertoestemming verandert dat niet.' : 'Getest via de lokale KweekKompas-backend, met alleen de modellenlijst.', panel);
+            if (!status.isConnected || panel.querySelector('#ai-provider').value !== 'ollama') return;
+            ollamaInstalledModels = connection?.state === 'reachable' ? (connection.installedModels || []) : [];
+            updateModel(panel, false);
+            if (connection?.state === 'reachable') {
+                const models = connection.installedModels || [];
+                say('ollama-status', models.length ? '' : 'Ollama is bereikbaar, maar er zijn nog geen modellen gedownload.', panel);
+            } else {
+                say('ollama-status', connection?.message || 'Ollama is niet bereikbaar. Start Ollama en open Instellingen → AI opnieuw.', panel);
+            }
         } catch (error) {
-            say('ollama-test-status', error.code ? error.message : 'De KweekKompas-backend is niet bereikbaar. Start de lokale app met npm start en probeer opnieuw.', panel);
-            appendOllamaHelp(panel.querySelector('#ollama-test-status'), error);
-            if (window.KweekBrowserOllama?.direct) { say('ai-provider-status', error.message, panel); updateDashboardProvider(); }
+            say('ollama-status', error.code ? error.message : 'Ollama-modellen konden niet worden opgehaald. Start Ollama en open Instellingen → AI opnieuw.', panel);
+            appendOllamaHelp(panel.querySelector('#ollama-status'), error);
         }
-        finally { if (button.isConnected) button.disabled = false; }
     }
     function displayAccount(panel, configured) {
         say('cloud-account-name', user ? user.email : 'Je werkt lokaal', panel);
@@ -811,8 +832,10 @@
             else if (!user && !sessionStorage.getItem(ACCOUNT_CHOICE) && !accountDialog?.open) openAccountPopup('choice');
         } catch (error) { console.warn('Accountstart:', error.message); /* Local use remains available when account service is offline. */ }
     }
-    if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', startAccountChoice, { once: true });
-    else startAccountChoice();
+    if (CLOUD_SYNC_ENABLED) {
+        if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', startAccountChoice, { once: true });
+        else startAccountChoice();
+    }
     async function mount(panel) {
         readPreferences();
         const providerInput = panel.querySelector('#ai-provider');
@@ -823,7 +846,7 @@
             try { localStorage.setItem(PROFILE_AI_CONSENT_KEY, String(profileConsent.checked)); }
             catch { profileConsent.checked = false; say('ai-save-status', 'Deze keuze kon niet worden opgeslagen.', panel); }
         };
-        panel.querySelector('#ollama-test').onclick = () => testOllama(panel);
+        panel.querySelector('#ai-model').onchange = () => syncOllamaCommand(panel);
         panel.querySelector('#chatgpt-login').onclick = () => chatGPTAction(panel, 'login');
         panel.querySelector('#chatgpt-other-account').onclick = () => chatGPTAction(panel, 'login', true);
         panel.querySelector('#chatgpt-logout').onclick = () => chatGPTAction(panel, 'logout');
@@ -838,7 +861,11 @@
         panel.querySelector('#ai-model').value = prefs.model || '';
         if (config || providerInput.value !== 'gemini') updateModel(panel, true);
         else renderGeminiModel(panel);
-        providerInput.onchange = () => updateModel(panel, true);
+        if (providerInput.value === 'ollama') void refreshOllamaModels(panel);
+        providerInput.onchange = () => {
+            updateModel(panel, true);
+            if (providerInput.value === 'ollama') void refreshOllamaModels(panel);
+        };
         panel.querySelector('#ai-settings-form').onsubmit = event => {
             event.preventDefault();
             const provider = providerInput.value;
@@ -855,27 +882,30 @@
                 say('ai-save-status', 'Opgeslagen voor de tuinassistent en de zadenhulp.', panel);
             } catch { say('ai-save-status', 'Opslaan is niet mogelijk in deze browser.', panel); }
         };
-        panel.querySelector('#cloud-auto-sync').onchange = event => { if (event.target.checked) auto.enable(); else auto.disable(); };
-        panel.querySelectorAll('[data-auto-choice]').forEach(button => button.onclick = () => auto.choose(button.dataset.autoChoice));
-        auto.status();
-        panel.querySelector('#cloud-open-account').onclick = () => openAccountPopup(recovery ? 'password' : 'login', { section: 'cloud' });
-        panel.querySelectorAll('[data-cloud-action]').forEach(button => { button.onclick = () => action(button.dataset.cloudAction, panel); });
-        // Reuse the known account layout while refreshing it. Otherwise a theme
-        // rerender briefly shows the local/login layout and shifts the drawer.
-        if (user) displayAccount(panel, true);
-        // Account status must remain usable even when another settings request stalls.
-        const accountPromise = (async () => {
-            try {
-                await callbackPromise;
-                const version = accountVersion;
-                const data = await request('auth');
-                if (version !== accountVersion) return;
-                if (!providerInput.isConnected) return;
-                if (typeof data.configured !== 'boolean') throw new Error('Cloudconfiguratie kon niet worden gelezen. Je lokale tuin blijft beschikbaar.');
-                user = data.user; recovery = Boolean(data.recovery); auto.setAccount(recovery ? null : user?.id); if (recovery) authMode = 'password'; cloud = null; displayAccount(panel, data.configured);
-                if (user && !recovery) { try { await readCloud(panel); } catch (error) { say('cloud-status', `Je bent ingelogd. ${error.message}`, panel); } }
-            } catch (error) { say('cloud-status', error.message, panel); }
-        })();
+        let accountPromise = Promise.resolve();
+        if (CLOUD_SYNC_ENABLED) {
+            panel.querySelector('#cloud-auto-sync').onchange = event => { if (event.target.checked) auto.enable(); else auto.disable(); };
+            panel.querySelectorAll('[data-auto-choice]').forEach(button => button.onclick = () => auto.choose(button.dataset.autoChoice));
+            auto.status();
+            panel.querySelector('#cloud-open-account').onclick = () => openAccountPopup(recovery ? 'password' : 'login', { section: 'cloud' });
+            panel.querySelectorAll('[data-cloud-action]').forEach(button => { button.onclick = () => action(button.dataset.cloudAction, panel); });
+            // Reuse the known account layout while refreshing it. Otherwise a theme
+            // rerender briefly shows the local/login layout and shifts the drawer.
+            if (user) displayAccount(panel, true);
+            // Account status must remain usable even when another settings request stalls.
+            accountPromise = (async () => {
+                try {
+                    await callbackPromise;
+                    const version = accountVersion;
+                    const data = await request('auth');
+                    if (version !== accountVersion) return;
+                    if (!providerInput.isConnected) return;
+                    if (typeof data.configured !== 'boolean') throw new Error('Cloudconfiguratie kon niet worden gelezen. Je lokale tuin blijft beschikbaar.');
+                    user = data.user; recovery = Boolean(data.recovery); auto.setAccount(recovery ? null : user?.id); if (recovery) authMode = 'password'; cloud = null; displayAccount(panel, data.configured);
+                    if (user && !recovery) { try { await readCloud(panel); } catch (error) { say('cloud-status', `Je bent ingelogd. ${error.message}`, panel); } }
+                } catch (error) { say('cloud-status', error.message, panel); }
+            })();
+        }
         try {
             configPromise ||= request('ai-config').then(value => { config = value; });
             await configPromise;
@@ -929,7 +959,7 @@
         const aiBody = gardenContext ? { ...body, gardenContext } : body;
         try {
             if (choice.provider === 'ollama' && window.KweekBrowserOllama?.direct) {
-                try { return await window.KweekBrowserOllama.generate(route, aiBody, choice.model || 'llama3:latest'); }
+                try { return await window.KweekBrowserOllama.generate(route, aiBody, choice.model || 'gemma4:latest'); }
                 finally { updateDashboardProvider(); }
             }
             return await request(route, { ...aiBody, ai: choice });

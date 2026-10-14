@@ -82,7 +82,7 @@ function loadSafeBuilders() {
         }
     };
     const source = sourceBetween('// --- SAFE DYNAMIC CONTENT ---', 'document.addEventListener(\'DOMContentLoaded\'');
-    vm.runInNewContext(`${source}\nglobalThis.__hooks = { buildWishlistCard, buildAISuggestionRow, buildReminderRow, buildCalendarReminderPills, groupUpcomingCalendarReminders, filterWishlistItems, safeHttpUrl, safeWishlistImageUrl, safeProfileImageUrl, normalizeExternalImageResult, buildImageSearchCard, setSafeText, safeClassToken, appendHighlightedText };`, context);
+    vm.runInNewContext(`${source}\nglobalThis.__hooks = { buildWishlistCard, buildAISuggestionRow, buildReminderRow, buildCalendarReminderPills, filterWishlistItems, safeHttpUrl, safeWishlistImageUrl, safeProfileImageUrl, normalizeExternalImageResult, buildImageSearchCard, setSafeText, safeClassToken, appendHighlightedText };`, context);
     return context.__hooks;
 }
 
@@ -436,26 +436,4 @@ test('reminderregels en kalenderpillen gebruiken tekstnodes voor titels', () => 
     assert.equal(findElements(pills, element => element.className === 'cal-pill-more')[0].textContent, '+1');
     assertNoInlineHandlers(row);
     assertNoInlineHandlers(pills);
-});
-
-test('kalender groepeert open herinneringen als vandaag, binnenkort en later', () => {
-    const { groupUpcomingCalendarReminders } = loadSafeBuilders();
-    const groups = groupUpcomingCalendarReminders([
-        { id: 1, date: '2026-09-25', title: 'Vandaag' },
-        { id: 2, date: '2026-09-26', title: 'Morgen' },
-        { id: 3, date: '2026-10-02', title: 'Over zeven dagen' },
-        { id: 4, date: '2026-10-03', title: 'Later' },
-        { id: 5, date: '2026-09-25', title: 'Afgerond', done: true },
-        { id: 6, date: '2026-09-24', title: 'Voorbij' },
-        { id: 7, date: 'ongeldige datum', title: 'Ongeldig' }
-    ], '2026-09-25');
-
-    assert.deepEqual(JSON.parse(JSON.stringify(groups.map(group => ({
-        label: group.label,
-        ids: group.items.map(item => item.id)
-    })))), [
-        { label: 'Vandaag', ids: [1] },
-        { label: 'Binnenkort', ids: [2, 3] },
-        { label: 'Later', ids: [4] }
-    ]);
 });

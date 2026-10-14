@@ -92,12 +92,16 @@ html:has(#wishlist-detail-modal:not(.hidden)), body:has(#wishlist-detail-modal:n
 .ollama-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .ollama-actions button { width: auto; }
 #ollama-setup a, .local-ai-help a { color: var(--accent-primary); text-underline-offset: 3px; }
+.ai-profile-note { margin: 4px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.35; }
+.ollama-download-details { margin: 8px 0; }
+.ollama-download-details > summary { color: var(--text-muted); cursor: pointer; font-size: 13px; }
+#ollama-setup > p:first-child a { font-size: 13px; text-transform: capitalize; text-decoration: underline; text-underline-offset: 3px; }
 .ollama-help-link { border: 0; padding: 4px 0; background: transparent; color: var(--accent-primary); font: inherit; text-decoration: underline; cursor: pointer; }
 .ollama-help-link:focus-visible, .ollama-command :focus-visible { outline: 3px solid var(--accent-primary); outline-offset: 3px; }
-.local-ai-help { line-height: 1.6; }
+.local-ai-help { font-size: 0.9rem; line-height: 1.5; }
 .local-ai-help h4 { margin: 22px 0 8px; }
 .local-ai-help ol, .local-ai-help ul { padding-left: 22px; }
-.local-ai-help li { margin-bottom: 12px; }
+.local-ai-help li { font-size: 12px; margin-bottom: 10px; }
 .local-ai-help code { font-size: 12px; overflow-wrap: anywhere; }
 .local-ai-help figure { margin: 16px 0; }
 .local-ai-help img { display: block; width: 100%; max-width: 420px; height: auto; border: 1px solid var(--border-color); border-radius: 10px; }

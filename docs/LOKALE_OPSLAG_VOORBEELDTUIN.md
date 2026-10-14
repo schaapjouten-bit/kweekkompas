@@ -1,5 +1,7 @@
 # Lokale opslag en voorbeeldtuin
 
+**Historisch verslag.** De Proeftuin-functie en de collectie-JSON zijn op 14 oktober 2026 verwijderd. De foto-assets blijven beschikbaar voor planten die eerder zijn toegevoegd.
+
 Aanvulling stap 2 (3 oktober 2026): de collectie-JSON is verplaatst naar
 `assets/example-collections/voorbeeldtuin.json`; de bestaande foto's blijven
 in `assets/example-garden/`. Zie `VOORBEELDCOLLECTIES_STAP2.md` voor de actuele

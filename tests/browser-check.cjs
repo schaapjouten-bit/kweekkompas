@@ -118,7 +118,7 @@ const report = { screens: [], errors: [], checks: [] };
         await page.evaluate(() => window.switchView('home'));
         await page.fill('#ai-question-input', 'Hoe verzorg ik tomaat?'); await page.click('#btn-ask-ai');
         await page.waitForFunction(() => document.querySelector('#ai-assistant-output').textContent.includes('bodemvochtigheid'));
-        await page.evaluate(() => window.switchView('calendar')); await page.click('#btn-add-event-fab');
+        await page.evaluate(() => window.switchView('calendar')); await page.click('#planning-add');
         await page.fill('#new-reminder-input', 'Water geven na het testen'); await page.click('#btn-add-reminder');
         assert((await page.evaluate(() => window.KweekLocalData.capture())).reminders.some(r => r.title === 'Water geven na het testen'));
         report.checks.push('Kalenderherinnering toevoegen en opnemen in de back-up werkt');
