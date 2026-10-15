@@ -143,13 +143,18 @@ const server = http.createServer((req, res) => {
     await open('form-crop');
     await page.locator('#btn-detail-edit').click(); await page.waitForSelector('#view-add:not(.hidden)');
     assert.equal(await page.locator('#form-photo-focus').isVisible(), true);
+    assert.equal((await page.locator('#form-photo-focus > span').textContent()).trim(), 'Zadenkaart');
     assert.equal((await page.locator('#btn-form-photo-focus').textContent()).trim(), 'Focus instellen');
     await page.locator('#btn-form-photo-focus').click();
-    await page.locator('.detail-crop-fit').click();
+    const cardZoom = page.locator('.detail-crop-zoom');
+    assert.equal(await cardZoom.getAttribute('min'), '0.8');
+    await cardZoom.evaluate(el => { el.value = '0.8'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    assert.equal(await page.locator('.detail-crop-preview-backdrop').count(), 1);
     await page.getByRole('button', { name: 'Opslaan', exact: true }).click();
     await page.locator('#btn-submit-form').click(); await page.waitForSelector('#view-list:not(.hidden)');
-    await page.waitForFunction(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'form-crop')?.cardImageCrop?.fit === 'contain');
+    await page.waitForFunction(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'form-crop')?.cardImageCrop?.zoom === 0.8);
     await page.waitForFunction(() => document.querySelector('#seed-card-form-crop .seed-card-image')?.style.position === 'absolute');
+    assert.equal(await page.locator('#seed-card-form-crop .seed-card-image-backdrop').count(), 1);
     const formThumbnailAfter = await page.locator('#seed-card-form-crop .seed-card-image').evaluate(img => ({
       src: img.getAttribute('src'), style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit, objectPosition: getComputedStyle(img).objectPosition
     }));
@@ -157,7 +162,7 @@ const server = http.createServer((req, res) => {
     assert.equal(formThumbnailAfter.objectFit, 'fill');
     await page.reload(); await page.waitForFunction(() => typeof window.KweekLocalData?.capture === 'function');
     const formSavedCrop = await page.evaluate(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'form-crop').cardImageCrop);
-    assert.deepEqual(formSavedCrop, { fit: 'contain', zoom: 1, x: 0.5, y: 0.5 });
+    assert.deepEqual(formSavedCrop, { fit: 'cover', zoom: 0.8, x: 0.5, y: 0.5 });
     await open('form-crop'); await page.locator('#btn-detail-back').click(); await page.waitForSelector('#view-list:not(.hidden)');
     await page.waitForFunction(() => document.querySelector('#seed-card-form-crop .seed-card-image')?.style.position === 'absolute');
     const reloadedThumbnail = await page.locator('#seed-card-form-crop .seed-card-image').evaluate(img => ({
@@ -167,12 +172,12 @@ const server = http.createServer((req, res) => {
     await open('form-crop'); await page.locator('#btn-detail-edit').click(); await page.waitForSelector('#view-add:not(.hidden)');
     assert.equal((await page.locator('#btn-form-photo-focus').textContent()).trim(), 'Focus aanpassen');
     await page.locator('#btn-form-photo-focus').click();
-    assert.equal((await page.locator('.detail-crop-fit').textContent()).trim(), 'Foto uitsnijden');
+    assert.equal(await page.locator('.detail-crop-zoom').inputValue(), '0.8');
+    assert.equal(await page.locator('.detail-crop-zoom').getAttribute('min'), '0.8');
     await page.locator('.detail-crop-cancel').click();
-    report.checks.push('Focus instellen/bewerken stuurt de zadenkaartminiatuur en blijft na herladen bewaard');
+    report.checks.push('Focus instellen/bewerken stuurt de miniatuur, kan uitzoomen en blijft na herladen bewaard');
 
     await open('complete');
-    await page.locator('#btn-detail-back').click(); await page.waitForSelector('#view-list:not(.hidden)');
     await page.waitForFunction(() => document.querySelector('#seed-card-complete .seed-card-image')?.style.position === 'absolute');
     const legacyThumbnail = await page.locator('#seed-card-complete .seed-card-image').evaluate(img => ({
       style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit
@@ -183,8 +188,62 @@ const server = http.createServer((req, res) => {
       src: img.getAttribute('src'), style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit
     }));
     assert.equal(hero.src, complete.featuredImageUrl); assert.equal(hero.style, null); assert.equal(hero.objectFit, 'cover');
-    assert.equal(await page.locator('#view-detail [aria-label^="Foto-uitsnede aanpassen"]').count(), 0);
-    report.checks.push('Legacy focus uit detailImageCrop wordt als kaartminiatuur getoond; detailfoto houdt de standaarduitsnede en heeft geen focusbediening');
+    assert.equal(await page.getByRole('button', { name: 'Headerfoto aanpassen voor Basilicum' }).count(), 0);
+    await page.locator('#btn-detail-edit').click(); await page.waitForSelector('#view-add:not(.hidden)');
+    assert.equal(await page.locator('#form-header-photo-focus').isVisible(), true);
+    assert.equal((await page.locator('#form-header-photo-focus > span').textContent()).trim(), 'Detailpagina');
+    assert.equal((await page.locator('#btn-form-header-photo-focus').textContent()).trim(), 'Focus instellen');
+    await page.locator('#btn-form-header-photo-focus').click();
+    assert.equal(await page.locator('.detail-crop-dialog h2').textContent(), 'Headerfoto aanpassen');
+    assert.equal(await page.locator('.detail-crop-zoom').getAttribute('min'), '0.8');
+    await page.locator('.detail-crop-zoom').evaluate(el => { el.value = '0.8'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    assert.equal(await page.locator('.detail-crop-preview-backdrop').count(), 1);
+    const headerPreview = await page.locator('.detail-crop-preview').boundingBox();
+    await page.mouse.move(headerPreview.x + headerPreview.width / 2, headerPreview.y + headerPreview.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(headerPreview.x + headerPreview.width / 2 + 24, headerPreview.y + headerPreview.height / 2, { steps: 3 });
+    await page.mouse.up();
+    await page.getByRole('button', { name: 'Opslaan', exact: true }).click();
+    assert.equal(await page.locator('#view-detail:not(.hidden)').count(), 0);
+    assert.equal(await page.locator('#form-header-photo-focus').isVisible(), true);
+    await page.locator('#btn-submit-form').click(); await page.waitForSelector('#view-list:not(.hidden)');
+    await page.waitForFunction(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'complete')?.detailHeaderImageCrop?.zoom === 0.8);
+    const cropData = await page.evaluate(async () => {
+      const seed = (await window.KweekLocalData.capture()).seeds.find(item => item.id === 'complete');
+      return { cardCrop: seed.cardImageCrop, headerCrop: seed.detailHeaderImageCrop };
+    });
+    assert.deepEqual(cropData.cardCrop, complete.detailImageCrop);
+    assert.equal(cropData.headerCrop.fit, 'cover');
+    assert.equal(cropData.headerCrop.zoom, 0.8);
+    assert(cropData.headerCrop.x > 0.5, 'dragging the header image should change its saved horizontal position');
+    assert.equal(cropData.headerCrop.y, 0.5);
+    await page.waitForFunction(() => document.querySelector('#seed-card-complete .seed-card-image')?.style.position === 'absolute');
+    const legacyThumbnailAfterHeaderEdit = await page.locator('#seed-card-complete .seed-card-image').getAttribute('style');
+    assert.equal(legacyThumbnailAfterHeaderEdit, legacyThumbnail.style);
+    await open('complete');
+    await page.waitForFunction(() => document.querySelector('#view-detail .detail-hero-img')?.style.position === 'absolute');
+    assert.equal(await page.locator('#view-detail .detail-hero-backdrop').count(), 1);
+    const headerAfterSave = await page.locator('#view-detail .detail-hero-img').evaluate(img => ({
+      style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit
+    }));
+    assert(headerAfterSave.style); assert.equal(headerAfterSave.objectFit, 'fill');
+    assert.equal(await page.locator('#view-detail .detail-header-crop-button').count(), 0);
+    await page.reload(); await page.waitForFunction(() => typeof window.KweekLocalData?.capture === 'function');
+    await open('complete');
+    const persistedHeader = await page.locator('#view-detail .detail-hero-img').evaluate(img => ({
+      style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit
+    }));
+    assert(persistedHeader.style); assert.equal(persistedHeader.objectFit, 'fill');
+    assert.equal(await page.locator('#view-detail .detail-header-crop-button').count(), 0);
+    await page.locator('#btn-detail-edit').click(); await page.waitForSelector('#view-add:not(.hidden)');
+    assert.equal((await page.locator('#form-header-photo-focus > span').textContent()).trim(), 'Detailpagina');
+    assert.equal((await page.locator('#btn-form-header-photo-focus').textContent()).trim(), 'Focus aanpassen');
+    await page.locator('#btn-form-header-photo-focus').click();
+    assert.equal(await page.locator('.detail-crop-zoom').inputValue(), '0.8');
+    await page.locator('.detail-crop-cancel').click();
+    await page.evaluate(() => window.openAddForm()); await page.waitForSelector('#view-add:not(.hidden)');
+    assert.equal(await page.locator('#form-header-photo-focus').isVisible(), false);
+    report.checks.push('Detailheader uitsnede is alleen in bewerken instelbaar; detailpagina toont de opgeslagen uitsnede en kaartminiatuur blijft ongewijzigd');
     assert.deepEqual(report.errors, []);
     fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ checks: report.checks, screenshots: report.screenshots.length, errors: report.errors }, null, 2));
