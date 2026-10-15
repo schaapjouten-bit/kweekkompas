@@ -2497,6 +2497,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let filteredSeedIdsForDetail = [];
     let detailNavigationSeedIds = [];
     let detailNavigationIndex = -1;
+    let detailPhotoResizeObserver = null;
     let activeMonthFilter = null; // null or 0-11
     let showAllMissed = false;
 
@@ -3481,6 +3482,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnDetailPlantNext?.addEventListener('click', () => navigateDetailPlant(1));
 
     function openDetailView(seed, options = {}) {
+        detailPhotoResizeObserver?.disconnect();
         const focusedAction = document.activeElement?.closest('#view-detail .btn-action-chip')?.dataset.detailAction;
         viewDetail.dataset.currentSeedId = seed.id;
         updateDetailPlantNavigation(seed, options.preserveNavigationOrder === true);
@@ -3519,10 +3521,43 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
 
         const header = make('div', 'detail-photo');
+        let image = null;
+        let crop = null;
+        let applyCrop = null;
         const featuredImg = seed.featuredImageUrl || seed.image || (seed.images && seed.images[0]?.url);
         const safeFeaturedImg = safeWishlistImageUrl(featuredImg);
         if (safeFeaturedImg) {
-            const image = make('img', 'detail-hero-img');
+            image = make('img', 'detail-hero-img');
+            const savedCrop = seed.detailImageCrop && typeof seed.detailImageCrop === 'object' ? seed.detailImageCrop : {};
+            crop = {
+                fit: savedCrop.fit === 'contain' ? 'contain' : 'cover',
+                zoom: Math.min(3, Math.max(1, Number(savedCrop.zoom) || 1)),
+                x: Math.min(1, Math.max(0, Number.isFinite(Number(savedCrop.x)) ? Number(savedCrop.x) : 0.5)),
+                y: Math.min(1, Math.max(0, Number.isFinite(Number(savedCrop.y)) ? Number(savedCrop.y) : 0.5))
+            };
+            applyCrop = (target, value) => {
+                const frame = target.parentElement;
+                const rect = frame?.getBoundingClientRect();
+                const frameWidth = frame?.clientWidth || 0;
+                const frameHeight = frame?.clientHeight || 0;
+                if (!rect?.width || !rect.height || !frameWidth || !frameHeight || !target.naturalWidth || !target.naturalHeight) return;
+                const contain = value.fit === 'contain';
+                const baseScale = contain
+                    ? Math.min(frameWidth / target.naturalWidth, frameHeight / target.naturalHeight)
+                    : Math.max(frameWidth / target.naturalWidth, frameHeight / target.naturalHeight);
+                const scale = baseScale * (contain ? 1 : value.zoom);
+                const width = target.naturalWidth * scale;
+                const height = target.naturalHeight * scale;
+                target.style.position = 'absolute';
+                target.style.width = `${width}px`;
+                target.style.height = `${height}px`;
+                target.style.maxWidth = 'none';
+                target.style.objectFit = 'fill';
+                target.style.transform = 'none';
+                target.style.left = `${contain ? (frameWidth - width) / 2 : -(width - frameWidth) * value.x}px`;
+                target.style.top = `${contain ? (frameHeight - height) / 2 : -(height - frameHeight) * value.y}px`;
+            };
+            image.addEventListener('load', () => applyCrop(image, crop), { once: true });
             image.setAttribute('src', safeFeaturedImg);
             image.setAttribute('alt', text(seed.naam));
             image.addEventListener('error', () => {
@@ -3559,6 +3594,122 @@ document.addEventListener('DOMContentLoaded', async () => {
         badgeOverlay.append(badgeLeft, badgeRight);
         titleOverlay.appendChild(badgeOverlay);
         summaryColumn.appendChild(header);
+        if (safeFeaturedImg) {
+            const cropButton = make('button', 'detail-image-crop-button', 'Uitsnede aanpassen');
+            cropButton.type = 'button';
+            cropButton.setAttribute('aria-label', `Foto-uitsnede aanpassen voor ${text(seed.naam)}`);
+            cropButton.addEventListener('click', () => {
+                const dialog = make('dialog', 'detail-crop-dialog');
+                dialog.setAttribute('aria-labelledby', 'detail-crop-title');
+                const panel = make('div', 'detail-crop-panel');
+                const top = make('div', 'detail-crop-top');
+                const title = make('h2', '', 'Foto-uitsnede aanpassen');
+                title.id = 'detail-crop-title';
+                const closeButton = make('button', 'detail-crop-close', 'Sluiten');
+                closeButton.type = 'button';
+                closeButton.addEventListener('click', () => dialog.close());
+                top.append(title, closeButton);
+
+                const preview = make('div', 'detail-crop-preview');
+                preview.setAttribute('role', 'img');
+                preview.setAttribute('aria-label', `Voorbeeld van de foto voor ${text(seed.naam)}`);
+                const previewImage = make('img', 'detail-crop-preview-image');
+                previewImage.src = safeFeaturedImg;
+                previewImage.alt = '';
+                previewImage.draggable = false;
+                preview.appendChild(previewImage);
+
+                const help = make('p', 'detail-crop-help', 'Sleep de foto om het onderwerp te verplaatsen.');
+                const zoomLabel = make('label', 'detail-crop-zoom-label');
+                zoomLabel.htmlFor = 'detail-crop-zoom';
+                zoomLabel.append(make('span', '', 'Inzoomen'), make('output', '', `${crop.zoom.toFixed(1)}×`));
+                const zoom = make('input', 'detail-crop-zoom');
+                zoom.id = 'detail-crop-zoom';
+                zoom.type = 'range'; zoom.min = '1'; zoom.max = '3'; zoom.step = '0.1'; zoom.value = String(crop.zoom);
+                zoom.setAttribute('aria-label', 'Foto inzoomen');
+                const framing = make('button', 'detail-crop-fit', crop.fit === 'contain' ? 'Foto uitsnijden' : 'Hele foto tonen');
+                framing.type = 'button';
+                const message = make('p', 'detail-crop-message');
+
+                const footer = make('div', 'detail-crop-footer');
+                const reset = make('button', 'detail-crop-reset', 'Herstellen'); reset.type = 'button';
+                const cancel = make('button', 'detail-crop-cancel', 'Annuleren'); cancel.type = 'button';
+                const save = make('button', 'detail-crop-save', 'Opslaan'); save.type = 'button';
+                footer.append(reset, cancel, save);
+                cancel.addEventListener('click', () => dialog.close());
+                const updatePreview = () => {
+                    applyCrop(previewImage, crop);
+                    preview.classList.toggle('is-contained', crop.fit === 'contain');
+                    zoom.value = String(crop.zoom);
+                    zoom.disabled = crop.fit === 'contain';
+                    zoomLabel.querySelector('output').textContent = `${crop.zoom.toFixed(1)}×`;
+                    framing.textContent = crop.fit === 'contain' ? 'Foto uitsnijden' : 'Hele foto tonen';
+                    help.textContent = crop.fit === 'contain' ? 'De volledige foto blijft zichtbaar.' : 'Sleep de foto om het onderwerp te verplaatsen.';
+                };
+                zoom.addEventListener('input', () => {
+                    crop.fit = 'cover';
+                    crop.zoom = Math.min(3, Math.max(1, Number(zoom.value) || 1));
+                    updatePreview();
+                });
+                framing.addEventListener('click', () => {
+                    crop.fit = crop.fit === 'contain' ? 'cover' : 'contain';
+                    if (crop.fit === 'contain') { crop.zoom = 1; crop.x = 0.5; crop.y = 0.5; }
+                    updatePreview();
+                    message.textContent = '';
+                });
+                reset.addEventListener('click', () => {
+                    crop.fit = 'cover'; crop.zoom = 1; crop.x = 0.5; crop.y = 0.5;
+                    updatePreview(); message.textContent = 'Standaarduitsnede hersteld. Sla op om dit te bewaren.';
+                });
+                let drag = null;
+                preview.addEventListener('pointerdown', event => {
+                    if (crop.fit === 'contain' || event.button !== 0) return;
+                    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, cropX: crop.x, cropY: crop.y };
+                    preview.setPointerCapture(event.pointerId);
+                    event.preventDefault();
+                });
+                preview.addEventListener('pointermove', event => {
+                    if (!drag || drag.id !== event.pointerId) return;
+                    if (!previewImage.naturalWidth || !previewImage.naturalHeight) return;
+                    const rect = preview.getBoundingClientRect();
+                    const scale = Math.max(rect.width / previewImage.naturalWidth, rect.height / previewImage.naturalHeight) * crop.zoom;
+                    const overflowX = Math.max(1, previewImage.naturalWidth * scale - rect.width);
+                    const overflowY = Math.max(1, previewImage.naturalHeight * scale - rect.height);
+                    crop.x = Math.min(1, Math.max(0, drag.cropX - (event.clientX - drag.x) / overflowX));
+                    crop.y = Math.min(1, Math.max(0, drag.cropY - (event.clientY - drag.y) / overflowY));
+                    updatePreview();
+                });
+                const endDrag = event => { if (drag?.id === event.pointerId) drag = null; };
+                preview.addEventListener('pointerup', endDrag);
+                preview.addEventListener('pointercancel', endDrag);
+                save.addEventListener('click', async () => {
+                    save.disabled = true;
+                    message.textContent = 'Foto-instelling opslaan…';
+                    try {
+                        const current = seeds.find(item => String(item.id) === String(seed.id)) || seed;
+                        current.detailImageCrop = { fit: crop.fit, zoom: crop.zoom, x: crop.x, y: crop.y };
+                        await saveSeed(current);
+                        dialog.close();
+                        openDetailView(current, { preserveNavigationOrder: true });
+                    } catch {
+                        save.disabled = false;
+                        message.textContent = 'Opslaan is niet gelukt. Probeer het opnieuw.';
+                    }
+                });
+                panel.append(top, preview, help, zoomLabel, zoom, framing, message, footer);
+                dialog.appendChild(panel);
+                document.body.appendChild(dialog);
+                dialog.addEventListener('close', () => dialog.remove(), { once: true });
+                dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+                dialog.showModal();
+                requestAnimationFrame(updatePreview);
+                zoom.focus();
+            });
+            summaryColumn.appendChild(cropButton);
+            detailPhotoResizeObserver = new ResizeObserver(() => applyCrop(image, crop));
+            detailPhotoResizeObserver.observe(header);
+            requestAnimationFrame(() => applyCrop(image, crop));
+        }
 
         const actionRow = make('div', 'detail-action-row');
         actionRow.setAttribute('role', 'group'); actionRow.setAttribute('aria-label', 'Status en favoriet');
@@ -3968,6 +4119,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     function switchView(name, options = {}) {
         if (name === 'planning') name = ({ year: 'sowing-grid', month: 'calendar', agenda: 'agenda' })[options.tab || planningTab];
+        if (name !== 'detail') {
+            detailPhotoResizeObserver?.disconnect();
+            detailPhotoResizeObserver = null;
+        }
         const isPlanning = ['sowing-grid', 'calendar', 'agenda'].includes(name);
         document.getElementById('planning-header')?.classList.toggle('hidden', !isPlanning);
         document.getElementById('view-agenda')?.classList.add('hidden');

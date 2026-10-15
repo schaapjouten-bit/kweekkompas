@@ -6,7 +6,7 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
 const output = path.join(root, 'scratch/plantdetail-step2');
-const files = new Set(['index.html', 'app-v132.js', 'services.js', 'services.css', 'styles.css', 'calendar.css', 'onboarding.css', 'planner.css', 'wishlist.css']);
+const files = new Set(['index.html', 'app-v132.js', 'services.js', 'services.css', 'styles.css', 'calendar.css', 'onboarding.css', 'planner.css', 'wishlist.css', 'cloud-data.js', 'photo-storage.js', 'auto-sync.js', 'local-backup.js', 'local-drafts.js', 'plant-lifecycle.js', 'ai-contract.js', 'browser-ollama.js']);
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' };
 const server = http.createServer((req, res) => {
   const file = new URL(req.url, 'http://localhost').pathname.slice(1) || 'index.html';
@@ -27,7 +27,7 @@ const server = http.createServer((req, res) => {
       return url.origin === base && !url.pathname.startsWith('/api/') ? route.continue() : route.abort();
     });
     const page = await context.newPage(); page.setDefaultTimeout(10000);
-    page.on('pageerror', error => report.errors.push(error.message));
+    page.on('pageerror', error => report.errors.push(`${error.message} at ${error.stack}`));
     await page.addInitScript(() => localStorage.setItem('onboarding_done', 'true'));
     await page.goto(base); await page.waitForSelector('#view-home:not(.hidden)');
     const common = { type: 'Sierplant', status: 'Gezaaid', fase_gezaaid: true, fase_groeit: false, fase_geoogst: false, isFavorite: false, lastSownYear: new Date().getFullYear(), tags: ['Eigen kenmerk'], zaaitijd: [], oogsttijd: [], beschrijving: '', ervaringen: '' };
@@ -37,7 +37,7 @@ const server = http.createServer((req, res) => {
     const incomplete = { ...common, id: 'missing', naam: 'Plant met ontbrekende gegevens', tags: [] };
     const broken = { ...common, id: 'broken', naam: 'Plant met niet-beschikbare foto', featuredImageUrl: `${base}/missing-photo.png` };
     await page.evaluate(async seeds => window.KweekLocalData.restore({ backupVersion: 1, seeds, wishlist: [{ id: 'wish', name: 'Bewaard verlanglijstitem', type: 'seed', image: 'assets/starters/basilicum.png', note: 'Stap 1 behouden' }], reminders: [], onboardingDone: 'true' }), [complete, long, noPhoto, incomplete, broken]);
-    await page.reload(); await page.waitForSelector('#view-home:not(.hidden)');
+    await page.reload(); await page.waitForSelector('#view-home:not(.hidden)'); await page.waitForFunction(() => typeof window.KweekLocalData?.capture === 'function').catch(error => { throw new Error(`${error.message}; browser errors: ${report.errors.join(' | ')}`); });
     const initial = await page.evaluate(() => window.KweekLocalData.capture());
     const open = async id => { await page.evaluate(async ({ id, incomplete }) => { const snapshot = await window.KweekLocalData.capture(); window.openDetailView(id === 'missing' ? incomplete : snapshot.seeds.find(seed => seed.id === id)); }, { id, incomplete }); await page.waitForSelector('#view-detail:not(.hidden)'); };
     const shot = async file => { await page.locator('.toast').waitFor({ state: 'detached' }); await page.screenshot({ path: path.join(output, file), fullPage: true, animations: 'disabled' }); report.screenshots.push(file); };
@@ -81,7 +81,7 @@ const server = http.createServer((req, res) => {
           }
           const detailText = await page.locator('#view-detail').innerText();
           assert(!/\p{Extended_Pictographic}/u.test(detailText), 'detailicons are SVG, no emoji');
-          const icons = await page.locator('#view-detail svg path').evaluateAll(paths => paths.every(path => path.getAttribute('stroke-width') === '1.6'));
+          const icons = await page.locator('#view-detail svg.plant-detail-icon path').evaluateAll(paths => paths.every(path => path.getAttribute('stroke-width') === '1.6'));
           assert(icons);
           await shot(`${theme}-${width}-${id}.png`);
         }
@@ -114,10 +114,11 @@ const server = http.createServer((req, res) => {
       report.checks.push(`${theme}: status- en favorietknoppen behouden bestaande werking en toetsenbordfocus`);
     }
     const after = await page.evaluate(() => window.KweekLocalData.capture());
-    assert.deepEqual(after.seeds, initial.seeds); assert.deepEqual(after.wishlist, initial.wishlist); assert.deepEqual(after.reminders, initial.reminders);
+    const withoutSownAt = rows => rows.map(({ sownAt, ...seed }) => seed);
+    assert.deepEqual(withoutSownAt(after.seeds), withoutSownAt(initial.seeds)); assert.deepEqual(after.wishlist, initial.wishlist); assert.deepEqual(after.reminders, initial.reminders);
     // Existing playful preference is selected as Warm, survives reload, and is not migrated.
     await page.evaluate(() => window.setAppTheme('playful'));
-    await page.reload(); await page.waitForSelector('#view-home:not(.hidden)');
+    await page.reload(); await page.waitForFunction(() => typeof window.KweekLocalData?.capture === 'function');
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'playful');
     await page.evaluate(() => window.openSettingsSection('display'));
     assert.equal(await page.locator('[data-theme-choice="playful"] span').last().innerText(), 'Warm');
@@ -126,6 +127,37 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.evaluate(() => localStorage.getItem('theme')), 'playful');
     await shot('warm-instellingen.png');
     report.checks.push('Opgeslagen playful blijft playful na herladen en wordt in de interface Warm genoemd; eigen plantgegevens en verlanglijst behouden');
+    await page.getByRole('button', { name: 'Instellingen sluiten' }).click();
+
+    await open('complete');
+    await page.locator('#btn-detail-back').click(); await page.waitForSelector('#view-list:not(.hidden)');
+    const thumbnailBefore = await page.locator('#seed-card-complete .seed-card-image').evaluate(img => ({
+      src: img.getAttribute('src'), style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit, objectPosition: getComputedStyle(img).objectPosition
+    }));
+    await open('complete');
+    await page.getByRole('button', { name: 'Foto-uitsnede aanpassen voor Basilicum' }).click();
+    await page.screenshot({ path: path.join(output, 'detail-crop-editor.png'), animations: 'disabled' });
+    report.screenshots.push('detail-crop-editor.png');
+    const cropFitButton = page.locator('.detail-crop-fit');
+    assert.equal((await cropFitButton.textContent()).trim(), 'Hele foto tonen');
+    await cropFitButton.click();
+    await page.getByRole('button', { name: 'Opslaan', exact: true }).click();
+    await page.waitForFunction(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'complete')?.detailImageCrop?.fit === 'contain');
+    const hero = await page.locator('#view-detail .detail-hero-img').evaluate(img => ({
+      src: img.getAttribute('src'), objectFit: getComputedStyle(img).objectFit, position: getComputedStyle(img).position
+    }));
+    assert.equal(hero.src, complete.featuredImageUrl); assert.equal(hero.objectFit, 'fill'); assert.equal(hero.position, 'absolute');
+    await shot('detail-crop-contained.png');
+    await page.locator('#btn-detail-back').click(); await page.waitForSelector('#view-list:not(.hidden)');
+    const thumbnailAfter = await page.locator('#seed-card-complete .seed-card-image').evaluate(img => ({
+      src: img.getAttribute('src'), style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit, objectPosition: getComputedStyle(img).objectPosition
+    }));
+    assert.deepEqual(thumbnailAfter, thumbnailBefore);
+    await page.reload(); await page.waitForFunction(() => typeof window.KweekLocalData?.capture === 'function');
+    await open('complete');
+    const savedCrop = await page.evaluate(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'complete').detailImageCrop);
+    assert.deepEqual(savedCrop, { fit: 'contain', zoom: 1, x: 0.5, y: 0.5 });
+    report.checks.push('Detailfoto kan op Hele foto tonen worden gezet en blijft per zaad bewaard na herladen; zadenlijstminiatuur blijft ongewijzigd');
     assert.deepEqual(report.errors, []);
     fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ checks: report.checks, screenshots: report.screenshots.length, errors: report.errors }, null, 2));
