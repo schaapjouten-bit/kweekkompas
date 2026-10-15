@@ -35,7 +35,7 @@ const server = http.createServer((req, res) => {
     await page.addInitScript(() => localStorage.setItem('onboarding_done', 'true'));
     await page.goto(base); await page.waitForSelector('#view-home:not(.hidden)');
     const common = { type: 'Sierplant', status: 'Gezaaid', fase_gezaaid: true, fase_groeit: false, fase_geoogst: false, isFavorite: false, lastSownYear: new Date().getFullYear(), tags: ['Eigen kenmerk'], zaaitijd: [], oogsttijd: [], beschrijving: '', ervaringen: '' };
-    const complete = { ...common, id: 'complete', naam: 'Basilicum', type: 'Kruid', featuredImageUrl: 'assets/starters/basilicum.png', images: [{ url: 'assets/starters/basilicum.png' }, { url: 'assets/starters/courgette.png' }], tags: ['Eetbaar', 'Lastige kiemer'], standplaats: 'Zon', water: 'Gemiddeld', zaaitijd: ['maart', 'april', 'mei'], oogsttijd: ['juni', 'juli', 'augustus'], code: 'Bak A · balkon', purchaseYear: 2024, shopLink: 'https://winkel.example.test/basilicum', ervaringScore: 4, beschrijving: 'Eigen opgeslagen plantinformatie.\nTweede regel uit de eigen collectie.', ervaringen: 'Mijn eigen notitie over deze plant.' };
+    const complete = { ...common, id: 'complete', naam: 'Basilicum', type: 'Kruid', featuredImageUrl: 'assets/starters/basilicum.png', images: [{ url: 'assets/starters/basilicum.png' }, { url: 'assets/starters/courgette.png' }], detailImageCrop: { fit: 'contain', zoom: 1, x: 0.5, y: 0.5 }, tags: ['Eetbaar', 'Lastige kiemer'], standplaats: 'Zon', water: 'Gemiddeld', zaaitijd: ['maart', 'april', 'mei'], oogsttijd: ['juni', 'juli', 'augustus'], code: 'Bak A · balkon', purchaseYear: 2024, shopLink: 'https://winkel.example.test/basilicum', ervaringScore: 4, beschrijving: 'Eigen opgeslagen plantinformatie.\nTweede regel uit de eigen collectie.', ervaringen: 'Mijn eigen notitie over deze plant.' };
     const long = { ...complete, id: 'long', naam: 'Basilicum met een bijzonder lange eigen rasnaam voor het balkon en de moestuin '.repeat(3), beschrijving: 'Een lange eigen beschrijving. '.repeat(24) + 'Langwoord'.repeat(35), ervaringen: 'Lange eigen notitie. '.repeat(18) };
     const noPhoto = { ...common, id: 'no-photo', naam: 'Plant zonder opgeslagen foto', standplaats: 'Halfschaduw', water: 'Weinig', zaaitijd: ['september'] };
     const incomplete = { ...common, id: 'missing', naam: 'Plant met ontbrekende gegevens', tags: [] };
@@ -136,6 +136,7 @@ const server = http.createServer((req, res) => {
 
     await open('form-crop');
     await page.locator('#btn-detail-back').click(); await page.waitForSelector('#view-list:not(.hidden)');
+    await page.waitForFunction(() => document.querySelector('#seed-card-form-crop .seed-card-image')?.naturalWidth > 0);
     const formThumbnailBefore = await page.locator('#seed-card-form-crop .seed-card-image').evaluate(img => ({
       src: img.getAttribute('src'), style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit, objectPosition: getComputedStyle(img).objectPosition
     }));
@@ -147,50 +148,43 @@ const server = http.createServer((req, res) => {
     await page.locator('.detail-crop-fit').click();
     await page.getByRole('button', { name: 'Opslaan', exact: true }).click();
     await page.locator('#btn-submit-form').click(); await page.waitForSelector('#view-list:not(.hidden)');
-    await page.waitForFunction(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'form-crop')?.detailImageCrop?.fit === 'contain');
+    await page.waitForFunction(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'form-crop')?.cardImageCrop?.fit === 'contain');
+    await page.waitForFunction(() => document.querySelector('#seed-card-form-crop .seed-card-image')?.style.position === 'absolute');
     const formThumbnailAfter = await page.locator('#seed-card-form-crop .seed-card-image').evaluate(img => ({
       src: img.getAttribute('src'), style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit, objectPosition: getComputedStyle(img).objectPosition
     }));
-    assert.deepEqual(formThumbnailAfter, formThumbnailBefore);
+    assert.notDeepEqual(formThumbnailAfter, formThumbnailBefore);
+    assert.equal(formThumbnailAfter.objectFit, 'fill');
     await page.reload(); await page.waitForFunction(() => typeof window.KweekLocalData?.capture === 'function');
-    const formSavedCrop = await page.evaluate(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'form-crop').detailImageCrop);
+    const formSavedCrop = await page.evaluate(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'form-crop').cardImageCrop);
     assert.deepEqual(formSavedCrop, { fit: 'contain', zoom: 1, x: 0.5, y: 0.5 });
+    await open('form-crop'); await page.locator('#btn-detail-back').click(); await page.waitForSelector('#view-list:not(.hidden)');
+    await page.waitForFunction(() => document.querySelector('#seed-card-form-crop .seed-card-image')?.style.position === 'absolute');
+    const reloadedThumbnail = await page.locator('#seed-card-form-crop .seed-card-image').evaluate(img => ({
+      style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit
+    }));
+    assert.equal(reloadedThumbnail.objectFit, 'fill');
     await open('form-crop'); await page.locator('#btn-detail-edit').click(); await page.waitForSelector('#view-add:not(.hidden)');
     assert.equal((await page.locator('#btn-form-photo-focus').textContent()).trim(), 'Focus aanpassen');
     await page.locator('#btn-form-photo-focus').click();
     assert.equal((await page.locator('.detail-crop-fit').textContent()).trim(), 'Foto uitsnijden');
     await page.locator('.detail-crop-cancel').click();
-    report.checks.push('Hoofdfocus kan tijdens toevoegen/bewerken worden ingesteld, blijft bewaard en verandert de zadenlijstminiatuur niet');
+    report.checks.push('Focus instellen/bewerken stuurt de zadenkaartminiatuur en blijft na herladen bewaard');
 
     await open('complete');
     await page.locator('#btn-detail-back').click(); await page.waitForSelector('#view-list:not(.hidden)');
-    const thumbnailBefore = await page.locator('#seed-card-complete .seed-card-image').evaluate(img => ({
-      src: img.getAttribute('src'), style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit, objectPosition: getComputedStyle(img).objectPosition
+    await page.waitForFunction(() => document.querySelector('#seed-card-complete .seed-card-image')?.style.position === 'absolute');
+    const legacyThumbnail = await page.locator('#seed-card-complete .seed-card-image').evaluate(img => ({
+      style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit
     }));
+    assert.equal(legacyThumbnail.objectFit, 'fill');
     await open('complete');
-    await page.getByRole('button', { name: 'Foto-uitsnede aanpassen voor Basilicum' }).click();
-    await page.screenshot({ path: path.join(output, 'detail-crop-editor.png'), animations: 'disabled' });
-    report.screenshots.push('detail-crop-editor.png');
-    const cropFitButton = page.locator('.detail-crop-fit');
-    assert.equal((await cropFitButton.textContent()).trim(), 'Hele foto tonen');
-    await cropFitButton.click();
-    await page.getByRole('button', { name: 'Opslaan', exact: true }).click();
-    await page.waitForFunction(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'complete')?.detailImageCrop?.fit === 'contain');
     const hero = await page.locator('#view-detail .detail-hero-img').evaluate(img => ({
-      src: img.getAttribute('src'), objectFit: getComputedStyle(img).objectFit, position: getComputedStyle(img).position
+      src: img.getAttribute('src'), style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit
     }));
-    assert.equal(hero.src, complete.featuredImageUrl); assert.equal(hero.objectFit, 'fill'); assert.equal(hero.position, 'absolute');
-    await shot('detail-crop-contained.png');
-    await page.locator('#btn-detail-back').click(); await page.waitForSelector('#view-list:not(.hidden)');
-    const thumbnailAfter = await page.locator('#seed-card-complete .seed-card-image').evaluate(img => ({
-      src: img.getAttribute('src'), style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit, objectPosition: getComputedStyle(img).objectPosition
-    }));
-    assert.deepEqual(thumbnailAfter, thumbnailBefore);
-    await page.reload(); await page.waitForFunction(() => typeof window.KweekLocalData?.capture === 'function');
-    await open('complete');
-    const savedCrop = await page.evaluate(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'complete').detailImageCrop);
-    assert.deepEqual(savedCrop, { fit: 'contain', zoom: 1, x: 0.5, y: 0.5 });
-    report.checks.push('Detailfoto kan op Hele foto tonen worden gezet en blijft per zaad bewaard na herladen; zadenlijstminiatuur blijft ongewijzigd');
+    assert.equal(hero.src, complete.featuredImageUrl); assert.equal(hero.style, null); assert.equal(hero.objectFit, 'cover');
+    assert.equal(await page.locator('#view-detail [aria-label^="Foto-uitsnede aanpassen"]').count(), 0);
+    report.checks.push('Legacy focus uit detailImageCrop wordt als kaartminiatuur getoond; detailfoto houdt de standaarduitsnede en heeft geen focusbediening');
     assert.deepEqual(report.errors, []);
     fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ checks: report.checks, screenshots: report.screenshots.length, errors: report.errors }, null, 2));

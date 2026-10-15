@@ -2483,8 +2483,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     let pendingImages = [];
-    let pendingDetailImageCrop = null;
-    let pendingDetailImageCropSource = '';
+    let pendingCardImageCrop = null;
+    let pendingCardImageCropSource = '';
     let photoSearchResults = []; // Local cache of search results (not necessarily selected)
     let displayedPhotoCount = 6; // How many web results to show initially
     let photoSearchQuery = '';
@@ -2499,7 +2499,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let filteredSeedIdsForDetail = [];
     let detailNavigationSeedIds = [];
     let detailNavigationIndex = -1;
-    let detailPhotoResizeObserver = null;
+    let seedCardResizeObserver = null;
+    const seedCardCropByFrame = new WeakMap();
     let activeMonthFilter = null; // null or 0-11
     let showAllMissed = false;
 
@@ -3178,7 +3179,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             tags: selectedTags,
             isPerennial: inputStatus?.value === 'Meerjarig' || (existing?.isPerennial === true && !selectedTags.includes('Eenjarig')),
             featuredImageUrl: safeFeaturedImage,
-            ...(pendingDetailImageCrop && pendingDetailImageCropSource === safeFeaturedImage ? { detailImageCrop: { ...pendingDetailImageCrop } } : {}),
+            ...(pendingCardImageCrop && pendingCardImageCropSource === safeFeaturedImage ? { cardImageCrop: { ...pendingCardImageCrop } } : {}),
             isFavorite: existing ? (existing.isFavorite || false) : false
         };
         if (newSeed.status === 'Wishlist') {
@@ -3251,6 +3252,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function renderSeeds(items) {
         if (!seedGrid) return;
+        seedCardResizeObserver?.disconnect();
+        seedCardResizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(entries => {
+            entries.forEach(({ target }) => {
+                const image = target.querySelector('.seed-card-image');
+                const crop = seedCardCropByFrame.get(target);
+                if (image && crop) applyPhotoCrop(image, crop);
+            });
+        });
         updateSeedSummary();
         seedGrid.replaceChildren();
 
@@ -3334,6 +3343,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             imageBox.className = 'card-img seed-card-media';
             const image = document.createElement('img');
             image.className = 'seed-card-image';
+            const savedCrop = seed.cardImageCrop ?? seed.detailImageCrop;
+            const crop = savedCrop && typeof savedCrop === 'object' ? normalizeImageCrop(savedCrop) : null;
+            if (crop) {
+                seedCardCropByFrame.set(imageBox, crop);
+                image.addEventListener('load', () => applyPhotoCrop(image, crop), { once: true });
+                seedCardResizeObserver?.observe(imageBox);
+            }
             image.setAttribute('src', imageUrl);
             image.setAttribute('alt', `Foto van ${String(seed.naam || 'plant')}`);
             image.setAttribute('loading', 'lazy');
@@ -3484,7 +3500,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnDetailPlantPrev?.addEventListener('click', () => navigateDetailPlant(-1));
     btnDetailPlantNext?.addEventListener('click', () => navigateDetailPlant(1));
 
-    function normalizeDetailImageCrop(value = {}) {
+    function normalizeImageCrop(value = {}) {
         return {
             fit: value?.fit === 'contain' ? 'contain' : 'cover',
             zoom: Math.min(3, Math.max(1, Number(value?.zoom) || 1)),
@@ -3516,7 +3532,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function openPhotoCropEditor({ src, plantName, initialCrop, onSave, onSaved }) {
-        const crop = normalizeDetailImageCrop(initialCrop);
+        const crop = normalizeImageCrop(initialCrop);
         const make = (tag, className, value) => {
             const element = document.createElement(tag);
             if (className) element.className = className;
@@ -3527,7 +3543,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         dialog.setAttribute('aria-labelledby', 'detail-crop-title');
         const panel = make('div', 'detail-crop-panel');
         const top = make('div', 'detail-crop-top');
-        const title = make('h2', '', 'Focus van detailfoto aanpassen');
+        const title = make('h2', '', 'Focus van de zadenkaart aanpassen');
         title.id = 'detail-crop-title';
         const closeButton = make('button', 'detail-crop-close', 'Sluiten');
         closeButton.type = 'button';
@@ -3536,7 +3552,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const preview = make('div', 'detail-crop-preview');
         preview.setAttribute('role', 'img');
-        preview.setAttribute('aria-label', `Voorbeeld van de detailfoto voor ${plantName || 'de plant'}`);
+        preview.setAttribute('aria-label', `Voorbeeld van de zadenkaart voor ${plantName || 'de plant'}`);
         const previewImage = make('img', 'detail-crop-preview-image');
         previewImage.alt = '';
         previewImage.draggable = false;
@@ -3633,7 +3649,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function openDetailView(seed, options = {}) {
-        detailPhotoResizeObserver?.disconnect();
         const focusedAction = document.activeElement?.closest('#view-detail .btn-action-chip')?.dataset.detailAction;
         viewDetail.dataset.currentSeedId = seed.id;
         updateDetailPlantNavigation(seed, options.preserveNavigationOrder === true);
@@ -3673,13 +3688,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const header = make('div', 'detail-photo');
         let image = null;
-        let crop = null;
         const featuredImg = seed.featuredImageUrl || seed.image || (seed.images && seed.images[0]?.url);
         const safeFeaturedImg = safeWishlistImageUrl(featuredImg);
         if (safeFeaturedImg) {
             image = make('img', 'detail-hero-img');
-            crop = normalizeDetailImageCrop(seed.detailImageCrop);
-            image.addEventListener('load', () => applyPhotoCrop(image, crop), { once: true });
             image.setAttribute('src', safeFeaturedImg);
             image.setAttribute('alt', text(seed.naam));
             image.addEventListener('error', () => {
@@ -3716,29 +3728,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         badgeOverlay.append(badgeLeft, badgeRight);
         titleOverlay.appendChild(badgeOverlay);
         summaryColumn.appendChild(header);
-        if (safeFeaturedImg) {
-            const cropButton = make('button', 'detail-image-crop-button', 'Uitsnede aanpassen');
-            cropButton.type = 'button';
-            cropButton.setAttribute('aria-label', `Foto-uitsnede aanpassen voor ${text(seed.naam)}`);
-            cropButton.addEventListener('click', () => {
-                const current = seeds.find(item => String(item.id) === String(seed.id)) || seed;
-                openPhotoCropEditor({
-                    src: safeFeaturedImg,
-                    plantName: text(seed.naam),
-                    initialCrop: crop,
-                    onSave: async value => {
-                        current.detailImageCrop = value;
-                        await saveSeed(current);
-                    },
-                    onSaved: () => openDetailView(current, { preserveNavigationOrder: true })
-                });
-            });
-            summaryColumn.appendChild(cropButton);
-            detailPhotoResizeObserver = new ResizeObserver(() => applyPhotoCrop(image, crop));
-            detailPhotoResizeObserver.observe(header);
-            requestAnimationFrame(() => applyPhotoCrop(image, crop));
-        }
-
         const actionRow = make('div', 'detail-action-row');
         actionRow.setAttribute('role', 'group'); actionRow.setAttribute('aria-label', 'Status en favoriet');
         const addStatusButton = (icon, label, status, active, ariaLabel) => {
@@ -4050,8 +4039,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (seed.featuredImageUrl && !pendingImages.some(img => img.url === seed.featuredImageUrl)) {
             pendingImages.unshift({ url: seed.featuredImageUrl, id: 'featured-import-' + Date.now(), caption: 'Hoofdfoto' });
         }
-        pendingDetailImageCrop = seed.detailImageCrop && typeof seed.detailImageCrop === 'object' ? normalizeDetailImageCrop(seed.detailImageCrop) : null;
-        pendingDetailImageCropSource = pendingDetailImageCrop
+        pendingCardImageCrop = (seed.cardImageCrop ?? seed.detailImageCrop) && typeof (seed.cardImageCrop ?? seed.detailImageCrop) === 'object' ? normalizeImageCrop(seed.cardImageCrop ?? seed.detailImageCrop) : null;
+        pendingCardImageCropSource = pendingCardImageCrop
             ? safeWishlistImageUrl(seed.featuredImageUrl) || safeWishlistImageUrl(seed.image) || safeWishlistImageUrl(pendingImages[0]?.url) || ''
             : '';
 
@@ -4151,10 +4140,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     function switchView(name, options = {}) {
         if (name === 'planning') name = ({ year: 'sowing-grid', month: 'calendar', agenda: 'agenda' })[options.tab || planningTab];
-        if (name !== 'detail') {
-            detailPhotoResizeObserver?.disconnect();
-            detailPhotoResizeObserver = null;
-        }
         const isPlanning = ['sowing-grid', 'calendar', 'agenda'].includes(name);
         document.getElementById('planning-header')?.classList.toggle('hidden', !isPlanning);
         document.getElementById('view-agenda')?.classList.add('hidden');
@@ -4393,8 +4378,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         editingId = null;
         seedForm?.reset();
         pendingImages = [];
-        pendingDetailImageCrop = null;
-        pendingDetailImageCropSource = '';
+        pendingCardImageCrop = null;
+        pendingCardImageCropSource = '';
         photoSearchResults = [];
         photoSearchQuery = '';
         photoSearchPage = 0;
@@ -4511,16 +4496,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             focusPanel.classList.toggle('hidden', !focusSource);
             focusButton.onclick = null;
             if (focusSource) {
-                const hasSavedFocus = pendingDetailImageCrop && pendingDetailImageCropSource === focusSource;
+                const hasSavedFocus = pendingCardImageCrop && pendingCardImageCropSource === focusSource;
                 focusButton.textContent = hasSavedFocus ? 'Focus aanpassen' : 'Focus instellen';
-                focusButton.setAttribute('aria-label', `Focus van de detailfoto aanpassen voor ${inputNaam.value.trim() || 'de plant'}`);
+                focusButton.setAttribute('aria-label', `Focus van de zadenkaart aanpassen voor ${inputNaam.value.trim() || 'de plant'}`);
                 focusButton.onclick = () => openPhotoCropEditor({
                     src: focusSource,
                     plantName: inputNaam.value.trim() || 'de plant',
-                    initialCrop: hasSavedFocus ? pendingDetailImageCrop : null,
+                    initialCrop: hasSavedFocus ? pendingCardImageCrop : null,
                     onSave: value => {
-                        pendingDetailImageCrop = normalizeDetailImageCrop(value);
-                        pendingDetailImageCropSource = focusSource;
+                        pendingCardImageCrop = normalizeImageCrop(value);
+                        pendingCardImageCropSource = focusSource;
                     },
                     onSaved: () => {
                         renderUnifiedGallery();
@@ -5872,7 +5857,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const assets = withMedia ? {
             images: pendingImages,
             featuredUrl,
-            detailImageCrop: pendingDetailImageCrop && pendingDetailImageCropSource === featuredUrl ? { ...pendingDetailImageCrop } : null
+            cardImageCrop: pendingCardImageCrop && pendingCardImageCropSource === featuredUrl ? { ...pendingCardImageCrop } : null
         } : undefined;
         window.KweekDrafts.put(seedDraftKey(), values, assets).catch(draftError);
     }
@@ -5893,8 +5878,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (Array.isArray(draft.assets?.images)) {
                 pendingImages = draft.assets.images.filter(item => safeWishlistImageUrl(item?.url));
                 inputNaam.dataset.featuredUrl = safeWishlistImageUrl(draft.assets.featuredUrl) || '';
-                pendingDetailImageCrop = draft.assets.detailImageCrop ? normalizeDetailImageCrop(draft.assets.detailImageCrop) : null;
-                pendingDetailImageCropSource = pendingDetailImageCrop ? safeWishlistImageUrl(draft.assets.featuredUrl) || '' : '';
+                const draftCrop = draft.assets.cardImageCrop ?? draft.assets.detailImageCrop;
+                pendingCardImageCrop = draftCrop ? normalizeImageCrop(draftCrop) : null;
+                pendingCardImageCropSource = pendingCardImageCrop ? safeWishlistImageUrl(draft.assets.featuredUrl) || '' : '';
                 renderUnifiedGallery();
             }
             showToast('Je plantconcept is hersteld. Nog niet definitief opgeslagen.');

@@ -8296,12 +8296,6 @@ body:has(#view-home:not(.hidden)) .toast-container .toast { position: relative; 
   border-radius: 14px; overflow: hidden; background: var(--workspace-background);
 }
 #view-detail .detail-hero-img { position: absolute; display: block; object-fit: cover; }
-#view-detail .detail-image-crop-button {
-  align-self: flex-start; padding: 8px 12px; border: 1px solid var(--border-color);
-  border-radius: 9px; background: var(--card-background); color: var(--primary-text);
-  font: inherit; font-size: 13px; cursor: pointer;
-}
-#view-detail .detail-image-crop-button:hover { border-color: var(--accent-primary); }
 .detail-crop-dialog {
   width: min(680px, calc(100vw - 28px)); max-width: none; max-height: calc(100dvh - 28px);
   padding: 0; overflow: auto; border: 1px solid var(--border-color); border-radius: 16px;
