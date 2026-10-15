@@ -94,6 +94,18 @@
         }
     }
     async function request(route, body, { signal } = {}) {
+        if (location.origin === 'https://kweekkompas.netlify.app' && (route === 'chatgpt' || body?.ai?.provider === 'chatgpt')) {
+            let response;
+            try {
+                response = await fetch('http://127.0.0.1:4173/api/chatgpt-bridge', {
+                    method: 'POST', mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
+                    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ route, body }), signal: AbortSignal.timeout(120000)
+                });
+            } catch { throw new Error('Start KweekKompas op deze pc met npm start en laat het draaien. Sta lokale-netwerktoegang toe als je browser daarom vraagt.'); }
+            const data = await response.json();
+            if (!response.ok) throw Object.assign(new Error(data.error || 'De lokale ChatGPT-verbinding gaf een fout.'), { status: response.status });
+            return data;
+        }
         const response = await fetch(`/api/${route}`, { method: body === undefined ? 'GET' : 'POST',
             credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...(['cloud-sync', 'auth'].includes(route) ? { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000) } : {}), ...(body === undefined ? {} : { body: JSON.stringify(body) }) }).catch(error => {
                 if (signal?.aborted) throw Object.assign(new Error('Gestopt'), { name: 'AbortError' });
@@ -107,6 +119,10 @@
             error.status = response.status;
             error.code = data.code;
             throw error;
+        }
+        if (route === 'ai-config' && location.origin === 'https://kweekkompas.netlify.app') {
+            data.providers ||= {};
+            data.providers.chatgpt = { label: 'ChatGPT', localAvailable: true, configured: false, model: '', models: [] };
         }
         return data;
     }
@@ -167,6 +183,7 @@
                     <label class="settings-field" id="ai-standard-model"><span>Model</span><select id="ai-gemini-model" aria-describedby="ai-provider-status" required></select><select id="ai-chatgpt-model" aria-describedby="chatgpt-status" hidden disabled></select><select id="ai-model" aria-describedby="ollama-status" hidden disabled required></select></label>
                 </div>
                 <div id="chatgpt-setup" hidden>
+                    ${location.origin === 'https://kweekkompas.netlify.app' ? '<p class="service-note">Via je ChatGPT-abonnement op deze pc. Laat de lokale KweekKompas-app draaien met npm start. Je login blijft op je eigen computer. Sta lokale-netwerktoegang toe als je browser daarom vraagt.</p>' : ''}
                     <div id="chatgpt-entry" class="service-actions"><button id="chatgpt-login" class="settings-secondary-button" type="button">Doorgaan met ChatGPT</button></div>
                     <details id="chatgpt-management" hidden><summary>Account</summary>
                     <p id="chatgpt-account" class="service-note"></p>

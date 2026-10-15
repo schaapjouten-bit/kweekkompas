@@ -24,6 +24,10 @@ const server = http.createServer((req, res) => {
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, timezoneId: 'Europe/Amsterdam', hasTouch: true });
     await context.route('**/*', route => {
       const url = new URL(route.request().url());
+      if (url.origin === base && url.pathname === '/api/ai-config') return route.fulfill({ json: {
+        defaultProvider: 'ollama',
+        providers: { ollama: { configured: false, model: '', connection: { runtime: 'local', state: 'unavailable', installedModels: [] } }, gemini: { configured: false, model: '' }, chatgpt: { localAvailable: true, configured: false }, 'openai-compatible': { localAvailable: true } }
+      } });
       return url.origin === base && !url.pathname.startsWith('/api/') ? route.continue() : route.abort();
     });
     const page = await context.newPage(); page.setDefaultTimeout(10000);
@@ -36,7 +40,8 @@ const server = http.createServer((req, res) => {
     const noPhoto = { ...common, id: 'no-photo', naam: 'Plant zonder opgeslagen foto', standplaats: 'Halfschaduw', water: 'Weinig', zaaitijd: ['september'] };
     const incomplete = { ...common, id: 'missing', naam: 'Plant met ontbrekende gegevens', tags: [] };
     const broken = { ...common, id: 'broken', naam: 'Plant met niet-beschikbare foto', featuredImageUrl: `${base}/missing-photo.png` };
-    await page.evaluate(async seeds => window.KweekLocalData.restore({ backupVersion: 1, seeds, wishlist: [{ id: 'wish', name: 'Bewaard verlanglijstitem', type: 'seed', image: 'assets/starters/basilicum.png', note: 'Stap 1 behouden' }], reminders: [], onboardingDone: 'true' }), [complete, long, noPhoto, incomplete, broken]);
+    const formCrop = { ...common, id: 'form-crop', naam: 'Courgette voor de focustest', type: 'Groente', featuredImageUrl: 'assets/starters/courgette.png', images: [{ url: 'assets/starters/courgette.png' }] };
+    await page.evaluate(async seeds => window.KweekLocalData.restore({ backupVersion: 1, seeds, wishlist: [{ id: 'wish', name: 'Bewaard verlanglijstitem', type: 'seed', image: 'assets/starters/basilicum.png', note: 'Stap 1 behouden' }], reminders: [], onboardingDone: 'true' }), [complete, long, noPhoto, incomplete, broken, formCrop]);
     await page.reload(); await page.waitForSelector('#view-home:not(.hidden)'); await page.waitForFunction(() => typeof window.KweekLocalData?.capture === 'function').catch(error => { throw new Error(`${error.message}; browser errors: ${report.errors.join(' | ')}`); });
     const initial = await page.evaluate(() => window.KweekLocalData.capture());
     const open = async id => { await page.evaluate(async ({ id, incomplete }) => { const snapshot = await window.KweekLocalData.capture(); window.openDetailView(id === 'missing' ? incomplete : snapshot.seeds.find(seed => seed.id === id)); }, { id, incomplete }); await page.waitForSelector('#view-detail:not(.hidden)'); };
@@ -128,6 +133,34 @@ const server = http.createServer((req, res) => {
     await shot('warm-instellingen.png');
     report.checks.push('Opgeslagen playful blijft playful na herladen en wordt in de interface Warm genoemd; eigen plantgegevens en verlanglijst behouden');
     await page.getByRole('button', { name: 'Instellingen sluiten' }).click();
+
+    await open('form-crop');
+    await page.locator('#btn-detail-back').click(); await page.waitForSelector('#view-list:not(.hidden)');
+    const formThumbnailBefore = await page.locator('#seed-card-form-crop .seed-card-image').evaluate(img => ({
+      src: img.getAttribute('src'), style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit, objectPosition: getComputedStyle(img).objectPosition
+    }));
+    await open('form-crop');
+    await page.locator('#btn-detail-edit').click(); await page.waitForSelector('#view-add:not(.hidden)');
+    assert.equal(await page.locator('#form-photo-focus').isVisible(), true);
+    assert.equal((await page.locator('#btn-form-photo-focus').textContent()).trim(), 'Focus instellen');
+    await page.locator('#btn-form-photo-focus').click();
+    await page.locator('.detail-crop-fit').click();
+    await page.getByRole('button', { name: 'Opslaan', exact: true }).click();
+    await page.locator('#btn-submit-form').click(); await page.waitForSelector('#view-list:not(.hidden)');
+    await page.waitForFunction(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'form-crop')?.detailImageCrop?.fit === 'contain');
+    const formThumbnailAfter = await page.locator('#seed-card-form-crop .seed-card-image').evaluate(img => ({
+      src: img.getAttribute('src'), style: img.getAttribute('style'), objectFit: getComputedStyle(img).objectFit, objectPosition: getComputedStyle(img).objectPosition
+    }));
+    assert.deepEqual(formThumbnailAfter, formThumbnailBefore);
+    await page.reload(); await page.waitForFunction(() => typeof window.KweekLocalData?.capture === 'function');
+    const formSavedCrop = await page.evaluate(async () => (await window.KweekLocalData.capture()).seeds.find(seed => seed.id === 'form-crop').detailImageCrop);
+    assert.deepEqual(formSavedCrop, { fit: 'contain', zoom: 1, x: 0.5, y: 0.5 });
+    await open('form-crop'); await page.locator('#btn-detail-edit').click(); await page.waitForSelector('#view-add:not(.hidden)');
+    assert.equal((await page.locator('#btn-form-photo-focus').textContent()).trim(), 'Focus aanpassen');
+    await page.locator('#btn-form-photo-focus').click();
+    assert.equal((await page.locator('.detail-crop-fit').textContent()).trim(), 'Foto uitsnijden');
+    await page.locator('.detail-crop-cancel').click();
+    report.checks.push('Hoofdfocus kan tijdens toevoegen/bewerken worden ingesteld, blijft bewaard en verandert de zadenlijstminiatuur niet');
 
     await open('complete');
     await page.locator('#btn-detail-back').click(); await page.waitForSelector('#view-list:not(.hidden)');

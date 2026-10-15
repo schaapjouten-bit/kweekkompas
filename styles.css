@@ -3840,6 +3840,16 @@ input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--pri
 }
 
 /* Unified Photo Gallery Styles */
+.form-photo-focus {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 12px 0; padding: 11px 12px; border: 1px solid var(--border-color);
+  border-radius: 10px; background: var(--card-background); color: var(--secondary-text); font-size: 13px;
+}
+#btn-form-photo-focus {
+  flex: 0 0 auto; padding: 7px 10px; border: 1px solid var(--primary-color);
+  border-radius: 8px; background: var(--primary-color); color: #fff; font: inherit; font-weight: 650; cursor: pointer;
+}
+#btn-form-photo-focus:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 .unified-gallery-card {
   position: relative;
   width: 100%;

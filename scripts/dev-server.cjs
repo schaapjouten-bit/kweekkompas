@@ -17,6 +17,47 @@ function createServer({ localAPIFile = path.join(root, '.kweek-local-api.json'),
     const server = http.createServer(async (req, res) => {
         try {
             const url = new URL(req.url, `http://${req.headers.host}`);
+            // Only our production site can use the personal ChatGPT connection.
+            // Credentials and account files stay on this loopback server.
+            if (url.pathname === '/api/chatgpt-bridge') {
+                const trusted = req.headers.origin === 'https://kweekkompas.netlify.app'
+                    && ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
+                    && url.hostname === '127.0.0.1' && url.port === String(req.socket.localPort);
+                if (!trusted) { res.writeHead(403).end(); return; }
+                res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
+                res.setHeader('Vary', 'Origin');
+                res.setHeader('Cache-Control', 'no-store');
+                if (req.method === 'OPTIONS') {
+                    if (req.headers['access-control-request-method'] !== 'POST'
+                        || (req.headers['access-control-request-headers'] || '').split(',').some(name => name.trim() && name.trim().toLowerCase() !== 'content-type')) { res.writeHead(403).end(); return; }
+                    res.setHeader('Access-Control-Allow-Methods', 'POST');
+                    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+                    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+                    res.writeHead(204).end(); return;
+                }
+                res.setHeader('Content-Type', 'application/json');
+                if (req.method !== 'POST' || !/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) { res.writeHead(405).end(JSON.stringify({ error: 'Gebruik een JSON-aanvraag.' })); return; }
+                let raw = '';
+                for await (const chunk of req) {
+                    raw += chunk;
+                    if (Buffer.byteLength(raw) > 4_000_000) { res.writeHead(413).end('{}'); return; }
+                }
+                let input;
+                try { input = JSON.parse(raw); } catch { res.writeHead(400).end('{}'); return; }
+                try {
+                    if (input?.route === 'chatgpt') {
+                        const localRequest = { method: 'POST', socket: req.socket, headers: { ...req.headers, origin: url.origin, 'sec-fetch-site': 'same-origin' } };
+                        const result = await chatGPT.handle(localRequest, JSON.stringify(input.body));
+                        res.writeHead(200).end(JSON.stringify(result)); return;
+                    }
+                    if (!['seed-info', 'tuinassistent', 'gemini-ai'].includes(input?.route) || input.body?.ai?.provider !== 'chatgpt') { res.writeHead(403).end('{}'); return; }
+                    const extension = fs.existsSync(path.join(root, 'netlify/functions', input.route + '.mts')) ? '.mts' : '.mjs';
+                    const service = await import(pathToFileURL(path.join(root, 'netlify/functions', input.route + extension)).href);
+                    const result = await service.default(new Request(url.origin + '/api/' + input.route, { method: 'POST', headers: { host: url.host, origin: url.origin, 'Content-Type': 'application/json' }, body: JSON.stringify(input.body) }));
+                    res.writeHead(result.status).end(await result.text());
+                } catch (error) { res.writeHead(error.status || 502).end(JSON.stringify({ error: error.status ? error.message : 'De ChatGPT-verbinding kon de aanvraag niet verwerken.' })); }
+                return;
+            }
             if (url.pathname.startsWith('/api/')) {
                 const route = url.pathname.slice(5);
                 if (!['local-api', 'chatgpt'].includes(route) && !routes.has(route)) { res.writeHead(404).end(); return; }

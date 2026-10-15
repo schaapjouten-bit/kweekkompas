@@ -2483,6 +2483,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     let pendingImages = [];
+    let pendingDetailImageCrop = null;
+    let pendingDetailImageCropSource = '';
     let photoSearchResults = []; // Local cache of search results (not necessarily selected)
     let displayedPhotoCount = 6; // How many web results to show initially
     let photoSearchQuery = '';
@@ -3176,6 +3178,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             tags: selectedTags,
             isPerennial: inputStatus?.value === 'Meerjarig' || (existing?.isPerennial === true && !selectedTags.includes('Eenjarig')),
             featuredImageUrl: safeFeaturedImage,
+            ...(pendingDetailImageCrop && pendingDetailImageCropSource === safeFeaturedImage ? { detailImageCrop: { ...pendingDetailImageCrop } } : {}),
             isFavorite: existing ? (existing.isFavorite || false) : false
         };
         if (newSeed.status === 'Wishlist') {
@@ -3481,6 +3484,154 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnDetailPlantPrev?.addEventListener('click', () => navigateDetailPlant(-1));
     btnDetailPlantNext?.addEventListener('click', () => navigateDetailPlant(1));
 
+    function normalizeDetailImageCrop(value = {}) {
+        return {
+            fit: value?.fit === 'contain' ? 'contain' : 'cover',
+            zoom: Math.min(3, Math.max(1, Number(value?.zoom) || 1)),
+            x: Math.min(1, Math.max(0, Number.isFinite(Number(value?.x)) ? Number(value.x) : 0.5)),
+            y: Math.min(1, Math.max(0, Number.isFinite(Number(value?.y)) ? Number(value.y) : 0.5))
+        };
+    }
+
+    function applyPhotoCrop(target, value) {
+        const frame = target.parentElement;
+        const width = frame?.clientWidth || 0;
+        const height = frame?.clientHeight || 0;
+        if (!width || !height || !target.naturalWidth || !target.naturalHeight) return;
+        const contain = value.fit === 'contain';
+        const baseScale = contain
+            ? Math.min(width / target.naturalWidth, height / target.naturalHeight)
+            : Math.max(width / target.naturalWidth, height / target.naturalHeight);
+        const scale = baseScale * (contain ? 1 : value.zoom);
+        const imageWidth = target.naturalWidth * scale;
+        const imageHeight = target.naturalHeight * scale;
+        target.style.position = 'absolute';
+        target.style.width = `${imageWidth}px`;
+        target.style.height = `${imageHeight}px`;
+        target.style.maxWidth = 'none';
+        target.style.objectFit = 'fill';
+        target.style.transform = 'none';
+        target.style.left = `${contain ? (width - imageWidth) / 2 : -(imageWidth - width) * value.x}px`;
+        target.style.top = `${contain ? (height - imageHeight) / 2 : -(imageHeight - height) * value.y}px`;
+    }
+
+    function openPhotoCropEditor({ src, plantName, initialCrop, onSave, onSaved }) {
+        const crop = normalizeDetailImageCrop(initialCrop);
+        const make = (tag, className, value) => {
+            const element = document.createElement(tag);
+            if (className) element.className = className;
+            if (value !== undefined) element.textContent = String(value);
+            return element;
+        };
+        const dialog = make('dialog', 'detail-crop-dialog');
+        dialog.setAttribute('aria-labelledby', 'detail-crop-title');
+        const panel = make('div', 'detail-crop-panel');
+        const top = make('div', 'detail-crop-top');
+        const title = make('h2', '', 'Focus van detailfoto aanpassen');
+        title.id = 'detail-crop-title';
+        const closeButton = make('button', 'detail-crop-close', 'Sluiten');
+        closeButton.type = 'button';
+        closeButton.addEventListener('click', () => dialog.close());
+        top.append(title, closeButton);
+
+        const preview = make('div', 'detail-crop-preview');
+        preview.setAttribute('role', 'img');
+        preview.setAttribute('aria-label', `Voorbeeld van de detailfoto voor ${plantName || 'de plant'}`);
+        const previewImage = make('img', 'detail-crop-preview-image');
+        previewImage.alt = '';
+        previewImage.draggable = false;
+        preview.appendChild(previewImage);
+
+        const help = make('p', 'detail-crop-help', 'Sleep de foto om het onderwerp te verplaatsen.');
+        const zoomLabel = make('label', 'detail-crop-zoom-label');
+        zoomLabel.htmlFor = 'detail-crop-zoom';
+        const zoomName = make('span', '', 'Inzoomen');
+        const zoomOutput = make('output', '', `${crop.zoom.toFixed(1)}×`);
+        zoomLabel.append(zoomName, zoomOutput);
+        const zoom = make('input', 'detail-crop-zoom');
+        zoom.id = 'detail-crop-zoom';
+        zoom.type = 'range'; zoom.min = '1'; zoom.max = '3'; zoom.step = '0.1'; zoom.value = String(crop.zoom);
+        zoom.setAttribute('aria-label', 'Foto inzoomen');
+        const framing = make('button', 'detail-crop-fit', crop.fit === 'contain' ? 'Foto uitsnijden' : 'Hele foto tonen');
+        framing.type = 'button';
+        const message = make('p', 'detail-crop-message');
+        const footer = make('div', 'detail-crop-footer');
+        const reset = make('button', 'detail-crop-reset', 'Herstellen'); reset.type = 'button';
+        const cancel = make('button', 'detail-crop-cancel', 'Annuleren'); cancel.type = 'button';
+        const save = make('button', 'detail-crop-save', 'Opslaan'); save.type = 'button';
+        footer.append(reset, cancel, save);
+        cancel.addEventListener('click', () => dialog.close());
+
+        const updatePreview = () => {
+            applyPhotoCrop(previewImage, crop);
+            preview.classList.toggle('is-contained', crop.fit === 'contain');
+            zoom.value = String(crop.zoom);
+            zoom.disabled = crop.fit === 'contain';
+            zoomOutput.textContent = `${crop.zoom.toFixed(1)}×`;
+            framing.textContent = crop.fit === 'contain' ? 'Foto uitsnijden' : 'Hele foto tonen';
+            help.textContent = crop.fit === 'contain' ? 'De volledige foto blijft zichtbaar.' : 'Sleep de foto om het onderwerp te verplaatsen.';
+        };
+        zoom.addEventListener('input', () => {
+            crop.fit = 'cover';
+            crop.zoom = Math.min(3, Math.max(1, Number(zoom.value) || 1));
+            updatePreview();
+        });
+        framing.addEventListener('click', () => {
+            crop.fit = crop.fit === 'contain' ? 'cover' : 'contain';
+            if (crop.fit === 'contain') { crop.zoom = 1; crop.x = 0.5; crop.y = 0.5; }
+            updatePreview();
+            message.textContent = '';
+        });
+        reset.addEventListener('click', () => {
+            crop.fit = 'cover'; crop.zoom = 1; crop.x = 0.5; crop.y = 0.5;
+            updatePreview(); message.textContent = 'Standaarduitsnede hersteld.';
+        });
+        let drag = null;
+        preview.addEventListener('pointerdown', event => {
+            if (crop.fit === 'contain' || event.button !== 0) return;
+            drag = { id: event.pointerId, x: event.clientX, y: event.clientY, cropX: crop.x, cropY: crop.y };
+            preview.setPointerCapture(event.pointerId);
+            event.preventDefault();
+        });
+        preview.addEventListener('pointermove', event => {
+            if (!drag || drag.id !== event.pointerId || !previewImage.naturalWidth || !previewImage.naturalHeight) return;
+            const width = preview.clientWidth;
+            const height = preview.clientHeight;
+            const scale = Math.max(width / previewImage.naturalWidth, height / previewImage.naturalHeight) * crop.zoom;
+            const overflowX = Math.max(1, previewImage.naturalWidth * scale - width);
+            const overflowY = Math.max(1, previewImage.naturalHeight * scale - height);
+            crop.x = Math.min(1, Math.max(0, drag.cropX - (event.clientX - drag.x) / overflowX));
+            crop.y = Math.min(1, Math.max(0, drag.cropY - (event.clientY - drag.y) / overflowY));
+            updatePreview();
+        });
+        const endDrag = event => { if (drag?.id === event.pointerId) drag = null; };
+        preview.addEventListener('pointerup', endDrag);
+        preview.addEventListener('pointercancel', endDrag);
+        save.addEventListener('click', async () => {
+            save.disabled = true;
+            message.textContent = 'Focus opslaan…';
+            try {
+                await onSave?.({ fit: crop.fit, zoom: crop.zoom, x: crop.x, y: crop.y });
+                dialog.close();
+                onSaved?.({ fit: crop.fit, zoom: crop.zoom, x: crop.x, y: crop.y });
+            } catch {
+                save.disabled = false;
+                message.textContent = 'Opslaan is niet gelukt. Probeer het opnieuw.';
+            }
+        });
+
+        panel.append(top, preview, help, zoomLabel, zoom, framing, message, footer);
+        dialog.appendChild(panel);
+        document.body.appendChild(dialog);
+        dialog.addEventListener('close', () => dialog.remove(), { once: true });
+        dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+        previewImage.addEventListener('load', updatePreview, { once: true });
+        previewImage.src = src;
+        dialog.showModal();
+        requestAnimationFrame(updatePreview);
+        zoom.focus();
+    }
+
     function openDetailView(seed, options = {}) {
         detailPhotoResizeObserver?.disconnect();
         const focusedAction = document.activeElement?.closest('#view-detail .btn-action-chip')?.dataset.detailAction;
@@ -3523,41 +3674,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const header = make('div', 'detail-photo');
         let image = null;
         let crop = null;
-        let applyCrop = null;
         const featuredImg = seed.featuredImageUrl || seed.image || (seed.images && seed.images[0]?.url);
         const safeFeaturedImg = safeWishlistImageUrl(featuredImg);
         if (safeFeaturedImg) {
             image = make('img', 'detail-hero-img');
-            const savedCrop = seed.detailImageCrop && typeof seed.detailImageCrop === 'object' ? seed.detailImageCrop : {};
-            crop = {
-                fit: savedCrop.fit === 'contain' ? 'contain' : 'cover',
-                zoom: Math.min(3, Math.max(1, Number(savedCrop.zoom) || 1)),
-                x: Math.min(1, Math.max(0, Number.isFinite(Number(savedCrop.x)) ? Number(savedCrop.x) : 0.5)),
-                y: Math.min(1, Math.max(0, Number.isFinite(Number(savedCrop.y)) ? Number(savedCrop.y) : 0.5))
-            };
-            applyCrop = (target, value) => {
-                const frame = target.parentElement;
-                const rect = frame?.getBoundingClientRect();
-                const frameWidth = frame?.clientWidth || 0;
-                const frameHeight = frame?.clientHeight || 0;
-                if (!rect?.width || !rect.height || !frameWidth || !frameHeight || !target.naturalWidth || !target.naturalHeight) return;
-                const contain = value.fit === 'contain';
-                const baseScale = contain
-                    ? Math.min(frameWidth / target.naturalWidth, frameHeight / target.naturalHeight)
-                    : Math.max(frameWidth / target.naturalWidth, frameHeight / target.naturalHeight);
-                const scale = baseScale * (contain ? 1 : value.zoom);
-                const width = target.naturalWidth * scale;
-                const height = target.naturalHeight * scale;
-                target.style.position = 'absolute';
-                target.style.width = `${width}px`;
-                target.style.height = `${height}px`;
-                target.style.maxWidth = 'none';
-                target.style.objectFit = 'fill';
-                target.style.transform = 'none';
-                target.style.left = `${contain ? (frameWidth - width) / 2 : -(width - frameWidth) * value.x}px`;
-                target.style.top = `${contain ? (frameHeight - height) / 2 : -(height - frameHeight) * value.y}px`;
-            };
-            image.addEventListener('load', () => applyCrop(image, crop), { once: true });
+            crop = normalizeDetailImageCrop(seed.detailImageCrop);
+            image.addEventListener('load', () => applyPhotoCrop(image, crop), { once: true });
             image.setAttribute('src', safeFeaturedImg);
             image.setAttribute('alt', text(seed.naam));
             image.addEventListener('error', () => {
@@ -3599,116 +3721,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             cropButton.type = 'button';
             cropButton.setAttribute('aria-label', `Foto-uitsnede aanpassen voor ${text(seed.naam)}`);
             cropButton.addEventListener('click', () => {
-                const dialog = make('dialog', 'detail-crop-dialog');
-                dialog.setAttribute('aria-labelledby', 'detail-crop-title');
-                const panel = make('div', 'detail-crop-panel');
-                const top = make('div', 'detail-crop-top');
-                const title = make('h2', '', 'Foto-uitsnede aanpassen');
-                title.id = 'detail-crop-title';
-                const closeButton = make('button', 'detail-crop-close', 'Sluiten');
-                closeButton.type = 'button';
-                closeButton.addEventListener('click', () => dialog.close());
-                top.append(title, closeButton);
-
-                const preview = make('div', 'detail-crop-preview');
-                preview.setAttribute('role', 'img');
-                preview.setAttribute('aria-label', `Voorbeeld van de foto voor ${text(seed.naam)}`);
-                const previewImage = make('img', 'detail-crop-preview-image');
-                previewImage.src = safeFeaturedImg;
-                previewImage.alt = '';
-                previewImage.draggable = false;
-                preview.appendChild(previewImage);
-
-                const help = make('p', 'detail-crop-help', 'Sleep de foto om het onderwerp te verplaatsen.');
-                const zoomLabel = make('label', 'detail-crop-zoom-label');
-                zoomLabel.htmlFor = 'detail-crop-zoom';
-                zoomLabel.append(make('span', '', 'Inzoomen'), make('output', '', `${crop.zoom.toFixed(1)}×`));
-                const zoom = make('input', 'detail-crop-zoom');
-                zoom.id = 'detail-crop-zoom';
-                zoom.type = 'range'; zoom.min = '1'; zoom.max = '3'; zoom.step = '0.1'; zoom.value = String(crop.zoom);
-                zoom.setAttribute('aria-label', 'Foto inzoomen');
-                const framing = make('button', 'detail-crop-fit', crop.fit === 'contain' ? 'Foto uitsnijden' : 'Hele foto tonen');
-                framing.type = 'button';
-                const message = make('p', 'detail-crop-message');
-
-                const footer = make('div', 'detail-crop-footer');
-                const reset = make('button', 'detail-crop-reset', 'Herstellen'); reset.type = 'button';
-                const cancel = make('button', 'detail-crop-cancel', 'Annuleren'); cancel.type = 'button';
-                const save = make('button', 'detail-crop-save', 'Opslaan'); save.type = 'button';
-                footer.append(reset, cancel, save);
-                cancel.addEventListener('click', () => dialog.close());
-                const updatePreview = () => {
-                    applyCrop(previewImage, crop);
-                    preview.classList.toggle('is-contained', crop.fit === 'contain');
-                    zoom.value = String(crop.zoom);
-                    zoom.disabled = crop.fit === 'contain';
-                    zoomLabel.querySelector('output').textContent = `${crop.zoom.toFixed(1)}×`;
-                    framing.textContent = crop.fit === 'contain' ? 'Foto uitsnijden' : 'Hele foto tonen';
-                    help.textContent = crop.fit === 'contain' ? 'De volledige foto blijft zichtbaar.' : 'Sleep de foto om het onderwerp te verplaatsen.';
-                };
-                zoom.addEventListener('input', () => {
-                    crop.fit = 'cover';
-                    crop.zoom = Math.min(3, Math.max(1, Number(zoom.value) || 1));
-                    updatePreview();
-                });
-                framing.addEventListener('click', () => {
-                    crop.fit = crop.fit === 'contain' ? 'cover' : 'contain';
-                    if (crop.fit === 'contain') { crop.zoom = 1; crop.x = 0.5; crop.y = 0.5; }
-                    updatePreview();
-                    message.textContent = '';
-                });
-                reset.addEventListener('click', () => {
-                    crop.fit = 'cover'; crop.zoom = 1; crop.x = 0.5; crop.y = 0.5;
-                    updatePreview(); message.textContent = 'Standaarduitsnede hersteld. Sla op om dit te bewaren.';
-                });
-                let drag = null;
-                preview.addEventListener('pointerdown', event => {
-                    if (crop.fit === 'contain' || event.button !== 0) return;
-                    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, cropX: crop.x, cropY: crop.y };
-                    preview.setPointerCapture(event.pointerId);
-                    event.preventDefault();
-                });
-                preview.addEventListener('pointermove', event => {
-                    if (!drag || drag.id !== event.pointerId) return;
-                    if (!previewImage.naturalWidth || !previewImage.naturalHeight) return;
-                    const rect = preview.getBoundingClientRect();
-                    const scale = Math.max(rect.width / previewImage.naturalWidth, rect.height / previewImage.naturalHeight) * crop.zoom;
-                    const overflowX = Math.max(1, previewImage.naturalWidth * scale - rect.width);
-                    const overflowY = Math.max(1, previewImage.naturalHeight * scale - rect.height);
-                    crop.x = Math.min(1, Math.max(0, drag.cropX - (event.clientX - drag.x) / overflowX));
-                    crop.y = Math.min(1, Math.max(0, drag.cropY - (event.clientY - drag.y) / overflowY));
-                    updatePreview();
-                });
-                const endDrag = event => { if (drag?.id === event.pointerId) drag = null; };
-                preview.addEventListener('pointerup', endDrag);
-                preview.addEventListener('pointercancel', endDrag);
-                save.addEventListener('click', async () => {
-                    save.disabled = true;
-                    message.textContent = 'Foto-instelling opslaan…';
-                    try {
-                        const current = seeds.find(item => String(item.id) === String(seed.id)) || seed;
-                        current.detailImageCrop = { fit: crop.fit, zoom: crop.zoom, x: crop.x, y: crop.y };
+                const current = seeds.find(item => String(item.id) === String(seed.id)) || seed;
+                openPhotoCropEditor({
+                    src: safeFeaturedImg,
+                    plantName: text(seed.naam),
+                    initialCrop: crop,
+                    onSave: async value => {
+                        current.detailImageCrop = value;
                         await saveSeed(current);
-                        dialog.close();
-                        openDetailView(current, { preserveNavigationOrder: true });
-                    } catch {
-                        save.disabled = false;
-                        message.textContent = 'Opslaan is niet gelukt. Probeer het opnieuw.';
-                    }
+                    },
+                    onSaved: () => openDetailView(current, { preserveNavigationOrder: true })
                 });
-                panel.append(top, preview, help, zoomLabel, zoom, framing, message, footer);
-                dialog.appendChild(panel);
-                document.body.appendChild(dialog);
-                dialog.addEventListener('close', () => dialog.remove(), { once: true });
-                dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
-                dialog.showModal();
-                requestAnimationFrame(updatePreview);
-                zoom.focus();
             });
             summaryColumn.appendChild(cropButton);
-            detailPhotoResizeObserver = new ResizeObserver(() => applyCrop(image, crop));
+            detailPhotoResizeObserver = new ResizeObserver(() => applyPhotoCrop(image, crop));
             detailPhotoResizeObserver.observe(header);
-            requestAnimationFrame(() => applyCrop(image, crop));
+            requestAnimationFrame(() => applyPhotoCrop(image, crop));
         }
 
         const actionRow = make('div', 'detail-action-row');
@@ -4022,6 +4050,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (seed.featuredImageUrl && !pendingImages.some(img => img.url === seed.featuredImageUrl)) {
             pendingImages.unshift({ url: seed.featuredImageUrl, id: 'featured-import-' + Date.now(), caption: 'Hoofdfoto' });
         }
+        pendingDetailImageCrop = seed.detailImageCrop && typeof seed.detailImageCrop === 'object' ? normalizeDetailImageCrop(seed.detailImageCrop) : null;
+        pendingDetailImageCropSource = pendingDetailImageCrop
+            ? safeWishlistImageUrl(seed.featuredImageUrl) || safeWishlistImageUrl(seed.image) || safeWishlistImageUrl(pendingImages[0]?.url) || ''
+            : '';
 
         photoSearchResults = [];
         photoSearchQuery = '';
@@ -4361,6 +4393,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         editingId = null;
         seedForm?.reset();
         pendingImages = [];
+        pendingDetailImageCrop = null;
+        pendingDetailImageCropSource = '';
         photoSearchResults = [];
         photoSearchQuery = '';
         photoSearchPage = 0;
@@ -4470,6 +4504,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         const validSearchResults = photoSearchResults.map(normalizeExternalImageResult).filter(Boolean);
         const validPendingImages = pendingImages.map(normalizeExternalImageResult).filter(Boolean);
         const loadMoreWrap = document.getElementById('photo-load-more');
+        const focusPanel = document.getElementById('form-photo-focus');
+        const focusButton = document.getElementById('btn-form-photo-focus');
+        const focusSource = safeWishlistImageUrl(inputNaam.dataset.featuredUrl) || validPendingImages[0]?.imageUrl || '';
+        if (focusPanel && focusButton) {
+            focusPanel.classList.toggle('hidden', !focusSource);
+            focusButton.onclick = null;
+            if (focusSource) {
+                const hasSavedFocus = pendingDetailImageCrop && pendingDetailImageCropSource === focusSource;
+                focusButton.textContent = hasSavedFocus ? 'Focus aanpassen' : 'Focus instellen';
+                focusButton.setAttribute('aria-label', `Focus van de detailfoto aanpassen voor ${inputNaam.value.trim() || 'de plant'}`);
+                focusButton.onclick = () => openPhotoCropEditor({
+                    src: focusSource,
+                    plantName: inputNaam.value.trim() || 'de plant',
+                    initialCrop: hasSavedFocus ? pendingDetailImageCrop : null,
+                    onSave: value => {
+                        pendingDetailImageCrop = normalizeDetailImageCrop(value);
+                        pendingDetailImageCropSource = focusSource;
+                    },
+                    onSaved: () => {
+                        renderUnifiedGallery();
+                        showToast('Focus ingesteld. Sla het zaad op om dit te bewaren.');
+                    }
+                });
+            }
+        }
         if (loadMoreWrap) loadMoreWrap.classList.toggle('hidden', validSearchResults.length <= displayedPhotoCount && !photoSearchHasMore);
 
         if (validPendingImages.length === 0 && validSearchResults.length === 0) {
@@ -5809,7 +5868,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             months: Object.fromEntries(['zaaitijd-picker', 'oogsttijd-picker'].map(id => [id, [...document.querySelectorAll('#' + id + ' .month-picker-item.active')].map(item => Number(item.dataset.monthIndex))])),
             tags: [...document.querySelectorAll('.tag-picker-chip.active')].map(item => item.dataset.tag),
             score: document.getElementById('star-rating-picker')?.dataset.value || '0' };
-        const assets = withMedia ? { images: pendingImages, featuredUrl: inputNaam.dataset.featuredUrl || '' } : undefined;
+        const featuredUrl = safeWishlistImageUrl(inputNaam.dataset.featuredUrl) || safeWishlistImageUrl(pendingImages[0]?.url) || '';
+        const assets = withMedia ? {
+            images: pendingImages,
+            featuredUrl,
+            detailImageCrop: pendingDetailImageCrop && pendingDetailImageCropSource === featuredUrl ? { ...pendingDetailImageCrop } : null
+        } : undefined;
         window.KweekDrafts.put(seedDraftKey(), values, assets).catch(draftError);
     }
     async function restoreSeedDraft() {
@@ -5829,6 +5893,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (Array.isArray(draft.assets?.images)) {
                 pendingImages = draft.assets.images.filter(item => safeWishlistImageUrl(item?.url));
                 inputNaam.dataset.featuredUrl = safeWishlistImageUrl(draft.assets.featuredUrl) || '';
+                pendingDetailImageCrop = draft.assets.detailImageCrop ? normalizeDetailImageCrop(draft.assets.detailImageCrop) : null;
+                pendingDetailImageCropSource = pendingDetailImageCrop ? safeWishlistImageUrl(draft.assets.featuredUrl) || '' : '';
                 renderUnifiedGallery();
             }
             showToast('Je plantconcept is hersteld. Nog niet definitief opgeslagen.');
