@@ -90,9 +90,10 @@ test('Gemini Free tier: lokale sleutel, expliciete test, vaste modelkeuze en bei
         assert.equal(calls.at(-1).key, 'personal-mock-secret', 'Empty field reuses the saved key');
         const count = calls.length;
         process.env.KWEEK_LOCAL_DEV = 'false';
-        assert.equal(providerConfig()['gemini-free'], undefined);
-        await assert.rejects(callAI({ ai: { provider: 'gemini-free' } }, 'test', 'test'), { status: 503 });
-        assert.equal(calls.length, count, 'No free-tier connection on production');
+        assert.equal(providerConfig()['gemini-free'].available, true);
+        assert.equal(providerConfig()['gemini-free'].localAvailable, false);
+        await assert.rejects(callAI({ ai: { provider: 'gemini-free' } }, 'test', 'test'), { status: 400 });
+        assert.equal(calls.length, count, 'No fallback to backend credentials without a personal key');
         process.env.KWEEK_LOCAL_DEV = 'true';
         assert.equal((await (await post('gemini-free', { action: 'delete-key' })).json()).keyConfigured, false);
         assert.equal(fs.existsSync(file), false);

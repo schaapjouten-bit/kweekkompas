@@ -1,6 +1,7 @@
 /* Optional services. Local data stays under the existing app's storage/backup logic. */
 (() => {
     const PREFS_KEY = 'kweekkompas_ai';
+    const GEMINI_FREE_KEY = 'kweekkompas_gemini_free_session';
     const PROFILE_AI_CONSENT_KEY = 'kweekkompas_ai_profile_consent';
     // Cloud sync is temporarily out of the app; keep its implementation for a later return.
     const CLOUD_SYNC_ENABLED = false;
@@ -198,7 +199,7 @@
                 <div id="gemini-free-setup" hidden>
                     <label class="settings-field"><span>Gemini API-sleutel</span><input id="gemini-free-key" type="password" maxlength="8192" autocomplete="off" spellcheck="false" aria-describedby="gemini-free-key-status gemini-free-note" disabled></label>
                     <p id="gemini-free-key-status" class="service-note" role="status"></p>
-                    <p id="gemini-free-note" class="service-note">Gebruik een sleutel van een Free tier-project in <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Google AI Studio</a>. Google bepaalt de gratis limieten. Je sleutel wordt alleen op deze computer opgeslagen.</p>
+                    <p id="gemini-free-note" class="service-note">Gebruik een sleutel van een Free tier-project in <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Google AI Studio</a>. Google bepaalt de gratis limieten. <span id="gemini-free-storage-note"></span></p>
                     <button id="gemini-free-delete" class="settings-secondary-button" type="button" hidden>Sleutel verwijderen</button>
                 </div>
                 <div id="chatgpt-setup" hidden>
@@ -414,7 +415,7 @@
         const localGPT = Boolean(config?.providers?.chatgpt?.localAvailable);
         const gptOption = providerInput.querySelector('[value="chatgpt"]');
         gptOption.hidden = gptOption.disabled = !localGPT;
-        const localGeminiFree = Boolean(config?.providers?.['gemini-free']?.localAvailable);
+        const localGeminiFree = Boolean(config?.providers?.['gemini-free']?.available || config?.providers?.['gemini-free']?.localAvailable);
         const freeOption = providerInput.querySelector('[value="gemini-free"]');
         freeOption.hidden = freeOption.disabled = !localGeminiFree;
         if (providerInput.value === 'gemini-free' && !localGeminiFree) providerInput.value = '';
@@ -555,10 +556,12 @@
     }
     function showGeminiFreeMetadata(panel, value) {
         const input = panel.querySelector('#gemini-free-key');
+        const local = config?.providers?.['gemini-free']?.localAvailable;
         input.placeholder = value.keyConfigured ? 'Sleutel opgeslagen; leeg laten om te behouden' : 'Plak hier je Gemini API-sleutel';
         input.required = panel.querySelector('#ai-provider').value === 'gemini-free' && !value.keyConfigured;
         panel.querySelector('#gemini-free-delete').hidden = !value.keyConfigured;
-        say('gemini-free-key-status', value.keyConfigured ? 'API-sleutel lokaal opgeslagen.' : 'Nog geen API-sleutel opgeslagen.', panel);
+        say('gemini-free-key-status', value.keyConfigured ? (local ? 'API-sleutel lokaal opgeslagen.' : 'API-sleutel bewaard in dit tabblad.') : 'Nog geen API-sleutel opgeslagen.', panel);
+        say('gemini-free-storage-note', local ? 'Je sleutel wordt alleen op deze computer opgeslagen.' : 'Je sleutel blijft in dit tabblad bewaard en wordt alleen voor je Gemini-aanvragen gebruikt.', panel);
         if (config?.providers?.['gemini-free']) config.providers['gemini-free'].configured = value.keyConfigured;
     }
     async function loadGeminiFree(panel) {
@@ -567,7 +570,7 @@
         const submit = panel.querySelector('#ai-settings-form button[type="submit"]');
         submit.disabled = true;
         try {
-            const value = await request('gemini-free', { action: 'get' });
+            const value = config?.providers?.['gemini-free']?.localAvailable ? await request('gemini-free', { action: 'get' }) : { keyConfigured: Boolean(sessionStorage.getItem(GEMINI_FREE_KEY)) };
             if (valid()) showGeminiFreeMetadata(panel, value);
         } catch { if (valid()) say('ai-save-status', 'De lokale Gemini-instellingen zijn niet bereikbaar.', panel); }
         finally { if (valid()) submit.disabled = false; }
@@ -584,7 +587,16 @@
         providerInput.disabled = submit.disabled = remove.disabled = keyInput.disabled = true;
         say('ai-save-status', action === 'save-test' ? 'Verbinding met Gemini 3.5 Flash-Lite testen…' : 'Sleutel verwijderen…', panel);
         try {
-            const value = await request('gemini-free', body);
+            let value;
+            if (config?.providers?.['gemini-free']?.localAvailable) value = await request('gemini-free', body);
+            else if (action === 'delete-key') {
+                sessionStorage.removeItem(GEMINI_FREE_KEY);
+                value = { keyConfigured: false };
+            } else {
+                body.apiKey = body.apiKey.trim() || sessionStorage.getItem(GEMINI_FREE_KEY) || '';
+                value = await request('gemini-free', body);
+                sessionStorage.setItem(GEMINI_FREE_KEY, body.apiKey);
+            }
             showGeminiFreeMetadata(panel, value);
             if (action === 'save-test') {
                 const next = { provider: 'gemini-free', model: GEMINI_MODEL };
@@ -594,7 +606,7 @@
                 updateDashboardProvider();
             }
             say('ai-save-status', value.message || 'De opgeslagen Gemini API-sleutel is verwijderd.', panel);
-        } catch (error) { say('ai-save-status', error.status ? error.message : 'De lokale Gemini-instellingen zijn niet bereikbaar.', panel); }
+        } catch (error) { say('ai-save-status', error.status ? error.message : 'De Gemini-instellingen konden niet worden verwerkt.', panel); }
         finally {
             keyInput.value = ''; delete body.apiKey;
             providerInput.disabled = submit.disabled = remove.disabled = false;
@@ -1134,7 +1146,8 @@
                 try { return await window.KweekBrowserOllama.generate(route, aiBody, choice.model || 'gemma4:latest'); }
                 finally { updateDashboardProvider(); }
             }
-            return await request(route, { ...aiBody, ai: choice });
+            const ai = choice.provider === 'gemini-free' && !config?.providers?.['gemini-free']?.localAvailable ? { ...choice, apiKey: sessionStorage.getItem(GEMINI_FREE_KEY) || '' } : choice;
+            return await request(route, { ...aiBody, ai });
         }
         catch (error) {
             if (choice.provider === 'ollama') {
