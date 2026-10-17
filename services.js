@@ -14,6 +14,8 @@
     let authMode = 'login';
     let recovery = false;
     let authMessage = '';
+    let accountConfigured = null;
+    let accountFeedback = '';
     let ollamaInstalledModels = null;
     // Capture links once, then remove credentials before any network requests.
     let callbackPromise = Promise.resolve();
@@ -35,17 +37,16 @@
         }).catch(error => { authMessage = error.message; confirmationPending = ['email', 'signup'].includes(body.type); });
         const openAccount = async () => {
             await callbackPromise;
-            if (user && !recovery) window.openSettingsSection?.('cloud');
+            if (user && !recovery) window.openSettingsSection?.('account');
             else openAccountPopup(recovery ? 'password' : 'login');
         };
         if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', openAccount, { once: true });
         else openAccount();
     }
     }
-    if (CLOUD_SYNC_ENABLED) {
-        processAuthLink();
-        window.addEventListener('hashchange', processAuthLink);
-    }
+    // Accountlinks blijven bruikbaar wanneer cloudsync uitgeschakeld is.
+    processAuthLink();
+    window.addEventListener('hashchange', processAuthLink);
     let cloud = null;
     let conflictAccount = null;
     let localStatusTimer;
@@ -174,6 +175,17 @@
 <div id="cloud-conflict-actions" class="service-actions" hidden><button class="settings-secondary-button" type="button" data-cloud-action="download">Cloudkopie kiezen</button><button class="settings-secondary-button" type="button" data-cloud-action="replace">Lokale tuin naar cloud sturen</button></div>
 <p id="cloud-last-sync" class="service-note"></p><p id="cloud-local-status" class="service-note"></p><div hidden><p id="cloud-error-detail"></p><p id="cloud-login-status"></p><p id="cloud-copy-size"></p></div>
 </section>`;
+    const accountSettingsHTML = () => `
+        <section class="settings-page-section compact-account" id="settings-section-account" aria-labelledby="settings-account-title" tabindex="-1">
+            <div class="settings-section-heading"><div><p class="settings-section-eyebrow">Account</p><h3 id="settings-account-title">Account</h3></div></div>
+            <p id="account-session-status" class="service-status" role="status" aria-live="polite">Loginstatus controleren…</p>
+            <div class="service-actions">
+                <button id="account-settings-login" class="settings-primary-button" type="button" disabled>Inloggen / Registreren</button>
+                <button id="account-settings-logout" class="settings-secondary-button" type="button" hidden>Uitloggen</button>
+            </div>
+            <p id="account-settings-feedback" class="service-note" role="status" aria-live="polite"></p>
+            <p class="service-note">Je tuingegevens blijven op dit apparaat. Cloudsync staat uit.</p>
+        </section>`;
     const settingsHTML = () => `
         <section class="settings-page-section" id="settings-section-ai" aria-labelledby="settings-ai-title" tabindex="-1">
             <div class="settings-section-heading"><div><p class="settings-section-eyebrow">AI</p><h3 id="settings-ai-title">Provider en model</h3></div></div>
@@ -214,6 +226,7 @@
             <label class="ai-profile-consent"><input id="ai-profile-consent" type="checkbox"><span>Mijn tuinprofiel gebruiken voor AI-advies</span></label>
             <p class="service-note ai-profile-note">(Bij AI-advies worden alleen klimaat, licht, tuinplek en ervaring meegestuurd. Naam en foto niet. Deze keuze geldt alleen op dit apparaat.)</p>
         </section>
+        ${accountSettingsHTML()}
         ${CLOUD_SYNC_ENABLED ? cloudSettingsHTML() : ''}`;
     function say(id, message, panel = document) {
         const el = panel.querySelector('#' + id);
@@ -767,7 +780,7 @@
         if (returnToSettings && accountReturn) {
             const target = accountReturn;
             window.openSettingsSection?.(target.section);
-            setTimeout(() => document.querySelector(target.action ? '[data-cloud-action="' + target.action + '"]' : '#cloud-open-account:not([hidden]), #settings-section-cloud')?.focus({ preventScroll: true }), 50);
+            setTimeout(() => document.querySelector(target.action ? '[data-cloud-action="' + target.action + '"]' : '#settings-section-account, #cloud-open-account:not([hidden]), #settings-section-cloud')?.focus({ preventScroll: true }), 50);
         }
         accountReturn = null;
     }
@@ -817,7 +830,7 @@
                 say('cloud-auth-status', authMessage, panel);
                 const data = await request('auth', { action: mode, email: panel.querySelector('#cloud-email').value.trim(), ...(['login', 'signup', 'password'].includes(mode) ? { password } : {}) });
                 authMessage = data.message || (mode === 'password' ? 'Je nieuwe wachtwoord is opgeslagen. Je lokale tuin is behouden.' : 'Ingelogd. Je lokale tuin is behouden.');
-                if (data.user) { user = data.user; recovery = false; auto.setAccount(user.id, true); authMode = 'login'; cloud = null; confirmationPending = false; closeAccount(true); }
+                if (data.user) { user = data.user; accountConfigured = true; accountFeedback = ''; recovery = false; auto.setAccount(user.id, true); authMode = 'login'; cloud = null; confirmationPending = false; closeAccount(true); }
                 if (mode === 'signup' && !data.user) confirmationPending = true;
                 renderAuthMode(panel);
                 say('cloud-auth-status', authMessage, panel);
@@ -829,7 +842,7 @@
     function openAccountPopup(mode = 'login', target = null) {
         const panel = ensureAccountPopup();
         if (target) accountReturn = target;
-        else if (document.querySelector('.settings-panel.open')) accountReturn = { section: 'cloud' };
+        else if (document.querySelector('.settings-panel.open')) accountReturn = { section: 'account' };
         if (document.querySelector('.settings-panel.open')) window.toggleSettingsPanel_REPAIR_V131?.();
         const choice = mode === 'choice';
         panel.querySelector('#account-choice').hidden = !choice;
@@ -852,6 +865,66 @@
     if (CLOUD_SYNC_ENABLED) {
         if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', startAccountChoice, { once: true });
         else startAccountChoice();
+    }
+    function renderAccountSettings(panel) {
+        const status = panel.querySelector('#account-session-status');
+        const login = panel.querySelector('#account-settings-login');
+        const logout = panel.querySelector('#account-settings-logout');
+        if (!status || !login || !logout) return;
+        status.textContent = accountConfigured === false
+            ? 'De accountservice is niet ingesteld.'
+            : recovery ? 'Wachtwoordherstel actief. Stel een nieuw wachtwoord in.'
+            : user ? `Ingelogd als ${user.email}`
+            : accountConfigured === null ? 'Loginstatus controleren…' : 'Niet ingelogd';
+        login.hidden = Boolean(user) && !recovery;
+        login.textContent = recovery ? 'Nieuw wachtwoord instellen' : 'Inloggen / Registreren';
+        login.disabled = busy || accountConfigured !== true;
+        logout.hidden = !user;
+        logout.disabled = busy;
+        const feedback = panel.querySelector('#account-settings-feedback');
+        if (feedback) feedback.textContent = accountFeedback;
+    }
+    async function refreshAccountSettings(panel) {
+        const marker = panel.querySelector('#account-settings-login');
+        const version = accountVersion;
+        try {
+            const data = await request('auth');
+            if (version !== accountVersion || !marker?.isConnected) return;
+            accountConfigured = Boolean(data.configured);
+            accountFeedback = '';
+            user = data.user || null;
+            recovery = Boolean(data.recovery);
+            if (CLOUD_SYNC_ENABLED) auto.setAccount(recovery ? null : user?.id);
+        } catch (error) {
+            if (version !== accountVersion || !marker?.isConnected) return;
+            accountFeedback = `Loginstatus kon niet worden gecontroleerd: ${error.message}`;
+            // Geen verbinding is niet hetzelfde als een verlopen sessie.
+        }
+        renderAccountSettings(panel);
+    }
+    async function logoutAccount(panel) {
+        if (busy || !user) return;
+        busy = true;
+        accountFeedback = '';
+        renderAccountSettings(panel);
+        const version = ++accountVersion;
+        try {
+            // De server wist de sessiecookies; lokale tuingegevens blijven bewaard.
+            if (CLOUD_SYNC_ENABLED) {
+                auto.pause('account'); auto.setAccount(null);
+                await auto.idle().catch(() => {});
+            }
+            await request('auth', { action: 'logout' });
+            if (version !== accountVersion) return;
+            user = null; cloud = null; conflictAccount = null; recovery = false;
+            authMode = 'login'; accountConfigured = true;
+            accountFeedback = 'Uitgelogd. Je lokale tuin is behouden.';
+        } catch (error) {
+            accountFeedback = `Uitloggen is niet gelukt: ${error.message}`;
+        } finally {
+            busy = false;
+            renderAccountSettings(panel);
+        }
     }
     async function mount(panel) {
         readPreferences();
@@ -899,6 +972,14 @@
                 say('ai-save-status', 'Opgeslagen voor de tuinassistent en de zadenhulp.', panel);
             } catch { say('ai-save-status', 'Opslaan is niet mogelijk in deze browser.', panel); }
         };
+        const accountLogin = panel.querySelector('#account-settings-login');
+        const accountLogout = panel.querySelector('#account-settings-logout');
+        if (accountLogin && accountLogout) {
+            accountLogin.onclick = () => openAccountPopup(recovery ? 'password' : 'login', { section: 'account' });
+            accountLogout.onclick = () => void logoutAccount(panel);
+            renderAccountSettings(panel);
+            void refreshAccountSettings(panel);
+        }
         let accountPromise = Promise.resolve();
         if (CLOUD_SYNC_ENABLED) {
             panel.querySelector('#cloud-auto-sync').onchange = event => { if (event.target.checked) auto.enable(); else auto.disable(); };
