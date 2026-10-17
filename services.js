@@ -7,7 +7,7 @@
     const GEMINI_MODEL = 'gemini-3.5-flash-lite';
     const GEMINI_FLASH_MODEL = 'gemini-3.8-flash';
     const OWNER_KEY = 'kweekkompas_local_owner';
-    const providers = ['gemini', 'ollama', 'openai-compatible', 'chatgpt'];
+    const providers = ['gemini', 'gemini-free', 'ollama', 'openai-compatible', 'chatgpt'];
     let config = null;
     let user = null;
     let accountVersion = 0;
@@ -60,6 +60,7 @@
         const saved = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
         prefs = providers.includes(saved?.provider) && typeof saved.model === 'string' ? { provider: saved.provider, model: saved.model } : defaults;
         if (prefs.provider === 'gemini' && ![GEMINI_MODEL, GEMINI_FLASH_MODEL].includes(prefs.model)) prefs.model = GEMINI_MODEL;
+        if (prefs.provider === 'gemini-free') prefs.model = GEMINI_MODEL;
       } catch { prefs = defaults; }
       return { ...prefs };
     }
@@ -79,7 +80,7 @@
         };
         const display = () => {
             const provider = prefs.provider || config?.defaultProvider;
-            const labels = { gemini: 'Gemini', ollama: 'Lokale AI (Ollama)', 'openai-compatible': 'Eigen API', chatgpt: 'ChatGPT' };
+            const labels = { gemini: 'Gemini', 'gemini-free': 'Gemini – Free tier', ollama: 'Lokale AI (Ollama)', 'openai-compatible': 'Eigen API', chatgpt: 'ChatGPT' };
             const directStatus = provider === 'ollama' && window.KweekBrowserOllama?.direct ? window.KweekBrowserOllama.status().state : null;
             const suffix = directStatus === 'reachable' ? ' · verbonden op deze computer' : directStatus === 'blocked' ? ' · verbinding controleren' : directStatus ? ' · nog niet getest' : '';
             button.textContent = `${labels[provider] || 'AI-instellingen'}${suffix} ⌄`;
@@ -179,8 +180,14 @@
             <div class="settings-section-heading"><div><p class="settings-section-eyebrow">AI</p><h3 id="settings-ai-title">Provider en model</h3></div></div>
             <form id="ai-settings-form" class="service-form">
                 <div class="settings-form-grid">
-                    <label class="settings-field"><span>Provider</span><select id="ai-provider"><option value="gemini">Gemini</option><option value="ollama">Lokale AI (Ollama)</option><option value="chatgpt" hidden disabled>ChatGPT</option><option value="openai-compatible" hidden disabled>Eigen API</option><option value="" hidden disabled>Kies een beschikbare provider</option></select></label>
+                    <label class="settings-field"><span>Provider</span><select id="ai-provider"><option value="gemini">Gemini</option><option value="gemini-free" hidden disabled>Gemini – Free tier</option><option value="ollama">Lokale AI (Ollama)</option><option value="chatgpt" hidden disabled>ChatGPT</option><option value="openai-compatible" hidden disabled>Eigen API</option><option value="" hidden disabled>Kies een beschikbare provider</option></select></label>
                     <label class="settings-field" id="ai-standard-model"><span>Model</span><select id="ai-gemini-model" aria-describedby="ai-provider-status" required></select><select id="ai-chatgpt-model" aria-describedby="chatgpt-status" hidden disabled></select><select id="ai-model" aria-describedby="ollama-status" hidden disabled required></select></label>
+                </div>
+                <div id="gemini-free-setup" hidden>
+                    <label class="settings-field"><span>Gemini API-sleutel</span><input id="gemini-free-key" type="password" maxlength="8192" autocomplete="off" spellcheck="false" aria-describedby="gemini-free-key-status gemini-free-note" disabled></label>
+                    <p id="gemini-free-key-status" class="service-note" role="status"></p>
+                    <p id="gemini-free-note" class="service-note">Gebruik een sleutel van een Free tier-project in <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Google AI Studio</a>. Google bepaalt de gratis limieten. Je sleutel wordt alleen op deze computer opgeslagen.</p>
+                    <button id="gemini-free-delete" class="settings-secondary-button" type="button" hidden>Sleutel verwijderen</button>
                 </div>
                 <div id="chatgpt-setup" hidden>
                     ${location.origin === 'https://kweekkompas.netlify.app' ? '<p class="service-note">Via je ChatGPT-abonnement op deze pc. Laat de lokale KweekKompas-app draaien met npm start. Je login blijft op je eigen computer. Sta lokale-netwerktoegang toe als je browser daarom vraagt.</p>' : ''}
@@ -370,15 +377,16 @@
     }
     function renderGeminiModel(panel) {
         const select = panel.querySelector('#ai-gemini-model');
+        const isFree = panel.querySelector('#ai-provider').value === 'gemini-free';
         select.replaceChildren();
-        for (const [value, label] of [[GEMINI_MODEL, '3.5 Flash-Lite'], [GEMINI_FLASH_MODEL, '3.8 Flash']]) {
+        for (const [value, label] of (isFree ? [[GEMINI_MODEL, '3.5 Flash-Lite']] : [[GEMINI_MODEL, '3.5 Flash-Lite'], [GEMINI_FLASH_MODEL, '3.8 Flash']])) {
             const option = document.createElement('option');
             option.value = value;
             option.textContent = label;
             select.append(option);
         }
-        select.value = prefs.provider === 'gemini' ? prefs.model : GEMINI_MODEL;
-        select.disabled = panel.querySelector('#ai-provider').value !== 'gemini';
+        select.value = !isFree && prefs.provider === 'gemini' ? prefs.model : GEMINI_MODEL;
+        select.disabled = !isFree && panel.querySelector('#ai-provider').value !== 'gemini';
         say('ai-provider-status', '', panel);
     }
     function syncOllamaCommand(panel) {
@@ -393,6 +401,10 @@
         const localGPT = Boolean(config?.providers?.chatgpt?.localAvailable);
         const gptOption = providerInput.querySelector('[value="chatgpt"]');
         gptOption.hidden = gptOption.disabled = !localGPT;
+        const localGeminiFree = Boolean(config?.providers?.['gemini-free']?.localAvailable);
+        const freeOption = providerInput.querySelector('[value="gemini-free"]');
+        freeOption.hidden = freeOption.disabled = !localGeminiFree;
+        if (providerInput.value === 'gemini-free' && !localGeminiFree) providerInput.value = '';
         if (providerInput.value === 'chatgpt' && !localGPT) providerInput.value = '';
         if (providerInput.value === 'openai-compatible' && !localCustom) providerInput.value = '';
         const provider = providerInput.value;
@@ -402,7 +414,13 @@
         const info = config?.providers?.[provider];
         const model = panel.querySelector('#ai-model');
         const select = panel.querySelector('#ai-gemini-model');
-        const isGemini = provider === 'gemini';
+        const isFree = provider === 'gemini-free';
+        const isGemini = provider === 'gemini' || isFree;
+        panel.querySelector('#gemini-free-setup').hidden = !isFree;
+        const freeKey = panel.querySelector('#gemini-free-key');
+        freeKey.disabled = !isFree;
+        freeKey.required = isFree && !info?.configured;
+        if (!isFree) freeKey.value = '';
         const isGPT = provider === 'chatgpt';
         panel.querySelector('#chatgpt-setup').hidden = !isGPT;
         panel.querySelector('#chatgpt-usage').hidden = !isGPT || !info?.configured;
@@ -415,6 +433,7 @@
         select.hidden = !isGemini; select.required = isGemini; select.disabled = !isGemini;
         panel.querySelector('#ai-settings-form button[type="submit"]').disabled = false;
         panel.querySelector('#ai-settings-form button[type="submit"]').hidden = isCustom;
+        panel.querySelector('#ai-settings-form button[type="submit"]').textContent = isFree ? 'Opslaan en testen' : 'AI-keuze opslaan';
         if (!provider) {
             select.hidden = true; select.disabled = true; select.required = false;
             panel.querySelector('#ai-settings-form button[type="submit"]').disabled = true;
@@ -431,6 +450,10 @@
         const saved = prefs.provider === provider ? prefs.model : '';
         if (isGemini) {
             renderGeminiModel(panel);
+            if (isFree) {
+                showGeminiFreeMetadata(panel, { keyConfigured: Boolean(info?.configured) });
+                if (reset) void loadGeminiFree(panel);
+            }
             return;
         }
         const installedModels = provider === 'ollama' ? (info?.connection?.installedModels || []) : [];
@@ -516,6 +539,55 @@
             if (panel.isConnected && panel.querySelector('#ai-provider').value === 'chatgpt') { renderChatGPT(panel, value); loadChatGPT(panel); }
         } catch (error) { popup?.close(); if (panel.isConnected) say('chatgpt-status', error.message, panel); }
         finally { panel.querySelectorAll('#chatgpt-setup button').forEach(button => { button.disabled = false; }); }
+    }
+    function showGeminiFreeMetadata(panel, value) {
+        const input = panel.querySelector('#gemini-free-key');
+        input.placeholder = value.keyConfigured ? 'Sleutel opgeslagen; leeg laten om te behouden' : 'Plak hier je Gemini API-sleutel';
+        input.required = panel.querySelector('#ai-provider').value === 'gemini-free' && !value.keyConfigured;
+        panel.querySelector('#gemini-free-delete').hidden = !value.keyConfigured;
+        say('gemini-free-key-status', value.keyConfigured ? 'API-sleutel lokaal opgeslagen.' : 'Nog geen API-sleutel opgeslagen.', panel);
+        if (config?.providers?.['gemini-free']) config.providers['gemini-free'].configured = value.keyConfigured;
+    }
+    async function loadGeminiFree(panel) {
+        const version = panel._geminiFreeVersion = (panel._geminiFreeVersion || 0) + 1;
+        const valid = () => panel.isConnected && panel._geminiFreeVersion === version && panel.querySelector('#ai-provider').value === 'gemini-free';
+        const submit = panel.querySelector('#ai-settings-form button[type="submit"]');
+        submit.disabled = true;
+        try {
+            const value = await request('gemini-free', { action: 'get' });
+            if (valid()) showGeminiFreeMetadata(panel, value);
+        } catch { if (valid()) say('ai-save-status', 'De lokale Gemini-instellingen zijn niet bereikbaar.', panel); }
+        finally { if (valid()) submit.disabled = false; }
+    }
+    async function geminiFreeAction(panel, action) {
+        if (panel._geminiFreeBusy) return;
+        panel._geminiFreeBusy = true;
+        ++panel._geminiFreeVersion;
+        const keyInput = panel.querySelector('#gemini-free-key');
+        const providerInput = panel.querySelector('#ai-provider');
+        const submit = panel.querySelector('#ai-settings-form button[type="submit"]');
+        const remove = panel.querySelector('#gemini-free-delete');
+        const body = { action, ...(action === 'save-test' ? { apiKey: keyInput.value } : {}) };
+        providerInput.disabled = submit.disabled = remove.disabled = keyInput.disabled = true;
+        say('ai-save-status', action === 'save-test' ? 'Verbinding met Gemini 3.5 Flash-Lite testen…' : 'Sleutel verwijderen…', panel);
+        try {
+            const value = await request('gemini-free', body);
+            showGeminiFreeMetadata(panel, value);
+            if (action === 'save-test') {
+                const next = { provider: 'gemini-free', model: GEMINI_MODEL };
+                try { localStorage.setItem(PREFS_KEY, JSON.stringify(next)); }
+                catch { say('ai-save-status', 'De verbinding werkt en de sleutel is lokaal opgeslagen, maar de AI-keuze kon niet in deze browser worden opgeslagen.', panel); return; }
+                prefs = next;
+                updateDashboardProvider();
+            }
+            say('ai-save-status', value.message || 'De opgeslagen Gemini API-sleutel is verwijderd.', panel);
+        } catch (error) { say('ai-save-status', error.status ? error.message : 'De lokale Gemini-instellingen zijn niet bereikbaar.', panel); }
+        finally {
+            keyInput.value = ''; delete body.apiKey;
+            providerInput.disabled = submit.disabled = remove.disabled = false;
+            keyInput.disabled = providerInput.value !== 'gemini-free';
+            panel._geminiFreeBusy = false;
+        }
     }
     function showCustomMetadata(panel, value) {
         panel.querySelector('#custom-api-address').value = value.address;
@@ -874,6 +946,7 @@
         panel.querySelector('#custom-api-save').onclick = () => customAPIAction(panel, 'save');
         panel.querySelector('#custom-api-delete').onclick = () => customAPIAction(panel, 'delete-key');
         panel.querySelector('#custom-api-test').onclick = () => customAPIAction(panel, 'test');
+        panel.querySelector('#gemini-free-delete').onclick = () => geminiFreeAction(panel, 'delete-key');
         providerInput.value = prefs.provider;
         panel.querySelector('#ai-model').value = prefs.model || '';
         if (config || providerInput.value !== 'gemini') updateModel(panel, true);
@@ -886,6 +959,7 @@
         panel.querySelector('#ai-settings-form').onsubmit = event => {
             event.preventDefault();
             const provider = providerInput.value;
+            if (provider === 'gemini-free') { void geminiFreeAction(panel, 'save-test'); return; }
             if (provider === 'openai-compatible') { customAPIAction(panel, 'save'); return; }
             if (!providers.includes(provider)) return;
             const model = panel.querySelector(provider === 'gemini' ? '#ai-gemini-model' : provider === 'chatgpt' ? '#ai-chatgpt-model' : '#ai-model').value.trim();

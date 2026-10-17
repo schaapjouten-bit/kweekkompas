@@ -11,6 +11,7 @@ scratch/
 node_modules/
 dist/
 .kweek-local-api.json*
+.kweek-gemini-free.json*
 .kweek-chatgpt.json*
 supabase/.temp/
 

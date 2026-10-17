@@ -9,9 +9,11 @@ process.env.KWEEK_LOCAL_DEV = 'true';
 const pages = new Set(['index.html', 'app-v132.js', 'plant-lifecycle.js', 'ai-contract.js', 'browser-ollama.js', 'cloud-data.js', 'photo-storage.js', 'auto-sync.js', 'local-backup.js', 'local-drafts.js', 'services.js', 'services.css', 'styles.css', 'calendar.css', 'onboarding.css', 'planner.css', 'wishlist.css']);
 const routes = new Set(['auth', 'cloud-sync', 'photo-access', 'ai-config', 'ai-models', 'seed-info', 'tuinassistent', 'gemini-ai']);
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
-function createServer({ localAPIFile = path.join(root, '.kweek-local-api.json'), chatGPTFile = path.join(root, '.kweek-chatgpt.json'), chatGPTOptions } = {}) {
+function createServer({ localAPIFile = path.join(root, '.kweek-local-api.json'), geminiFreeFile = path.join(root, '.kweek-gemini-free.json'), chatGPTFile = path.join(root, '.kweek-chatgpt.json'), chatGPTOptions } = {}) {
     const localAPI = require('./local-api.cjs').createLocalAPI(localAPIFile);
     globalThis.KweekLocalAPI = localAPI;
+    const geminiFree = require('./gemini-free.cjs').createGeminiFree(geminiFreeFile);
+    globalThis.KweekGeminiFree = geminiFree;
     const chatGPT = require('./chatgpt.cjs').createChatGPT(chatGPTFile, chatGPTOptions);
     globalThis.KweekChatGPT = chatGPT;
     const server = http.createServer(async (req, res) => {
@@ -60,15 +62,15 @@ function createServer({ localAPIFile = path.join(root, '.kweek-local-api.json'),
             }
             if (url.pathname.startsWith('/api/')) {
                 const route = url.pathname.slice(5);
-                if (!['local-api', 'chatgpt'].includes(route) && !routes.has(route)) { res.writeHead(404).end(); return; }
+                if (!['local-api', 'chatgpt', 'gemini-free'].includes(route) && !routes.has(route)) { res.writeHead(404).end(); return; }
                 let body = '';
                 for await (const chunk of req) {
                     body += chunk;
                     if (Buffer.byteLength(body) > 4_000_000) { res.writeHead(413).end(); return; }
                 }
-                if (route === 'local-api' || route === 'chatgpt') {
+                if (route === 'local-api' || route === 'chatgpt' || route === 'gemini-free') {
                     try {
-                        const result = await (route === 'chatgpt' ? chatGPT : localAPI).handle(req, body);
+                        const result = await (route === 'chatgpt' ? chatGPT : route === 'gemini-free' ? geminiFree : localAPI).handle(req, body);
                         res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(result));
                     } catch (error) {
                         res.writeHead(error.status || 500, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ error: error.status ? error.message : 'Lokale instellingen konden niet worden verwerkt.' }));
@@ -90,7 +92,7 @@ function createServer({ localAPIFile = path.join(root, '.kweek-local-api.json'),
             fs.createReadStream(full).pipe(res);
         } catch { res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Lokale backendfout.' })); }
     });
-    server.on('close', () => { chatGPT.close(); if (globalThis.KweekChatGPT === chatGPT) delete globalThis.KweekChatGPT; });
+    server.on('close', () => { chatGPT.close(); if (globalThis.KweekChatGPT === chatGPT) delete globalThis.KweekChatGPT; if (globalThis.KweekGeminiFree === geminiFree) delete globalThis.KweekGeminiFree; });
     return server;
 }
 if (require.main === module) createServer().listen(4173, '127.0.0.1', () => console.log('KweekKompas: http://127.0.0.1:4173'));

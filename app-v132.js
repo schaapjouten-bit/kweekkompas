@@ -1277,7 +1277,7 @@ function getSettingsHTML() {
                     <div class="settings-local-backup">
                         <div class="settings-local-backup-copy">
                             <h4>Automatische back-upmap</h4>
-                            <p>Kies een map. Na elke opgeslagen wijziging werkt KweekKompas daar het JSON-back-upbestand bij.</p>
+                            <p>Kies een map. Na elke opgeslagen wijziging werkt KweekKompas daar het JSON-back-upbestand bij. Vorige versies blijven bewaard in KweekKompas-versies. Een lege tuin vervangt je bestaande tuinback-up niet.</p>
                             <p id="local-backup-status" class="settings-local-backup-status" role="status" aria-live="polite">Back-upstatus laden…</p>
                         </div>
                         <button id="local-backup-choose" class="settings-secondary-button" type="button" onclick="window.KweekLocalBackupManager?.chooseDirectory()">Kies back-upmap</button>

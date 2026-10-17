@@ -9,6 +9,7 @@
     const DIRECTORY_KEY = 'directory';
     const STATUS_KEY = 'last-saved';
     const FILE_NAME = 'KweekKompas-back-up.json';
+    const HISTORY_DIRECTORY = 'KweekKompas-versies';
 
     function create(options = {}) {
         const io = {
@@ -30,6 +31,7 @@
         let failure = '';
         let permissionNeeded = false;
         let persistenceWarning = false;
+        let protectedBackup = false;
         let writer = null;
         let connectedStatus = null;
         let connectedOriginal = null;
@@ -86,6 +88,7 @@
             if (!directory) return 'Nog geen back-upmap gekozen. Je tuin wordt wel automatisch in deze browser bewaard.';
             if (permissionNeeded) return 'De browser vraagt opnieuw toegang tot de map. Kies de map opnieuw om de back-up te hervatten.';
             if (busy) return 'Back-up wordt bijgewerkt…';
+            if (protectedBackup) return 'Je tuin is leeg. De bestaande back-up is behouden. Gebruik Back-up herstellen om je tuin terug te halen.';
             if (failure) return `${failure} Je tuin staat nog op dit apparaat.`;
             if (lastSaved?.savedAt) {
                 const count = Number.isFinite(lastSaved.seedCount) ? ` · ${lastSaved.seedCount} planten` : '';
@@ -123,27 +126,71 @@
             return 'De back-up kon niet naar de gekozen map worden geschreven.';
         }
 
-        async function writeSnapshot() {
-            if (!directory) return;
-            permissionNeeded = !(await requestWritePermission(directory));
-            if (permissionNeeded) throw Object.assign(new Error('Geen toegang tot de back-upmap.'), { name: 'NotAllowedError' });
-            if (typeof directory.getFileHandle !== 'function') throw new Error('Deze map kan niet worden gebruikt voor een back-up.');
+        async function readExisting(handle) {
+            let file;
+            try { file = await handle.getFileHandle(FILE_NAME); }
+            catch (error) { if (error?.name === 'NotFoundError') return null; throw error; }
+            const contents = await file.getFile();
+            return { text: await contents.text(), lastModified: contents.lastModified };
+        }
 
-            const backup = await io.capture();
-            if (!backup || !Array.isArray(backup.seeds) || !Number.isInteger(Number(backup.backupVersion))) {
-                throw new Error('De tuin kon niet veilig als back-up worden klaargemaakt.');
-            }
-            const file = await directory.getFileHandle(FILE_NAME, { create: true });
+        function hasGardenRecords(backup) {
+            if (Array.isArray(backup)) return backup.length > 0; // Older downloaded seed-only backups.
+            return ['seeds', 'wishlist', 'reminders', 'calendar'].some(key => {
+                const value = backup?.[key];
+                return value && typeof value === 'object' && Object.keys(value).length > 0;
+            });
+        }
+
+        async function writeFile(file, text) {
             const writable = await file.createWritable();
             try {
-                await writable.write(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+                await writable.write(new Blob([text], { type: 'application/json' }));
                 await writable.close();
             } catch (error) {
                 try { await writable.abort?.(); } catch { /* The browser may already have closed the file. */ }
                 throw error;
             }
+        }
 
-            lastSaved = { savedAt: io.now().toISOString(), seedCount: backup.seeds.length };
+        async function preservePrevious(handle, text) {
+            const history = await handle.getDirectoryHandle(HISTORY_DIRECTORY, { create: true });
+            const stamp = io.now().toISOString().replace(/[:.]/g, '-');
+            const name = `KweekKompas-back-up-${stamp}-${globalThis.crypto.randomUUID()}.json`;
+            const file = await history.getFileHandle(name, { create: true });
+            // Only replace the current backup after the previous bytes are safely closed.
+            await writeFile(file, text);
+        }
+
+        async function writeSnapshot() {
+            if (!directory) return;
+            const target = directory;
+            permissionNeeded = !(await requestWritePermission(target));
+            if (permissionNeeded) throw Object.assign(new Error('Geen toegang tot de back-upmap.'), { name: 'NotAllowedError' });
+            if (typeof target.getFileHandle !== 'function') throw new Error('Deze map kan niet worden gebruikt voor een back-up.');
+
+            const backup = await io.capture();
+            if (!backup || !Array.isArray(backup.seeds) || !Number.isInteger(Number(backup.backupVersion))) {
+                throw new Error('De tuin kon niet veilig als back-up worden klaargemaakt.');
+            }
+            const previous = await readExisting(target);
+            const text = JSON.stringify(backup, null, 2);
+            protectedBackup = false;
+            if (previous && !hasGardenRecords(backup)) {
+                let previousBackup;
+                try { previousBackup = JSON.parse(previous.text); } catch { /* Preserve an unreadable existing backup too. */ }
+                if (!previousBackup || hasGardenRecords(previousBackup)) {
+                    protectedBackup = true;
+                    return;
+                }
+            }
+            if (!previous || previous.text !== text) {
+                if (previous) await preservePrevious(target, previous.text);
+                const file = await target.getFileHandle(FILE_NAME, { create: true });
+                await writeFile(file, text);
+            }
+
+            lastSaved = { savedAt: previous?.text === text && Number.isFinite(previous.lastModified) ? new Date(previous.lastModified).toISOString() : io.now().toISOString(), seedCount: backup.seeds.length };
             failure = '';
             try { await writeStored(STATUS_KEY, lastSaved); }
             catch { persistenceWarning = true; }
@@ -170,7 +217,7 @@
                         render();
                     }
                 }
-                return !failure;
+                return !failure && !protectedBackup;
             })().finally(() => { writer = null; });
             return writer;
         }
@@ -188,6 +235,7 @@
                 if (!selected) return false;
                 directory = selected;
                 failure = '';
+                protectedBackup = false;
                 permissionNeeded = !(await requestWritePermission(directory, true));
                 persistenceWarning = false;
                 try { await writeStored(DIRECTORY_KEY, directory); }
@@ -198,8 +246,7 @@
                     render();
                     return false;
                 }
-                await flush();
-                return !failure;
+                return await flush();
             } catch (error) {
                 if (error?.name === 'AbortError') return false;
                 failure = error?.name === 'NotAllowedError'
@@ -243,11 +290,11 @@
         }
 
         function state() {
-            return { initialized, hasDirectory: !!directory, busy, failure, permissionNeeded, persistenceWarning, lastSaved: lastSaved && { ...lastSaved }, status: statusMessage() };
+            return { initialized, hasDirectory: !!directory, busy, failure, protectedBackup, permissionNeeded, persistenceWarning, lastSaved: lastSaved && { ...lastSaved }, status: statusMessage() };
         }
 
         return { init, connect, changed, flush, chooseDirectory, render, state };
     }
 
-    return { create, FILE_NAME };
+    return { create, FILE_NAME, HISTORY_DIRECTORY };
 });
