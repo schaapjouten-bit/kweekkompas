@@ -15,7 +15,7 @@ const seed = (id, naam) => ({ id, naam, type: 'Groente', standplaats: 'Zon', sta
         const errors = [];
         const cloudRequests = [];
         page.on('pageerror', error => errors.push(error.message));
-        page.on('request', request => { if (/\/api\/(auth|cloud-sync)(?:\?|$)/.test(request.url())) cloudRequests.push(request.url()); });
+        page.on('request', request => { if (/\/api\/cloud-sync(?:\?|$)/.test(request.url())) cloudRequests.push(request.url()); });
         page.on('dialog', dialog => dialog.accept());
         await page.addInitScript(() => sessionStorage.setItem('kweekkompas_account_choice', 'chosen'));
         await page.goto(`http://127.0.0.1:${server.address().port}`);
@@ -26,6 +26,7 @@ const seed = (id, naam) => ({ id, naam, type: 'Groente', standplaats: 'Zon', sta
         await page.waitForSelector('#local-backup-status');
         assert.match(await page.locator('#local-backup-status').innerText(), /nog geen back-upmap gekozen/i);
         assert.equal(await page.locator('#settings-section-cloud').count(), 0);
+        assert.equal(await page.locator('#settings-section-account').count(), 1);
         assert.equal(await page.getByRole('button', { name: 'Lokale tuin gebruiken' }).count(), 0);
         assert.equal(await page.getByRole('button', { name: 'Cloudtuin gebruiken' }).count(), 0);
         assert.equal(await page.getByRole('button', { name: 'Kies back-upmap' }).count(), 1);

@@ -15,7 +15,7 @@ test('Account is beschikbaar als cloudsync uitstaat en de browser herlaadt de ge
     assert.match(src, /processAuthLink\(\);/);
     assert.match(src, /void refreshAccountSettings\(panel\)/);
     assert.match(src, /await request\('auth', \{ action: 'logout' \}\)/);
-    assert.match(app, /services\.js\?v=14/);
+    assert.match(app, /services\.js\?v=15/);
     assert.doesNotMatch(src, /if \(CLOUD_SYNC_ENABLED\) \{\s*processAuthLink\(\)/);
     assert.doesNotThrow(() => new Function(src));
 });

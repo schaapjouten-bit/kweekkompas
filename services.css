@@ -1,5 +1,5 @@
 /* Fixes observed during desktop/mobile review; keep existing component styles. */
-#settings-section-cloud [hidden], #settings-section-ai [hidden] { display: none !important; }
+#settings-section-cloud [hidden], #settings-section-ai [hidden], #settings-section-account [hidden] { display: none !important; }
 #cloud-account-options [aria-pressed="true"] { border-color: var(--primary-color, #507254); font-weight: 700; }
 #cloud-login-form [aria-invalid="true"] { border-color: #b54535; }
 /* Mail links remain usable on a device that has not finished onboarding. */
