@@ -6,7 +6,7 @@ function geminiModelId(value) {
     return model;
 }
 
-async function generateGemini({ apiKey, model, system, prompt, testing = false }) {
+async function generateGemini({ apiKey, model, system, prompt, testing = false, timeoutMs = 45_000 }) {
     const id = geminiModelId(model);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${id}:generateContent`;
     const generationConfig = { responseMimeType: 'application/json' };
@@ -17,7 +17,7 @@ async function generateGemini({ apiKey, model, system, prompt, testing = false }
     let response;
     try {
         response = await fetch(url, {
-            method: 'POST', redirect: 'error', signal: AbortSignal.timeout(testing ? 30_000 : 45_000),
+            method: 'POST', redirect: 'error', signal: AbortSignal.timeout(testing ? 30_000 : timeoutMs),
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
             body: JSON.stringify({
                 systemInstruction: { parts: [{ text: system }] },
@@ -25,7 +25,8 @@ async function generateGemini({ apiKey, model, system, prompt, testing = false }
                 generationConfig
             })
         });
-    } catch {
+    } catch (error) {
+        if (error.name === 'TimeoutError') throw new HttpError(504, 'De AI-provider deed te lang over het antwoord. Je invoer is behouden. Probeer opnieuw.');
         throw new HttpError(502, 'Gemini is niet bereikbaar of reageert te langzaam.');
     }
     const data = await response.json().catch(() => null);

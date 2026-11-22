@@ -6,6 +6,6 @@ exports.handler = endpoint(async event => {
   const session = await authorizeAI(event);
   const body = readBody(event);
   const { system, prompt } = contract.build('seed-info', body);
-  const result = contract.validate('seed-info', await callAI(body, system, prompt, session), body);
+  const result = contract.validate('seed-info', await callAI(body, system, prompt, session, { timeoutMs: 90_000 }), body);
   return reply(200, result, session.cookies);
 });

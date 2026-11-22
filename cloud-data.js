@@ -1,7 +1,7 @@
 /* Same cloud contract on the device and backend; local backups stay complete. */
 (function(root) {
     const MAX_BYTES = 3_500_000; // Reserve room for envelope and JSONB whitespace under 4 MB.
-    const datasets = ['seeds', 'calendar', 'wishlist', 'userProfile', 'reminders', 'dailyProgress'];
+    const datasets = ['seeds', 'calendar', 'wishlist', 'nutritionProducts', 'userProfile', 'reminders', 'dailyProgress'];
     const profileFields = ['name', 'climate', 'gardenType', 'gardenPlaces', 'primaryGardenPlace', 'light', 'experience', 'photo', 'photoZoom', 'photoX', 'photoY'];
     const secret = key => /^(api[_-]?key|.*[_-]api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|password|session|authSession|credentials|service[_-]?role[_-]?key)$/i.test(key);
     function clean(value) {

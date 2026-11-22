@@ -1463,6 +1463,26 @@ function saveSeed(seed) {
     });
 }
 
+function saveSeedGroups(changes) {
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        let saved = 0;
+        tx.oncomplete = () => resolve(saved);
+        tx.onabort = () => reject(tx.error || new Error('Opslaan van groepen is afgebroken.'));
+
+        for (const { id, previousGroup, seedGroup } of changes) {
+            const request = store.get(id);
+            request.onsuccess = () => {
+                const current = request.result;
+                if (!current || current.seedGroup !== previousGroup) return;
+                store.put({ ...current, seedGroup });
+                saved++;
+            };
+        }
+    });
+}
+
 function replaceAllSeedsAtomic(seedsToRestore, { check = () => {}, signal } = {}) {
     if (!db) return Promise.reject(new Error('Lokale database is niet beschikbaar.'));
 
@@ -1573,7 +1593,7 @@ function normalizeExternalImageResult(item) {
     return { ...item, imageUrl, sourceLink, title, description, photographer, alt };
 }
 
-function buildImageSearchCard(item, { isSelected = false, isFeatured = false, onFeature, onToggle } = {}) {
+function buildImageSearchCard(item, { isSelected = false, isFeatured = false, isPendingRemoval = false, onFeature, onToggle } = {}) {
     const normalized = normalizeExternalImageResult(item);
     if (!normalized) return null;
 
@@ -1587,6 +1607,20 @@ function buildImageSearchCard(item, { isSelected = false, isFeatured = false, on
     image.alt = normalized.alt;
     image.loading = 'lazy';
     card.appendChild(image);
+
+    const selectButton = document.createElement('button');
+    selectButton.type = 'button';
+    selectButton.className = 'card-select-btn';
+    selectButton.textContent = isPendingRemoval ? 'Ongedaan maken' : isSelected ? 'Verwijderen' : 'Selecteer';
+    selectButton.addEventListener('click', event => {
+        event.stopPropagation();
+        onToggle?.(normalized);
+    });
+    if (isPendingRemoval) {
+        card.classList.add('pending-removal');
+        card.appendChild(selectButton);
+        return card;
+    }
 
     const selectedCheck = document.createElement('div');
     selectedCheck.className = 'selected-check';
@@ -1618,15 +1652,8 @@ function buildImageSearchCard(item, { isSelected = false, isFeatured = false, on
         event.stopPropagation();
         onFeature?.(normalized);
     });
-    const selectButton = document.createElement('button');
-    selectButton.type = 'button';
-    selectButton.className = 'card-select-btn';
-    selectButton.textContent = isSelected ? 'Verwijder' : 'Selecteer';
-    selectButton.addEventListener('click', event => {
-        event.stopPropagation();
-        onToggle?.(normalized);
-    });
-    overlay.append(featureButton, selectButton);
+    overlay.append(featureButton);
+    if (!isSelected) overlay.append(selectButton);
     card.appendChild(overlay);
 
     if (normalized.sourceLink) {
@@ -2483,6 +2510,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     let pendingImages = [];
+    const pendingImageRemovals = new Set();
+    let savingSeed = false;
     let pendingCardImageCrop = null;
     let pendingCardImageCropSource = '';
     let pendingHeaderImageCrop = null;
@@ -2494,6 +2523,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let photoSearchHasMore = false;
     let editingId = null;
     let activeCategory = 'Alles';
+    let activeSeedGroup = '';
     let activeSeedSummary = 'all';
     let newestSeedsFirst = false;
     let activePlantStatus = null;
@@ -2612,7 +2642,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // --- CATEGORY FILTER LISTENERS ---
-    const filterChips = document.querySelectorAll('.filter-chip');
+    const filterChips = document.querySelectorAll('#category-filters [data-filter]');
     filterChips.forEach(chip => {
         chip.addEventListener('click', () => {
             const filterValue = chip.dataset.filter;
@@ -2622,6 +2652,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (filterValue === 'Alles') {
                 activeSeedSummary = 'all';
                 activeCategory = 'Alles';
+                activeSeedGroup = '';
                 activeMonthFilter = null;
                 localStorage.removeItem('activeMonthFilter');
                 if (window.clearMonthFilter) window.clearMonthFilter(); // Ensure banner is hidden
@@ -2639,6 +2670,219 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             applyFilters();
         });
+    });
+
+    const seedGroups = [
+        { id: 'zonnebloemen', label: 'Zonnebloemen', pattern: /\b(?:zonnebloem(?:en)?|sunflowers?|helianthus annuus)\b/, types: ['Bloem', 'Sierplant'] },
+        { id: 'tomaten', label: 'Tomaten', pattern: /\b(?:[a-z]*(?:tomaat|tomaten)|[a-z]*tomato(?:es|s)?|solanum lycopersicum)\b/, types: ['Groente'] },
+        { id: 'komkommer-augurk', label: 'Komkommer & augurk', pattern: /\b(?:[a-z]*komkommers?|[a-z]*augurk(?:en)?|cucumbers?|gherkins?|cucumis sativus)\b/, types: ['Groente'] }
+    ];
+    let removedSeedGroups = [];
+    try {
+        const removed = JSON.parse(localStorage.getItem('removedSeedGroups') || '[]');
+        if (Array.isArray(removed)) removedSeedGroups = removed.filter(id => typeof id === 'string');
+    } catch (error) { /* Use all built-in groups. */ }
+    for (let index = seedGroups.length - 1; index >= 0; index--) {
+        if (removedSeedGroups.includes(seedGroups[index].id)) seedGroups.splice(index, 1);
+    }
+    let customSeedGroups = [];
+    try {
+        const savedGroups = JSON.parse(localStorage.getItem('customSeedGroups') || '[]');
+        if (Array.isArray(savedGroups)) customSeedGroups = savedGroups.filter(name => typeof name === 'string' && name.trim());
+    } catch (error) { /* Start with the built-in groups. */ }
+    for (const name of customSeedGroups) seedGroups.push({ id: `custom:${name}`, label: name });
+
+    const seedGroupChips = [];
+    function addSeedGroupChip(group) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'filter-chip';
+        chip.textContent = group.label;
+        chip.setAttribute('aria-pressed', 'false');
+        chip.addEventListener('click', () => {
+            activeSeedGroup = activeSeedGroup === group.id ? '' : group.id;
+            applyFilters();
+        });
+        document.getElementById('seed-group-filters').append(chip);
+        seedGroupChips.push(chip);
+    }
+    seedGroups.forEach(addSeedGroupChip);
+    document.getElementById('btn-add-seed-group').addEventListener('click', () => {
+        const name = window.prompt('Naam van de nieuwe groep');
+        if (!name?.trim()) return;
+        const label = name.trim();
+        if (seedGroups.some(group => group.label.toLocaleLowerCase('nl') === label.toLocaleLowerCase('nl'))) {
+            showToast('Deze groep bestaat al.');
+            return;
+        }
+        customSeedGroups.push(label);
+        localStorage.setItem('customSeedGroups', JSON.stringify(customSeedGroups));
+        const group = { id: `custom:${label}`, label };
+        seedGroups.push(group);
+        addSeedGroupChip(group);
+        for (const { select } of seedGroupRows) select.append(new Option(group.label, group.id));
+        renderSeedGroupManagement();
+        seedGroupFeedback.textContent = 'Groep toegevoegd. Je kunt nu zaden indelen.';
+    });
+
+    const seedGroupReview = document.getElementById('seed-group-review');
+    const seedGroupReviewList = document.getElementById('seed-group-review-list');
+    const seedGroupShowAll = document.getElementById('seed-group-show-all');
+    const seedGroupFeedback = document.getElementById('seed-group-feedback');
+    const seedGroupCancel = document.getElementById('seed-group-cancel');
+    const seedGroupSave = document.getElementById('seed-group-save');
+    const openSeedGroupReview = document.getElementById('btn-review-seed-groups');
+    let seedGroupRows = [];
+
+    function renderSeedGroupManagement() {
+        const container = document.getElementById('seed-group-manage');
+        container.replaceChildren();
+        for (const group of seedGroups) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn-secondary';
+            button.textContent = `${group.label} ×`;
+            button.setAttribute('aria-label', `Groep ${group.label} verwijderen`);
+            button.title = 'Groep verwijderen';
+            button.addEventListener('click', async () => {
+                if (!window.confirm(`Groep ‘${group.label}’ verwijderen? De zaadkaarten blijven bewaard.`)) return;
+                button.disabled = true;
+                try {
+                    const currentSeeds = await getAllSeeds();
+                    const changes = currentSeeds.filter(seed => seed.seedGroup === group.id)
+                        .map(seed => ({ id: seed.id, previousGroup: group.id, seedGroup: '' }));
+                    const saved = changes.length ? await saveSeedGroups(changes) : 0;
+                    if (saved) globalThis.KweekCloudStatus?.changed();
+                    await getAllSeeds();
+                    if (saved !== changes.length || seeds.some(seed => seed.seedGroup === group.id)) {
+                        seedGroupFeedback.textContent = 'Sommige kaarten zijn gewijzigd. Probeer opnieuw.';
+                        return;
+                    }
+                    customSeedGroups = customSeedGroups.filter(name => name !== group.label);
+                    localStorage.setItem('customSeedGroups', JSON.stringify(customSeedGroups));
+                    if (!group.id.startsWith('custom:')) {
+                        removedSeedGroups.push(group.id);
+                        localStorage.setItem('removedSeedGroups', JSON.stringify(removedSeedGroups));
+                    }
+                    const index = seedGroups.indexOf(group);
+                    seedGroups.splice(index, 1);
+                    seedGroupChips.splice(index, 1)[0].remove();
+                    if (activeSeedGroup === group.id) activeSeedGroup = '';
+                    const pendingChoices = new Map(seedGroupRows.map(entry => [entry.seed.id, entry.select.value]));
+                    seedGroupRows = [...seeds].sort((a, b) => (a.naam || '').localeCompare(b.naam || '', 'nl')).map(createSeedGroupReviewRow);
+                    for (const entry of seedGroupRows) {
+                        const choice = pendingChoices.get(entry.seed.id);
+                        if (choice !== undefined && choice !== group.id) entry.select.value = choice;
+                    }
+                    seedGroupReviewList.replaceChildren(...seedGroupRows.map(entry => entry.row));
+                    updateSeedGroupReviewVisibility();
+                    renderSeedGroupManagement();
+                    applyFilters();
+                    seedGroupFeedback.textContent = 'Groep verwijderd.';
+                } catch (error) {
+                    seedGroupFeedback.textContent = 'De groep kon niet worden verwijderd.';
+                } finally {
+                    button.disabled = false;
+                }
+            });
+            container.append(button);
+        }
+    }
+
+    function createSeedGroupReviewRow(seed) {
+        const terms = [seed.naam, seed.soort, seed.species, seed.type].join(' ')
+            .normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+        const matches = seed.seedGroup === undefined ? seedGroups.filter(group => group.pattern?.test(terms)) : [];
+        const current = seedGroups.find(group => group.id === seed.seedGroup);
+        const proposal = matches.length === 1 && (!seed.type || matches[0].types.includes(seed.type)) ? matches[0] : null;
+        let status = 'Geen voorstel';
+        if (current) status = 'Ingedeeld';
+        else if (proposal) status = 'Voorgesteld';
+        else if (matches.length) status = `Controleren · ${matches.map(group => group.label).join(' / ')}`;
+        else if (seed.seedGroup === '') status = 'Overgeslagen';
+
+        const row = document.createElement('li');
+        const label = document.createElement('label');
+        const name = document.createElement('strong');
+        name.textContent = seed.naam || 'Zaad zonder naam';
+        const details = document.createElement('small');
+        details.textContent = [seed.type, status].filter(Boolean).join(' · ');
+        label.append(name, details);
+
+        const select = document.createElement('select');
+        select.id = `seed-group-choice-${seed.id}`;
+        label.htmlFor = select.id;
+        select.append(new Option(current ? 'Geen groep' : 'Overslaan', ''));
+        for (const group of seedGroups) select.append(new Option(group.label, group.id));
+        select.value = current?.id || proposal?.id || '';
+        row.append(label, select);
+        return { seed, row, select, hasSuggestion: matches.length > 0, visibleByDefault: Boolean(current || matches.length) };
+    }
+
+    function updateSeedGroupReviewVisibility() {
+        let visible = 0;
+        for (const entry of seedGroupRows) {
+            entry.row.hidden = !seedGroupShowAll.checked && !entry.visibleByDefault && !entry.select.value;
+            if (!entry.row.hidden) visible++;
+        }
+        const empty = document.getElementById('seed-group-empty');
+        empty.hidden = visible > 0;
+        empty.textContent = seedGroupRows.length ? 'Geen voorstellen gevonden. Toon ook zaden zonder voorstel om zelf groepen te kiezen.' : 'Je hebt nog geen zaden om in te delen.';
+    }
+
+    openSeedGroupReview.addEventListener('click', async () => {
+        openSeedGroupReview.disabled = true;
+        try {
+            const currentSeeds = await getAllSeeds();
+            seedGroupRows = [...currentSeeds].sort((a, b) => (a.naam || '').localeCompare(b.naam || '', 'nl')).map(createSeedGroupReviewRow);
+            seedGroupReviewList.replaceChildren(...seedGroupRows.map(entry => entry.row));
+            seedGroupShowAll.checked = false;
+            seedGroupFeedback.textContent = '';
+            renderSeedGroupManagement();
+            updateSeedGroupReviewVisibility();
+        } catch (error) {
+            showToast('De zaadkaarten konden niet worden geladen.');
+            return;
+        } finally {
+            openSeedGroupReview.disabled = false;
+        }
+        seedGroupReview.showModal();
+    });
+    seedGroupShowAll.addEventListener('change', updateSeedGroupReviewVisibility);
+    seedGroupCancel.addEventListener('click', () => seedGroupReview.close());
+    seedGroupReview.addEventListener('cancel', event => {
+        if (seedGroupSave.disabled) event.preventDefault();
+    });
+    document.getElementById('seed-group-review-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        if (seedGroupSave.disabled) return;
+        const changes = [];
+        for (const { seed, select, hasSuggestion } of seedGroupRows) {
+            const seedGroup = select.value;
+            if (seedGroup === (seed.seedGroup || '') && !hasSuggestion) continue;
+            changes.push({ id: seed.id, previousGroup: seed.seedGroup, seedGroup });
+        }
+        if (!changes.length) {
+            seedGroupReview.close();
+            return;
+        }
+
+        seedGroupSave.disabled = seedGroupCancel.disabled = seedGroupShowAll.disabled = true;
+        for (const { select } of seedGroupRows) select.disabled = true;
+        seedGroupFeedback.textContent = '';
+        try {
+            const saved = await saveSeedGroups(changes);
+            if (saved) globalThis.KweekCloudStatus?.changed();
+            await getAllSeeds();
+            applyFilters();
+            seedGroupReview.close();
+            showToast(saved === changes.length ? 'Indeling opgeslagen.' : 'Sommige kaarten zijn intussen gewijzigd. Open de indeling opnieuw om ze te bekijken.');
+        } catch (error) {
+            seedGroupFeedback.textContent = 'De indeling kon niet worden opgeslagen. Probeer het opnieuw.';
+        } finally {
+            seedGroupSave.disabled = seedGroupCancel.disabled = seedGroupShowAll.disabled = false;
+            for (const { select } of seedGroupRows) select.disabled = false;
+        }
     });
 
     // --- INFO PROPOSAL LOGIC (Refined) ---
@@ -2691,6 +2935,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const hideBanner = () => { if (banner) banner.classList.add('hidden'); };
 
         const btn = force ? btnResetAi : btnAutoFill;
+        const requestedEditingId = editingId;
         if (btn) {
             btn.disabled = true;
             btn.classList.add('btn-loading');
@@ -2706,6 +2951,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 nutrition: document.getElementById('voeding')?.value || ""
             };
             const data = await window.KweekServices.requestAI('seed-info', { name: naamRaw, existingFields });
+            if (viewAdd.classList.contains('hidden') || editingId !== requestedEditingId || inputNaam.value.trim() !== naamRaw) return;
             let fieldsUpdated = 0;
 
             // Bestaand starter-icoon / foto mapping op basis van plantnaam
@@ -2719,10 +2965,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             else if (lowerName.includes('snijbiet')) matchedStarterUrl = 'assets/starters/snijbiet.png';
 
             if (matchedStarterUrl) {
-                if (!pendingImages.some(img => img.url === matchedStarterUrl)) {
+                if ((force || pendingImages.length === 0) && !pendingImages.some(img => img.url === matchedStarterUrl)) {
                     pendingImages.unshift({ url: matchedStarterUrl, id: 'starter-' + Date.now(), caption: 'Starter Foto' });
                 }
-                if (force || !inputNaam.dataset.featuredUrl) {
+                if ((force || !inputNaam.dataset.featuredUrl) && pendingImages.some(img => img.url === matchedStarterUrl)) {
                     inputNaam.dataset.featuredUrl = matchedStarterUrl;
                     fieldsUpdated++;
                 }
@@ -2795,7 +3041,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const currentTags = Array.from(document.querySelectorAll('.tag-picker-chip.active')).map(c => c.dataset.tag);
                 const validAiTags = data.tags.filter(t => availableTagNames.some(e => e.toLowerCase() === t.toLowerCase())).map(t => availableTagNames.find(e => e.toLowerCase() === t.toLowerCase()));
                 const mergedTags = [...new Set([...currentTags, ...validAiTags])];
-                if (mergedTags.length > currentTags.length || force) {
+                if ((force || currentTags.length === 0) && mergedTags.length > currentTags.length) {
                     renderTagPicker(mergedTags);
                     addAiIndicatorToLabel('tag-picker');
                     fieldsUpdated++;
@@ -2888,16 +3134,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     const monthNamesShort = ['Jan', 'Feb', 'Mrt', 'Apr', 'Mei', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec'];
     const calMonthNames = ["Januari", "Februari", "Maart", "April", "Mei", "Juni", "Juli", "Augustus", "September", "Oktober", "November", "December"];
 
-    function initMonthPicker(containerId) {
+    function initMonthPicker(containerId, { accessible = false } = {}) {
         const container = document.getElementById(containerId);
         if (!container) return;
         container.innerHTML = '';
         monthNamesShort.forEach((name, i) => {
-            const item = document.createElement('div');
+            const item = document.createElement(accessible ? 'button' : 'div');
+            if (accessible) {
+                item.type = 'button';
+                item.setAttribute('aria-pressed', 'false');
+                item.setAttribute('aria-label', calMonthNames[i]);
+            }
             item.className = 'month-picker-item';
             item.textContent = name;
             item.dataset.monthIndex = i;
-            item.addEventListener('click', () => item.classList.toggle('active'));
+            item.addEventListener('click', () => {
+                item.classList.toggle('active');
+                if (accessible) item.setAttribute('aria-pressed', String(item.classList.contains('active')));
+            });
             container.appendChild(item);
         });
     }
@@ -3111,24 +3365,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
     }
 
+    async function deleteSeedFromView(seed, button) {
+        if (!seed || !confirm(`Weet je zeker dat je "${seed.naam}" wilt verwijderen?`)) return;
+        button.disabled = true;
+        try {
+            await deleteSeedDB(seed.id);
+        } catch (error) {
+            console.error('Delete failed', error);
+            showToast('Verwijderen mislukt ❌');
+            return;
+        } finally {
+            button.disabled = false;
+        }
+
+        if (editingId === seed.id) {
+            void clearSeedDraft();
+            editingId = null;
+        } else {
+            void window.KweekDrafts?.drop(`seed:${seed.id}`).catch(draftError);
+        }
+        seeds = seeds.filter(item => item.id !== seed.id);
+        switchView('list');
+        showToast('Zaadje verwijderd! 🗑️');
+    }
+
     if (btnDetailDelete) {
-        btnDetailDelete.onclick = async () => {
-            const seedId = viewDetail.dataset.currentSeedId;
-            const seed = seeds.find(s => String(s.id) === String(seedId));
-            if (!seed) return;
-            if (confirm(`Weet je zeker dat je "${seed.naam}" wilt verwijderen?`)) {
-                await deleteSeedDB(seed.id);
-                seeds = await getAllSeeds();
-                showToast("Zaadje verwijderd! 🗑️");
-
-                // Force global UI refresh
-                renderHome();
-                applyFilters();
-                renderSowingGrid();
-                renderCalendar();
-
-                switchView('list');
-            }
+        btnDetailDelete.onclick = () => {
+            const seed = seeds.find(item => String(item.id) === viewDetail.dataset.currentSeedId);
+            return deleteSeedFromView(seed, btnDetailDelete);
         };
     }
 
@@ -3138,7 +3402,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!naam) return;
 
         // Duplicate check for new entries
-        if (!editingId) {
+        if (editingId === null) {
             const exists = seeds.some(s => s.naam.toLowerCase() === naam.toLowerCase());
             if (exists) {
                 showToast("Deze plant staat al in je tuin! 🌿");
@@ -3149,15 +3413,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const selectedTags = Array.from(document.querySelectorAll('.tag-picker-chip.active')).map(c => c.dataset.tag);
-        const existing = editingId ? seeds.find(s => s.id === editingId) : null;
+        const existing = editingId === null ? null : seeds.find(s => s.id === editingId);
         const safeImages = pendingImages.map(image => {
             const safeUrl = safeWishlistImageUrl(image?.url);
-            return safeUrl ? { ...image, url: safeUrl } : null;
+            return safeUrl && !pendingImageRemovals.has(safeUrl) ? { ...image, url: safeUrl } : null;
         }).filter(Boolean);
-        const safeFeaturedImage = safeWishlistImageUrl(inputNaam.dataset.featuredUrl) || safeImages[0]?.url || '';
+        const safeFeaturedImage = pendingFeaturedPhoto(safeImages[0]?.url);
 
         const newSeed = {
-            id: editingId || Date.now().toString(),
+            id: editingId ?? Date.now().toString(),
             naam: naam,
             code: document.getElementById('code')?.value.trim() || '',
             type: inputType?.value || 'Overig',
@@ -3182,16 +3446,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             ervaringen: inputErvaringen?.value.trim() || '',
             images: safeImages,
             tags: selectedTags,
+            ...(existing?.seedGroup !== undefined ? { seedGroup: existing.seedGroup } : {}),
             isPerennial: inputStatus?.value === 'Meerjarig' || (existing?.isPerennial === true && !selectedTags.includes('Eenjarig')),
             featuredImageUrl: safeFeaturedImage,
             ...(pendingCardImageCrop && pendingCardImageCropSource === safeFeaturedImage ? { cardImageCrop: { ...pendingCardImageCrop } } : {}),
             ...(pendingHeaderImageCrop && pendingHeaderImageCropSource === safeFeaturedImage ? { detailHeaderImageCrop: { ...pendingHeaderImageCrop } } : {}),
             isFavorite: existing ? (existing.isFavorite || false) : false
         };
+        try {
+            await saveSeed(newSeed);
+        } catch (error) {
+            console.error('Opslaan van zaad mislukt', error);
+            showToast('Opslaan mislukt. Je opgeslagen foto’s zijn behouden.');
+            return false;
+        }
         if (newSeed.status === 'Wishlist') {
             addToWishlistFromCard(newSeed);
         }
-        await saveSeed(newSeed);
         await clearSeedDraft();
         seeds = await getAllSeeds();
         await advanceSownPlants();
@@ -3203,7 +3474,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderSowingGrid();
         renderCalendar();
 
-        showToast(editingId ? "Wijzigingen opgeslagen! ✨" : "Nieuwe plant toegevoegd! 🌱");
+        showToast(editingId !== null ? "Wijzigingen opgeslagen! ✨" : "Nieuwe plant toegevoegd! 🌱");
         switchView('list');
     }
 
@@ -3251,7 +3522,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (season) season.textContent = String(getSeedSummarySelection('season').length);
         document.querySelectorAll('[data-seed-summary]').forEach(button => {
             const selected = button.dataset.seedSummary === activeSeedSummary;
-            const additionalFilters = activePlantStatus !== null || activeCategory !== 'Alles' || activeMonthFilter !== null || Boolean(searchInput?.value);
+            const additionalFilters = activePlantStatus !== null || activeCategory !== 'Alles' || activeSeedGroup || activeMonthFilter !== null || Boolean(searchInput?.value);
             button.setAttribute('aria-pressed', String(selected && (activeSeedSummary !== 'all' || !additionalFilters)));
         });
     }
@@ -3271,13 +3542,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (items.length === 0) {
             const q = searchInput?.value || '';
-            const hasFilters = activeSeedSummary !== 'all' || activePlantStatus !== null || activeCategory !== 'Alles' || activeMonthFilter !== null || q;
+            const hasFilters = activeSeedSummary !== 'all' || activePlantStatus !== null || activeCategory !== 'Alles' || activeSeedGroup || activeMonthFilter !== null || q;
             const empty = document.createElement('div');
             empty.className = 'empty-state';
             empty.style.cssText = 'padding: 60px 20px;';
             const message = document.createElement('p');
             message.style.cssText = 'font-size: 16px; font-weight: 700; color: var(--text-main); margin-bottom: 4px;';
-            message.textContent = activePlantStatus === 'Actief' ? 'Geen actieve planten' : activeSeedSummary === 'favorites' && !q && activeCategory === 'Alles' ? 'Je hebt nog geen favorieten' : activeSeedSummary === 'season' && !q && activeCategory === 'Alles' ? 'Geen zaden om deze maand te zaaien' : hasFilters ? 'Geen resultaten gevonden' : 'Je hebt nog geen zaden toegevoegd';
+            const unrestricted = !q && activeCategory === 'Alles' && !activeSeedGroup && activeMonthFilter === null;
+            message.textContent = activePlantStatus === 'Actief' && unrestricted ? 'Geen actieve planten' : activeSeedSummary === 'favorites' && unrestricted ? 'Je hebt nog geen favorieten' : activeSeedSummary === 'season' && unrestricted ? 'Geen zaden om deze maand te zaaien' : hasFilters ? 'Geen resultaten gevonden' : 'Je hebt nog geen zaden toegevoegd';
             const submessage = document.createElement('p');
             submessage.style.cssText = 'font-size: 13px; color: var(--text-muted); margin-bottom: 20px;';
             submessage.textContent = hasFilters ? 'Met deze filters of zoekterm konden we niets vinden.' : 'Begin met het toevoegen van je eerste plant.';
@@ -3296,7 +3568,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Keep favorites first in every sort and filter mode. Category/status
         // results stay compact, without an extra Favorites heading.
-        if (activeCategory !== 'Alles' || activePlantStatus) {
+        if (activeCategory !== 'Alles' || activeSeedGroup || activePlantStatus) {
             favorites.concat(others).forEach(seed => seedGrid.appendChild(createSeedCard(seed)));
             return;
         }
@@ -4040,20 +4312,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function openEditView(seed) {
         seedDraftActive = false; draftTurn++;
+        pendingImageRemovals.clear();
         editingId = seed.id;
         inputNaam.value = seed.naam;
         inputNaam.dataset.featuredUrl = seed.featuredImageUrl || '';
         if (inputType) {
             inputType.value = seed.type;
-            delete inputType.dataset.userChanged;
+            inputType.dataset.userChanged = seed.type ? 'true' : '';
         }
         if (inputStandplaats) {
             inputStandplaats.value = seed.standplaats;
-            delete inputStandplaats.dataset.userChanged;
+            inputStandplaats.dataset.userChanged = seed.standplaats ? 'true' : '';
         }
         if (inputWater) {
             inputWater.value = seed.water;
-            delete inputWater.dataset.userChanged;
+            inputWater.dataset.userChanged = seed.water ? 'true' : '';
         }
         if (inputStatus) inputStatus.value = seed.status || 'Voorraad';
         if (inputSownAt) inputSownAt.value = seed.sownAt || '';
@@ -4198,6 +4471,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     function switchView(name, options = {}) {
         if (name === 'planning') name = ({ year: 'sowing-grid', month: 'calendar', agenda: 'agenda' })[options.tab || planningTab];
+        if (name !== 'add') pendingImageRemovals.clear();
         if (name !== 'detail') {
             detailPhotoResizeObserver?.disconnect();
             detailPhotoResizeObserver = null;
@@ -4207,7 +4481,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('view-agenda')?.classList.add('hidden');
         if (isPlanning) planningTab = name === 'sowing-grid' ? 'year' : name === 'calendar' ? 'month' : 'agenda';
         window.scrollTo({ top: 0, behavior: 'instant' });
-        [viewHome, viewList, viewSowingGrid, viewAdd, viewDetail, viewWishlist, viewCalendar, viewOnboarding].forEach(v => v?.classList.add('hidden'));
+        [viewHome, viewList, viewSowingGrid, viewAdd, viewDetail, viewWishlist, viewCalendar, viewOnboarding, document.getElementById('view-nutrition')].forEach(v => v?.classList.add('hidden'));
         // Sync Mobile Nav (Desktop & Mobile)
         document.querySelectorAll('.nav-buttons button').forEach(b => b?.classList.remove('active'));
         document.querySelectorAll('.mobile-nav-item').forEach(b => b.classList.remove('active'));
@@ -4242,6 +4516,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         else if (name === 'detail') { viewDetail?.classList.remove('hidden'); }
         else if (name === 'sowing-grid') { viewSowingGrid?.classList.remove('hidden'); btnSowingGrid?.classList.add('active'); renderSowingGrid(); }
         else if (name === 'wishlist') { viewWishlist?.classList.remove('hidden'); btnWishlist?.classList.add('active'); renderWishlist(); }
+        else if (name === 'nutrition') { document.getElementById('view-nutrition').classList.remove('hidden'); renderNutrition(); }
         else if (name === 'agenda') { document.getElementById('view-agenda').classList.remove('hidden'); renderPlanningAgenda(); }
         else if (name === 'calendar') { calendarTaskWeek = Boolean(options.taskWeek); viewCalendar?.classList.remove('hidden'); btnCalendar?.classList.add('active'); renderCalendar(); }
         if (isPlanning) updatePlanningHeader();
@@ -4249,12 +4524,168 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (btnHome) btnHome.onclick = () => switchView('home');
+
+    const nutritionForm = document.getElementById('nutrition-form');
+    const nutritionDialog = document.getElementById('nutrition-dialog');
+    const nutritionFields = ['brand', 'name', 'type', 'description', 'suitableFor', 'application', 'npk', 'dosage', 'period', 'source'];
+    const nutritionRepeatUnit = nutritionForm.elements.repeatUnit;
+    const nutritionRepeatAmount = nutritionForm.elements.repeatAmount;
+    const nutritionRangeStart = document.getElementById('nutrition-range-start');
+    const nutritionRangeEnd = document.getElementById('nutrition-range-end');
+    for (const [index, month] of calMonthNames.entries()) {
+        nutritionRangeStart.add(new Option(month, String(index)));
+        nutritionRangeEnd.add(new Option(month, String(index)));
+    }
+    nutritionRepeatUnit.addEventListener('change', () => {
+        const enabled = Boolean(nutritionRepeatUnit.value);
+        nutritionRepeatAmount.disabled = !enabled;
+        nutritionRepeatAmount.required = enabled;
+    });
+    document.getElementById('nutrition-select-range').addEventListener('click', () => {
+        const start = Number(nutritionRangeStart.value);
+        const end = Number(nutritionRangeEnd.value);
+        document.querySelectorAll('#nutrition-month-picker .month-picker-item').forEach(item => {
+            const month = Number(item.dataset.monthIndex);
+            const selected = start <= end ? month >= start && month <= end : month >= start || month <= end;
+            item.classList.toggle('active', selected);
+            item.setAttribute('aria-pressed', String(selected));
+        });
+    });
+    let editingNutritionId = null;
+    function readNutrition() {
+        return readStoredJSON('kweek_nutrition_products', [], normalizeStoredArray);
+    }
+    function saveNutrition(products) {
+        localStorage.setItem('kweek_nutrition_products', JSON.stringify(products));
+        globalThis.KweekCloudStatus?.changed();
+    }
+    function renderNutrition() {
+        const list = document.getElementById('nutrition-list');
+        const products = readNutrition();
+        list.replaceChildren();
+        if (!products.length) {
+            const empty = document.createElement('p');
+            empty.className = 'nutrition-empty';
+            empty.textContent = 'Je hebt nog geen voedingsproducten toegevoegd.';
+            list.append(empty);
+        }
+        for (const product of products) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'nutrition-card';
+            const name = document.createElement('strong');
+            name.textContent = product.name;
+            const details = document.createElement('span');
+            details.textContent = [product.brand, product.type].filter(Boolean).join(' · ');
+            button.append(name, details);
+            button.addEventListener('click', () => openNutrition(product));
+            list.append(button);
+        }
+    }
+    function openNutrition(product = null) {
+        nutritionForm.reset();
+        editingNutritionId = product?.id ?? null;
+        for (const field of nutritionFields) nutritionForm.elements[field].value = product?.[field] || '';
+        initMonthPicker('nutrition-month-picker', { accessible: true });
+        const savedMonths = Array.isArray(product?.usageMonths) ? product.usageMonths : [];
+        document.querySelectorAll('#nutrition-month-picker .month-picker-item').forEach(item => {
+            const selected = savedMonths.includes(Number(item.dataset.monthIndex));
+            item.classList.toggle('active', selected);
+            item.setAttribute('aria-pressed', String(selected));
+        });
+        nutritionRepeatUnit.value = ['days', 'weeks'].includes(product?.repeat?.unit) ? product.repeat.unit : '';
+        nutritionRepeatAmount.value = nutritionRepeatUnit.value && Number.isSafeInteger(product.repeat.amount) && product.repeat.amount > 0 ? product.repeat.amount : '';
+        nutritionRepeatAmount.disabled = !nutritionRepeatUnit.value;
+        nutritionRepeatAmount.required = Boolean(nutritionRepeatUnit.value);
+        document.getElementById('nutrition-title').textContent = product ? 'Product bewerken' : 'Product toevoegen';
+        document.getElementById('nutrition-delete').hidden = !product;
+        document.getElementById('nutrition-feedback').textContent = '';
+        document.getElementById('nutrition-lookup-panel').open = false;
+        document.getElementById('nutrition-lookup-url').value = '';
+        document.getElementById('nutrition-lookup-text').value = '';
+        nutritionDialog.showModal();
+    }
+    document.getElementById('nutrition-add').addEventListener('click', () => openNutrition());
+    document.getElementById('nutrition-cancel').addEventListener('click', () => nutritionDialog.close());
+    document.getElementById('nutrition-delete').addEventListener('click', () => {
+        if (!window.confirm('Dit voedingsproduct verwijderen?')) return;
+        try {
+            saveNutrition(readNutrition().filter(product => product.id !== editingNutritionId));
+            nutritionDialog.close();
+            renderNutrition();
+        } catch (error) { document.getElementById('nutrition-feedback').textContent = 'Verwijderen is niet gelukt.'; }
+    });
+    nutritionForm.addEventListener('submit', event => {
+        event.preventDefault();
+        const products = readNutrition();
+        const existing = products.find(item => item.id === editingNutritionId);
+        const product = { ...existing, ...Object.fromEntries(nutritionFields.map(field => [field, nutritionForm.elements[field].value.trim()])) };
+        product.id = editingNutritionId ?? crypto.randomUUID();
+        product.usageMonths = [...document.querySelectorAll('#nutrition-month-picker .month-picker-item.active')].map(item => Number(item.dataset.monthIndex));
+        product.repeat = nutritionRepeatUnit.value ? { amount: Number(nutritionRepeatAmount.value), unit: nutritionRepeatUnit.value } : null;
+        const index = products.findIndex(item => item.id === product.id);
+        if (index < 0) products.push(product); else products[index] = product;
+        try {
+            saveNutrition(products);
+            nutritionDialog.close();
+            renderNutrition();
+        } catch (error) { document.getElementById('nutrition-feedback').textContent = 'Opslaan is niet gelukt.'; }
+    });
+    const nutritionFeedback = document.getElementById('nutrition-feedback');
+    const nutritionLookup = document.getElementById('nutrition-lookup');
+    const nutritionUseSource = document.getElementById('nutrition-use-source');
+    async function nutritionSearchRequest(body) {
+        const response = await fetch('/api/product-search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'De bron kon niet worden opgehaald.');
+        return data;
+    }
+    async function applyNutritionSource(link = '', suppliedText = '') {
+        const brand = nutritionForm.elements.brand.value.trim();
+        const name = nutritionForm.elements.name.value.trim();
+        if (!brand || !name) { nutritionFeedback.textContent = 'Vul eerst merk en productnaam in.'; return; }
+        nutritionLookup.disabled = nutritionUseSource.disabled = true;
+        nutritionFeedback.textContent = 'Productinformatie ophalen…';
+        try {
+            const text = suppliedText.trim() || (link ? (await nutritionSearchRequest({ action: 'page', url: link })).text : '');
+            if (link && !text) throw new Error('De bron bevat geen leesbare tekst.');
+            const response = await window.KweekServices.requestAI('gemini-ai', { mode: 'nutrition_product', brand, name, sourceText: text });
+            const data = typeof response.text === 'string' ? JSON.parse(response.text) : response;
+            if (!nutritionDialog.open || nutritionForm.elements.brand.value.trim() !== brand || nutritionForm.elements.name.value.trim() !== name) return;
+            let count = 0;
+            const fields = text ? ['description', 'suitableFor', 'application', 'npk', 'dosage', 'period'] : ['type', 'description', 'suitableFor', 'application', 'period'];
+            let alreadyFilled = 0;
+            for (const field of fields) {
+                const value = typeof data[field] === 'string' ? data[field].trim() : '';
+                if (nutritionForm.elements[field].value.trim()) alreadyFilled++;
+                if (!nutritionForm.elements[field].value.trim() && value && (!text || text.includes(value))) {
+                    nutritionForm.elements[field].value = value;
+                    count++;
+                }
+            }
+            if (link && !nutritionForm.elements.source.value.trim()) nutritionForm.elements.source.value = link;
+            nutritionFeedback.textContent = count ? `${count} velden aangevuld. Controleer de gegevens en sla de kaart zelf op.` : alreadyFilled === fields.length ? 'De velden zijn al ingevuld. Bestaande gegevens zijn behouden.' : text ? 'Geen letterlijke productspecificaties voor de lege velden gevonden. Controleer de bron of probeer etikettekst.' : 'Geen aanvullende informatie voor de lege velden gevonden. Je kunt een productlink of etikettekst toevoegen.';
+        } catch (error) {
+            nutritionFeedback.textContent = error.message || 'Productinformatie ophalen is niet gelukt.';
+        } finally {
+            nutritionLookup.disabled = nutritionUseSource.disabled = false;
+        }
+    }
+    nutritionLookup.addEventListener('click', () => applyNutritionSource());
+    nutritionUseSource.addEventListener('click', () => {
+        const link = document.getElementById('nutrition-lookup-url').value.trim();
+        const text = document.getElementById('nutrition-lookup-text').value;
+        if (!link && !text.trim()) { nutritionFeedback.textContent = 'Vul een productlink in of plak etikettekst.'; return; }
+        if (link && !/^https:\/\//i.test(link)) { nutritionFeedback.textContent = 'Gebruik een HTTPS-productlink.'; return; }
+        applyNutritionSource(link, text);
+    });
     if (btnList) btnList.onclick = () => {
         activeSeedSummary = 'all';
         activePlantStatus = null;
         localStorage.removeItem('activeMonthFilter');
         activeMonthFilter = null;
         activeCategory = 'Alles'; // RESET CATEGORY TOO
+        activeSeedGroup = '';
         if (searchInput) searchInput.value = ''; // CLEAR SEARCH
         switchView('list');
     };
@@ -4303,6 +4734,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 localStorage.removeItem('activeMonthFilter');
                 activeMonthFilter = null;
                 activeCategory = 'Alles';
+                activeSeedGroup = '';
                 if (searchInput) searchInput.value = '';
             }
             switchView(view);
@@ -4328,6 +4760,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 localStorage.removeItem('activeMonthFilter');
                 activeMonthFilter = null;
                 activeCategory = 'Alles';
+                activeSeedGroup = '';
                 if (searchInput) searchInput.value = '';
             }
             switchView(view);
@@ -4440,6 +4873,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         editingId = null;
         seedForm?.reset();
         pendingImages = [];
+        pendingImageRemovals.clear();
         pendingCardImageCrop = null;
         pendingCardImageCropSource = '';
         pendingHeaderImageCrop = null;
@@ -4545,19 +4979,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let draggedGalleryImageUrl = '';
 
-    function renderUnifiedGallery() {
+    function pendingFeaturedPhoto(firstPhoto = '') {
+        const preferred = safeWishlistImageUrl(inputNaam.dataset.featuredUrl);
+        return preferred && !pendingImageRemovals.has(preferred) ? preferred : firstPhoto;
+    }
+
+    function renderUnifiedGallery(focusImageUrl = '') {
         persistSeedDraft(true);
         if (!unifiedGallery) return;
         unifiedGallery.replaceChildren();
 
         const validSearchResults = photoSearchResults.map(normalizeExternalImageResult).filter(Boolean);
         const validPendingImages = pendingImages.map(normalizeExternalImageResult).filter(Boolean);
+        const firstActivePhoto = validPendingImages.find(item => !pendingImageRemovals.has(item.imageUrl));
         const loadMoreWrap = document.getElementById('photo-load-more');
         const focusPanel = document.getElementById('form-photo-focus');
         const focusButton = document.getElementById('btn-form-photo-focus');
         const headerFocusPanel = document.getElementById('form-header-photo-focus');
         const headerFocusButton = document.getElementById('btn-form-header-photo-focus');
-        const focusSource = safeWishlistImageUrl(inputNaam.dataset.featuredUrl) || validPendingImages[0]?.imageUrl || '';
+        const focusSource = pendingFeaturedPhoto(firstActivePhoto?.imageUrl);
+        if (!inputNaam.dataset.featuredUrl && focusSource) inputNaam.dataset.featuredUrl = focusSource;
         if (focusPanel && focusButton) {
             focusPanel.classList.toggle('hidden', !focusSource);
             focusButton.onclick = null;
@@ -4625,33 +5066,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         ];
 
         displayedItems.forEach(item => {
-            const isSelected = validPendingImages.some(pending => pending.imageUrl === item.imageUrl);
-            if (!isSelected && validSearchResults.some(result => result.imageUrl === item.imageUrl)) {
+            const isPending = validPendingImages.some(pending => pending.imageUrl === item.imageUrl);
+            const isPendingRemoval = pendingImageRemovals.has(item.imageUrl);
+            const isSelected = isPending && !isPendingRemoval;
+            if (!isPending && validSearchResults.some(result => result.imageUrl === item.imageUrl)) {
                 const searchIndex = validSearchResults.findIndex(result => result.imageUrl === item.imageUrl);
                 if (searchIndex >= displayedPhotoCount) return;
             }
 
-            const currentFeatured = safeWishlistImageUrl(inputNaam.dataset.featuredUrl);
-            const isFeatured = currentFeatured === item.imageUrl || (!currentFeatured && validPendingImages[0]?.imageUrl === item.imageUrl && isSelected);
-            if (isFeatured && !inputNaam.dataset.featuredUrl && isSelected) inputNaam.dataset.featuredUrl = item.imageUrl;
-
             const card = buildImageSearchCard(item, {
                 isSelected,
-                isFeatured,
+                isFeatured: item.imageUrl === focusSource,
+                isPendingRemoval,
                 onFeature: selectedItem => {
                     if (!pendingImages.some(pending => safeWishlistImageUrl(pending.url) === selectedItem.imageUrl)) pendingImages.push(selectedItem);
                     inputNaam.dataset.featuredUrl = selectedItem.imageUrl;
                     renderUnifiedGallery();
                 },
                 onToggle: selectedItem => {
-                    if (isSelected) {
-                        pendingImages = pendingImages.filter(pending => safeWishlistImageUrl(pending.url) !== selectedItem.imageUrl);
-                        if (inputNaam.dataset.featuredUrl === selectedItem.imageUrl) inputNaam.dataset.featuredUrl = pendingImages[0]?.url || '';
+                    if (savingSeed) return;
+                    if (isPendingRemoval) {
+                        pendingImageRemovals.delete(selectedItem.imageUrl);
+                    } else if (isSelected) {
+                        pendingImageRemovals.add(selectedItem.imageUrl);
                     } else {
                         pendingImages.push(selectedItem);
                         if (!safeWishlistImageUrl(inputNaam.dataset.featuredUrl)) inputNaam.dataset.featuredUrl = selectedItem.imageUrl;
                     }
-                    renderUnifiedGallery();
+                    renderUnifiedGallery(selectedItem.imageUrl);
                 }
             });
             if (card) {
@@ -4701,6 +5143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                 }
                 unifiedGallery.appendChild(card);
+                if (item.imageUrl === focusImageUrl) card.querySelector('.card-select-btn')?.focus({ preventScroll: true });
             }
         });
 
@@ -4920,6 +5363,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function openGardenList(status) {
         activeSeedSummary = 'all';
         activePlantStatus = status; activeCategory = 'Alles'; activeMonthFilter = null;
+        activeSeedGroup = '';
         localStorage.removeItem('activeMonthFilter'); searchInput.value = '';
         filterChips.forEach(chip => chip.classList.toggle('active', chip.dataset.filter === 'Alles'));
         switchView('list');
@@ -5472,6 +5916,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // General Filters
     function applyFilters() {
+        for (const seed of seeds) {
+            if (typeof seed.seedGroup !== 'string' || !seed.seedGroup.startsWith('custom:')) continue;
+            if (seedGroups.some(group => group.id === seed.seedGroup)) continue;
+            const label = seed.seedGroup.slice(7);
+            if (!label) continue;
+            const group = { id: seed.seedGroup, label };
+            seedGroups.push(group);
+            addSeedGroupChip(group);
+        }
         const q = searchInput.value.toLowerCase();
         let filtered = getSeedSummarySelection(activeSeedSummary);
         if (activePlantStatus) filtered = filtered.filter(s => activePlantStatus === 'Actief' ? activeGardenStatuses.includes(s.status) : s.status === activePlantStatus);
@@ -5479,6 +5932,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 1. Filter by Category
         if (activeCategory !== 'Alles') filtered = filtered.filter(s => s.type === activeCategory);
+        if (activeSeedGroup) filtered = filtered.filter(seed => seed.seedGroup === activeSeedGroup);
+        seedGroupChips.forEach((chip, index) => {
+            const selected = seedGroups[index].id === activeSeedGroup;
+            chip.classList.toggle('active', selected);
+            chip.setAttribute('aria-pressed', String(selected));
+        });
 
         // 2. Filter by Month (activeMonthFilter)
         if (activeMonthFilter !== null) {
@@ -5530,12 +5989,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         activeSeedSummary = 'all';
         activePlantStatus = null;
         activeCategory = 'Alles';
+        activeSeedGroup = '';
         activeMonthFilter = null;
         localStorage.removeItem('activeMonthFilter');
         if (searchInput) searchInput.value = '';
 
         // Reset filter chip UI
-        document.querySelectorAll('.filter-chip').forEach(c => {
+        filterChips.forEach(c => {
             c.classList.remove('active');
             if (c.dataset.filter === 'Alles') c.classList.add('active');
         });
@@ -6038,7 +6498,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Form logic simple
     seedForm.onsubmit = async (e) => {
         e.preventDefault();
-        await saveCurrentForm();
+        if (savingSeed) return;
+        savingSeed = true;
+        try { await saveCurrentForm(); }
+        finally { savingSeed = false; }
     };
 
     // Initial load
@@ -6059,11 +6522,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const ACTIVE_REMINDERS_STORAGE_KEY = 'moestuin_reminders';
     const LEGACY_CALENDAR_STORAGE_KEY = 'moestuin_calendar';
     const BACKUP_DATASET_KEYS = [
-        'seeds', 'calendar', 'wishlist', 'settings', 'userProfile',
+        'seeds', 'calendar', 'wishlist', 'nutritionProducts', 'settings', 'userProfile',
         'reminders', 'dailyProgress', 'theme', 'onboardingDone', 'uiState'
     ];
     const BACKUP_STORAGE_KEYS = [
-        LEGACY_CALENDAR_STORAGE_KEY, 'moestuin_wishlist', 'moestuin_settings',
+        LEGACY_CALENDAR_STORAGE_KEY, 'moestuin_wishlist', 'moestuin_settings', 'kweek_nutrition_products',
         'userProfile', 'moestuin_user_profile', ACTIVE_REMINDERS_STORAGE_KEY,
         'daily_progress', 'theme', 'onboarding_done'
     ];
@@ -6075,6 +6538,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         seeds: 'zaden',
         calendar: 'kalender',
         wishlist: 'wishlist',
+        nutritionProducts: 'voedingsproducten',
         settings: 'instellingen',
         userProfile: 'profiel',
         reminders: 'herinneringen',
@@ -6314,6 +6778,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             normalized.wishlist = normalizeBackupArray(root.wishlist, item => typeof item.name === 'string' && item.name.trim() !== '');
             normalized.providedDatasets.push('wishlist');
         }
+        if (hasBackupKey(root, 'nutritionProducts')) {
+            normalized.nutritionProducts = normalizeBackupArray(root.nutritionProducts, item => typeof item.id === 'string' && typeof item.name === 'string' && item.name.trim() !== '' && typeof item.brand === 'string');
+            normalized.providedDatasets.push('nutritionProducts');
+        }
         if (hasBackupKey(root, 'settings')) {
             if (!isBackupObject(root.settings)) throw backupValidationError();
             normalized.settings = cloneBackupData(root.settings);
@@ -6370,6 +6838,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             seeds: cloneBackupData(seedData),
             calendar: readStoredJSON(LEGACY_CALENDAR_STORAGE_KEY, {}, normalizeStoredObject),
             wishlist: readStoredJSON('moestuin_wishlist', [], normalizeStoredArray),
+            nutritionProducts: readStoredJSON('kweek_nutrition_products', [], normalizeStoredArray),
             settings: readStoredJSON('moestuin_settings', {}, normalizeStoredObject),
             userProfile: cloneBackupData(loadUserProfile()),
             reminders: readStoredJSON(ACTIVE_REMINDERS_STORAGE_KEY, [], normalizeReminders),
@@ -6432,6 +6901,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const writes = [];
         if (hasProvidedDataset(backup, 'calendar')) writes.push([LEGACY_CALENDAR_STORAGE_KEY, JSON.stringify(backup.calendar)]);
         if (hasProvidedDataset(backup, 'wishlist')) writes.push(['moestuin_wishlist', JSON.stringify(backup.wishlist)]);
+        if (hasProvidedDataset(backup, 'nutritionProducts')) writes.push(['kweek_nutrition_products', JSON.stringify(backup.nutritionProducts)]);
         if (hasProvidedDataset(backup, 'settings')) writes.push(['moestuin_settings', JSON.stringify(backup.settings)]);
         if (hasProvidedDataset(backup, 'userProfile')) {
             const profile = normalizeUserProfile(backup.userProfile) || { ...DEFAULT_USER_PROFILE };
@@ -7547,25 +8017,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
     }
 
-    window.deleteCurrentSeed = async function() {
-        if (!editingId) return;
-        if (confirm("Weet je zeker dat je dit zaadje wilt verwijderen?")) {
-            try {
-                await deleteSeedDB(editingId);
-                await clearSeedDraft();
-                seeds = await getAllSeeds();
-                showToast("Zaadje verwijderd! 🗑️");
-                switchView('list');
-            } catch (err) {
-                console.error("Delete failed", err);
-                showToast("Verwijderen mislukt ❌");
-            }
-        }
-    };
-
     const btnFormDelete = document.getElementById('btn-form-delete');
     if (btnFormDelete) {
-        btnFormDelete.onclick = window.deleteCurrentSeed;
+        btnFormDelete.onclick = () => {
+            const seed = seeds.find(item => item.id === editingId);
+            return deleteSeedFromView(seed, btnFormDelete);
+        };
     }
 
 

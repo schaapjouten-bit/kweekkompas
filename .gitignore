@@ -13,6 +13,7 @@ dist/
 .kweek-local-api.json*
 .kweek-gemini-free.json*
 .kweek-gemini.json*
+.kweek-openai.json*
 .kweek-chatgpt.json*
 supabase/.temp/
 
