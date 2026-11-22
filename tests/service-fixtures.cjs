@@ -7,6 +7,7 @@ async function startFixtures() {
     const objects = new Map(), capabilities = new Map();
     const storage = { uploads: 0, failUpload: false, expireDownloadOnce: false };
     const calls = [];
+    const geminiFreeUsage = new Map();
     const seed = { name: 'Tomaat', type: 'Groente', standplaats: 'Zon', waterbehoefte: 'Gemiddeld', sow_months: ['maart'], plant_months: ['mei'], harvest_months: ['augustus'], notes: 'Eigen teeltadvies\nVoorzaaien in maart.', tags: ['Beginner'], confidence: 'gemiddeld', needs_review: true };
     const garden = { answer: 'Controleer vandaag de bodemvochtigheid.', actions: [{ label: 'Tomaat verzorgen', type: 'care', plantName: 'Tomaat' }] };
     const server = http.createServer(async (req, res) => {
@@ -56,6 +57,13 @@ async function startFixtures() {
         }
         if (url.pathname === '/auth/v1/user') return name ? send(200, { id: ids[name], email: `${name}@example.test`, is_anonymous: false }) : send(401, { msg: 'Invalid token' });
         if (url.pathname === '/auth/v1/logout') return send(204, null);
+        if (url.pathname === '/rest/v1/rpc/reserve_gemini_free_request') {
+            if (!name) return send(401, { message: 'Unauthorized' });
+            const used = geminiFreeUsage.get(name) || 0;
+            if (used >= 20) return send(200, false);
+            geminiFreeUsage.set(name, used + 1);
+            return send(200, true);
+        }
         if (url.pathname === '/rest/v1/kweekkompas_snapshots') {
             if (!name) return send(401, { message: 'Unauthorized' });
             const id = ids[name];
@@ -77,7 +85,7 @@ async function startFixtures() {
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
-    return { base, calls, snapshots, ids, tokens, objects, storage, stop: () => new Promise(resolve => server.close(resolve)) };
+    return { base, calls, snapshots, ids, tokens, objects, storage, geminiFreeUsage, stop: () => new Promise(resolve => server.close(resolve)) };
 }
 function configureFixtures(fixture) {
     Object.assign(process.env, { SUPABASE_URL: fixture.base, SUPABASE_PUBLISHABLE_KEY: 'test-publishable', OLLAMA_BASE_URL: fixture.base, OPENAI_COMPATIBLE_BASE_URL: fixture.base + '/v1', OPENAI_COMPATIBLE_API_KEY: 'test-backend-secret', OPENAI_COMPATIBLE_MODEL: 'test-custom', KWEEK_LOCAL_DEV: 'true' });

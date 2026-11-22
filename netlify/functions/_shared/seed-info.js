@@ -3,9 +3,9 @@ const { authorizeAI, callAI } = require('./lib/ai');
 const contract = require('../../../ai-contract');
 exports.handler = endpoint(async event => {
   if (event.httpMethod !== 'POST') throw new HttpError(405, 'Gebruik POST.');
-  const cookies = await authorizeAI(event);
+  const session = await authorizeAI(event);
   const body = readBody(event);
   const { system, prompt } = contract.build('seed-info', body);
-  const result = contract.validate('seed-info', await callAI(body, system, prompt), body);
-  return reply(200, result, cookies);
+  const result = contract.validate('seed-info', await callAI(body, system, prompt, session), body);
+  return reply(200, result, session.cookies);
 });

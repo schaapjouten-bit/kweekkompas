@@ -12,8 +12,8 @@ exports.handler = endpoint(async event => {
     return result;
   }
   if (event.httpMethod !== 'POST') return reply(405, { error: 'Gebruik POST.' });
-  const cookies = await authorizeAI(event);
+  const session = await authorizeAI(event);
   const { system, prompt } = contract.build('gemini-ai', body);
-  const data = await callAI(body, system, prompt);
-  return reply(200, { text: JSON.stringify(data) }, cookies);
+  const data = await callAI(body, system, prompt, session);
+  return reply(200, { text: JSON.stringify(data) }, session.cookies);
 });

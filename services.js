@@ -1,17 +1,26 @@
 /* Optional services. Local data stays under the existing app's storage/backup logic. */
 (() => {
     const PREFS_KEY = 'kweekkompas_ai';
-    const GEMINI_FREE_KEY = 'kweekkompas_gemini_free_session';
+    const LEGACY_GEMINI_KEY = 'kweekkompas_gemini_free_session';
+    const USE_LEGACY_GEMINI_KEY = 'kweekkompas_gemini_personal_use_legacy';
     const PROFILE_AI_CONSENT_KEY = 'kweekkompas_ai_profile_consent';
     // Cloud sync is temporarily out of the app; keep its implementation for a later return.
     const CLOUD_SYNC_ENABLED = false;
     const GEMINI_MODEL = 'gemini-3.5-flash-lite';
-    const GEMINI_FLASH_MODEL = 'gemini-3.8-flash';
+    const FREE_GEMINI_UNCONFIGURED = 'Gemini – Free tier is nog niet ingesteld. De gedeelde sleutel ontbreekt.';
+    const GEMINI_PERSONAL_MODELS = [
+        ['gemini-4-neon', 'Gemini 4 Neon'],
+        ['gemini-3.8-flash', 'Gemini 3.8 Flash – snel'],
+        [GEMINI_MODEL, 'Gemini 3.5 Flash-Lite – licht']
+    ];
     const OWNER_KEY = 'kweekkompas_local_owner';
     const providers = ['gemini', 'gemini-free', 'ollama', 'openai-compatible', 'chatgpt'];
+    const isLoopback = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
     let config = null;
     let user = null;
     let accountVersion = 0;
+    let accountSessionKnown = false;
+    let accountSessionRequest = null;
     let authMode = 'login';
     let recovery = false;
     let authMessage = '';
@@ -33,7 +42,7 @@
         if (linkParams === fragment) authURL.hash = '';
         history.replaceState(history.state, '', authURL.pathname + authURL.search + authURL.hash);
         callbackPromise = (linkFailed ? Promise.reject(new Error('Deze accountlink is verlopen of niet bruikbaar. Vraag een nieuwe mail aan.')) : request('auth', body)).then(data => {
-            accountVersion++; user = data.user; recovery = data.recovery; auto.setAccount(recovery ? null : user?.id, true); authMode = recovery ? 'password' : 'login';
+            accountVersion++; applyAccountSession(data); auto.setAccount(recovery ? null : user?.id, true); authMode = recovery ? 'password' : 'login';
             authMessage = recovery ? 'Herstel-link verwerkt. Kies hieronder een nieuw wachtwoord.' : 'Je e-mailadres is bevestigd. Welkom terug bij KweekKompas. Je lokale tuin is behouden.';
         }).catch(error => { authMessage = error.message; confirmationPending = ['email', 'signup'].includes(body.type); });
         const openAccount = async () => {
@@ -55,18 +64,63 @@
     let busy = false;
     let prefs = {};
     let configPromise = null;
-    function readPreferences() {
-      const defaultProvider = config?.defaultProvider || (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) ? 'ollama' : 'gemini');
-      const defaults = { provider: defaultProvider, model: config?.providers?.[defaultProvider]?.model || (defaultProvider === 'ollama' ? 'gemma4:latest' : '') };
+    function savedPreferences() {
       try {
         const saved = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
-        prefs = providers.includes(saved?.provider) && typeof saved.model === 'string' ? { provider: saved.provider, model: saved.model } : defaults;
-        if (prefs.provider === 'gemini' && ![GEMINI_MODEL, GEMINI_FLASH_MODEL].includes(prefs.model)) prefs.model = GEMINI_MODEL;
-        if (prefs.provider === 'gemini-free') prefs.model = GEMINI_MODEL;
-      } catch { prefs = defaults; }
+        // Existing releases only wrote a model here when a user saved a provider.
+        if (providers.includes(saved?.provider) && typeof saved.model === 'string' && saved.model.trim()) {
+            return { provider: saved.provider, model: saved.model };
+        }
+      } catch { /* Use the session default when there is no usable saved choice. */ }
+      return null;
+    }
+    function readPreferences() {
+      const defaultProvider = user && !recovery ? 'gemini-free' : config?.defaultProvider || (isLoopback ? 'ollama' : 'gemini');
+      prefs = savedPreferences() || { provider: defaultProvider, model: config?.providers?.[defaultProvider]?.model || (defaultProvider === 'ollama' ? 'gemma4:latest' : '') };
+      if (prefs.provider === 'gemini' && !/^(?:models\/)?[a-zA-Z0-9][a-zA-Z0-9.-]{0,159}$/.test(prefs.model)) prefs.model = GEMINI_MODEL;
+      if (prefs.provider === 'gemini-free') prefs.model = GEMINI_MODEL;
       return { ...prefs };
     }
     readPreferences();
+    function applyAccountSession(data) {
+        const previousProvider = readPreferences().provider;
+        const previousAccount = user?.id;
+        const wasRecovering = recovery;
+        user = data.user || null;
+        recovery = Boolean(data.recovery);
+        accountSessionKnown = true;
+        if (typeof data.configured === 'boolean') accountConfigured = data.configured;
+        const choice = readPreferences();
+        void updateDashboardProvider();
+        const panel = document.getElementById('settings-section-ai');
+        const input = panel?.querySelector('#ai-provider');
+        if (input && !input.disabled && input.value === previousProvider && choice.provider !== previousProvider) {
+            input.value = choice.provider;
+            panel.querySelector('#ai-model').value = choice.model;
+            updateModel(panel, true);
+        } else if (input?.value === 'gemini-free' && choice.provider === 'gemini-free'
+            && (previousAccount !== user?.id || wasRecovering !== recovery)) {
+            void checkGeminiFree(panel);
+        }
+    }
+    function refreshAccountSession() {
+        if (accountSessionRequest) return accountSessionRequest;
+        if (busy) return Promise.resolve();
+        const pending = (async () => {
+            await callbackPromise;
+            const version = accountVersion;
+            const data = await request('auth');
+            if (version === accountVersion) applyAccountSession(data);
+        })();
+        accountSessionRequest = pending;
+        const clear = () => {
+            if (accountSessionRequest !== pending) return;
+            accountSessionRequest = null;
+            if (!accountSessionKnown) void updateDashboardProvider();
+        };
+        void pending.then(clear, clear);
+        return pending;
+    }
     async function updateDashboardProvider() {
         readPreferences();
         const button = document.getElementById('home-ai-provider');
@@ -81,13 +135,18 @@
             });
         };
         const display = () => {
-            const provider = prefs.provider || config?.defaultProvider;
+            const { provider, model } = readPreferences();
+            if (accountSessionRequest && !accountSessionKnown && !savedPreferences()) {
+                button.textContent = 'AI laden…';
+                button.setAttribute('aria-label', 'Open AI-instellingen');
+                button.title = 'Sessie controleren';
+                return;
+            }
             const labels = { gemini: 'Gemini', 'gemini-free': 'Gemini – Free tier', ollama: 'Lokale AI (Ollama)', 'openai-compatible': 'Eigen API', chatgpt: 'ChatGPT' };
             const directStatus = provider === 'ollama' && window.KweekBrowserOllama?.direct ? window.KweekBrowserOllama.status().state : null;
             const suffix = directStatus === 'reachable' ? ' · verbonden op deze computer' : directStatus === 'blocked' ? ' · verbinding controleren' : directStatus ? ' · nog niet getest' : '';
             button.textContent = `${labels[provider] || 'AI-instellingen'}${suffix} ⌄`;
             button.setAttribute('aria-label', `Open AI-instellingen${provider ? ': ' + (config?.providers?.[provider]?.label || labels[provider]) : ''}`);
-            const model = prefs.model || config?.providers?.[provider]?.model;
             button.title = model ? `Model: ${model}` : 'Provider en model instellen';
         };
         display();
@@ -116,7 +175,12 @@
                 if (route === 'auth') throw new Error(error.name === 'TimeoutError' ? 'De accountaanvraag duurt te lang. Probeer later opnieuw; je lokale tuin blijft behouden.' : 'Geen verbinding met de accountservice. Probeer later opnieuw; je lokale tuin blijft behouden.');
                 throw error;
             });
-        const data = await response.json().catch(() => ({ error: 'Start KweekKompas met npm start zodat de backend beschikbaar is.' }));
+        const data = await response.json().catch(() => {
+            let message = 'De online dienst gaf geen geldig antwoord. Probeer het later opnieuw.';
+            if (response.status === 504) message = 'De aanvraag duurde te lang. Probeer het opnieuw.';
+            else if (isLoopback) message = 'Start KweekKompas met npm start zodat de backend beschikbaar is.';
+            throw Object.assign(new Error(message), { status: response.status, code: 'INVALID_API_RESPONSE' });
+        });
         if (!response.ok) {
             const error = new Error(data.error || `Aanvraag mislukt (${response.status}).`);
             error.status = response.status;
@@ -193,15 +257,22 @@
             <div class="settings-section-heading"><div><p class="settings-section-eyebrow">AI</p><h3 id="settings-ai-title">Provider en model</h3></div></div>
             <form id="ai-settings-form" class="service-form">
                 <div class="settings-form-grid">
-                    <label class="settings-field"><span>Provider</span><select id="ai-provider"><option value="gemini">Gemini</option><option value="gemini-free" hidden disabled>Gemini – Free tier</option><option value="ollama">Lokale AI (Ollama)</option><option value="chatgpt" hidden disabled>ChatGPT</option><option value="openai-compatible" hidden disabled>Eigen API</option><option value="" hidden disabled>Kies een beschikbare provider</option></select></label>
+                    <label class="settings-field"><span>Provider</span><select id="ai-provider">
+                        <option value="chatgpt" disabled>ChatGPT – eigen login (Nog niet beschikbaar)</option>
+                        <option value="gemini">Gemini – eigen sleutel</option>
+                        <option value="gemini-free" disabled>Gemini – Free tier</option>
+                        <option value="ollama">Ollama</option>
+                        <option value="openai-compatible" hidden disabled>Eigen API</option>
+                        <option value="" hidden disabled>Kies een beschikbare provider</option>
+                    </select></label>
                     <label class="settings-field" id="ai-standard-model"><span>Model</span><select id="ai-gemini-model" aria-describedby="ai-provider-status" required></select><select id="ai-chatgpt-model" aria-describedby="chatgpt-status" hidden disabled></select><select id="ai-model" aria-describedby="ollama-status" hidden disabled required></select></label>
                 </div>
                 <div id="gemini-free-setup" hidden>
-                    <label class="settings-field"><span>Gemini API-sleutel</span><input id="gemini-free-key" type="password" maxlength="8192" autocomplete="off" spellcheck="false" aria-describedby="gemini-free-key-status gemini-free-note" disabled></label>
+                    <label class="settings-field"><span>Gemini API-sleutel</span><input id="gemini-free-key" type="password" maxlength="8192" autocomplete="off" spellcheck="false" aria-describedby="gemini-free-key-status gemini-personal-note" disabled></label>
                     <p id="gemini-free-key-status" class="service-note" role="status"></p>
-                    <p id="gemini-free-note" class="service-note">Gebruik een sleutel van een Free tier-project in <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Google AI Studio</a>. Google bepaalt de gratis limieten. <span id="gemini-free-storage-note"></span></p>
-                    <button id="gemini-free-delete" class="settings-secondary-button" type="button" hidden>Sleutel verwijderen</button>
+                    <p id="gemini-personal-note" class="service-note">Gebruik een sleutel uit <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Google AI Studio</a>. De sleutel blijft op deze computer en wordt alleen naar Google gestuurd voor je Gemini-aanvragen.</p>
                 </div>
+                <label id="gemini-legacy-key-field" class="ai-profile-consent" hidden><input id="gemini-use-legacy-key" type="checkbox"><span>Gebruik mijn eerdere eigen Free tier-sleutel</span></label>
                 <div id="chatgpt-setup" hidden>
                     ${location.origin === 'https://kweekkompas.netlify.app' ? '<p class="service-note">Via je ChatGPT-abonnement op deze pc. Laat de lokale KweekKompas-app draaien met npm start. Je login blijft op je eigen computer. Sta lokale-netwerktoegang toe als je browser daarom vraagt.</p>' : ''}
                     <div id="chatgpt-entry" class="service-actions"><button id="chatgpt-login" class="settings-secondary-button" type="button">Doorgaan met ChatGPT</button></div>
@@ -392,20 +463,29 @@
     function renderGeminiModel(panel) {
         const select = panel.querySelector('#ai-gemini-model');
         const isFree = panel.querySelector('#ai-provider').value === 'gemini-free';
+        const selected = !isFree && prefs.provider === 'gemini' ? prefs.model : GEMINI_MODEL;
+        const models = isFree ? [[GEMINI_MODEL, 'Gemini 3.5 Flash-Lite (vast)']] : [...GEMINI_PERSONAL_MODELS];
+        if (!isFree && !models.some(([value]) => value === selected)) models.push([selected, `${selected} (opgeslagen)`]);
         select.replaceChildren();
-        for (const [value, label] of (isFree ? [[GEMINI_MODEL, '3.5 Flash-Lite']] : [[GEMINI_MODEL, '3.5 Flash-Lite'], [GEMINI_FLASH_MODEL, '3.8 Flash']])) {
+        for (const [value, label] of models) {
             const option = document.createElement('option');
             option.value = value;
             option.textContent = label;
             select.append(option);
         }
-        select.value = !isFree && prefs.provider === 'gemini' ? prefs.model : GEMINI_MODEL;
-        select.disabled = !isFree && panel.querySelector('#ai-provider').value !== 'gemini';
+        select.value = selected;
+        select.disabled = isFree || panel.querySelector('#ai-provider').value !== 'gemini';
+        select.required = !isFree;
         say('ai-provider-status', '', panel);
     }
     function syncOllamaCommand(panel) {
         const model = panel.querySelector('#ai-model')?.value || 'gemma4:latest';
         document.querySelectorAll('[data-ollama-model-command]').forEach(input => { input.value = `ollama pull ${model}`; });
+    }
+    function updateGeminiFreeAvailability(providerInput) {
+        const available = config ? Boolean(config.providers?.['gemini-free']?.available) : Boolean(user && !recovery);
+        providerInput.querySelector('[value="gemini-free"]').disabled = !available;
+        return available;
     }
     async function updateModel(panel, reset = false) {
         const providerInput = panel.querySelector('#ai-provider');
@@ -413,11 +493,7 @@
         const customOption = providerInput.querySelector('[value="openai-compatible"]');
         customOption.hidden = customOption.disabled = !localCustom;
         const localGPT = Boolean(config?.providers?.chatgpt?.localAvailable);
-        const gptOption = providerInput.querySelector('[value="chatgpt"]');
-        gptOption.hidden = gptOption.disabled = !localGPT;
-        const localGeminiFree = Boolean(config?.providers?.['gemini-free']?.available || config?.providers?.['gemini-free']?.localAvailable);
-        const freeOption = providerInput.querySelector('[value="gemini-free"]');
-        freeOption.hidden = freeOption.disabled = !localGeminiFree;
+        const localGeminiFree = updateGeminiFreeAvailability(providerInput);
         if (providerInput.value === 'gemini-free' && !localGeminiFree) providerInput.value = '';
         if (providerInput.value === 'chatgpt' && !localGPT) providerInput.value = '';
         if (providerInput.value === 'openai-compatible' && !localCustom) providerInput.value = '';
@@ -429,12 +505,18 @@
         const model = panel.querySelector('#ai-model');
         const select = panel.querySelector('#ai-gemini-model');
         const isFree = provider === 'gemini-free';
+        const isPersonal = provider === 'gemini' && isLoopback;
         const isGemini = provider === 'gemini' || isFree;
-        panel.querySelector('#gemini-free-setup').hidden = !isFree;
         const freeKey = panel.querySelector('#gemini-free-key');
-        freeKey.disabled = !isFree;
-        freeKey.required = isFree && !info?.configured;
-        if (!isFree) freeKey.value = '';
+        if (panel._geminiKeyProvider !== provider) freeKey.value = '';
+        panel._geminiKeyProvider = provider;
+        panel.querySelector('#gemini-free-setup').hidden = !isPersonal;
+        freeKey.disabled = !isPersonal || Boolean(panel._geminiPersonalTesting);
+        freeKey.required = false;
+        const legacyField = panel.querySelector('#gemini-legacy-key-field');
+        const legacyChoice = panel.querySelector('#gemini-use-legacy-key');
+        legacyField.hidden = provider !== 'gemini' || (isLoopback ? !panel._geminiLegacyAvailable : !legacyGeminiKey());
+        if (!isLoopback) legacyChoice.checked = !legacyField.hidden && useHostedLegacyGeminiKey();
         const isGPT = provider === 'chatgpt';
         panel.querySelector('#chatgpt-setup').hidden = !isGPT;
         panel.querySelector('#chatgpt-usage').hidden = !isGPT || !info?.configured;
@@ -447,7 +529,7 @@
         select.hidden = !isGemini; select.required = isGemini; select.disabled = !isGemini;
         panel.querySelector('#ai-settings-form button[type="submit"]').disabled = false;
         panel.querySelector('#ai-settings-form button[type="submit"]').hidden = isCustom;
-        panel.querySelector('#ai-settings-form button[type="submit"]').textContent = isFree ? 'Opslaan en testen' : 'AI-keuze opslaan';
+        panel.querySelector('#ai-settings-form button[type="submit"]').textContent = isPersonal ? 'Opslaan en testen' : 'AI-keuze opslaan';
         if (!provider) {
             select.hidden = true; select.disabled = true; select.required = false;
             panel.querySelector('#ai-settings-form button[type="submit"]').disabled = true;
@@ -464,9 +546,10 @@
         const saved = prefs.provider === provider ? prefs.model : '';
         if (isGemini) {
             renderGeminiModel(panel);
-            if (isFree) {
-                showGeminiFreeMetadata(panel, { keyConfigured: Boolean(info?.configured) });
-                if (reset) void loadGeminiFree(panel);
+            if (isFree && reset) {
+                void checkGeminiFree(panel);
+            } else if (isPersonal && reset) {
+                void loadGeminiPersonal(panel);
             }
             return;
         }
@@ -554,65 +637,86 @@
         } catch (error) { popup?.close(); if (panel.isConnected) say('chatgpt-status', error.message, panel); }
         finally { panel.querySelectorAll('#chatgpt-setup button').forEach(button => { button.disabled = false; }); }
     }
-    function showGeminiFreeMetadata(panel, value) {
+    function legacyGeminiKey() {
+        try { return sessionStorage.getItem(LEGACY_GEMINI_KEY) || ''; } catch { return ''; }
+    }
+    function useHostedLegacyGeminiKey() {
+        try { return sessionStorage.getItem(USE_LEGACY_GEMINI_KEY) === 'true'; } catch { return false; }
+    }
+    function showGeminiPersonalMetadata(panel, { keyConfigured, legacyKeyAvailable, usingLegacyKey }) {
         const input = panel.querySelector('#gemini-free-key');
-        const local = config?.providers?.['gemini-free']?.localAvailable;
-        input.placeholder = value.keyConfigured ? 'Sleutel opgeslagen; leeg laten om te behouden' : 'Plak hier je Gemini API-sleutel';
-        input.required = panel.querySelector('#ai-provider').value === 'gemini-free' && !value.keyConfigured;
-        panel.querySelector('#gemini-free-delete').hidden = !value.keyConfigured;
-        say('gemini-free-key-status', value.keyConfigured ? (local ? 'API-sleutel lokaal opgeslagen.' : 'API-sleutel bewaard in dit tabblad.') : 'Nog geen API-sleutel opgeslagen.', panel);
-        say('gemini-free-storage-note', local ? 'Je sleutel wordt alleen op deze computer opgeslagen.' : 'Je sleutel blijft in dit tabblad bewaard en wordt alleen voor je Gemini-aanvragen gebruikt.', panel);
-        if (config?.providers?.['gemini-free']) config.providers['gemini-free'].configured = value.keyConfigured;
+        input.placeholder = keyConfigured ? 'Leeg laten om de huidige sleutel te gebruiken' : 'Plak hier je Gemini API-sleutel';
+        input.required = !keyConfigured;
+        say('gemini-free-key-status', keyConfigured ? 'API-sleutel lokaal ingesteld.' : 'Nog geen API-sleutel ingesteld.', panel);
+        panel._geminiLegacyAvailable = legacyKeyAvailable;
+        panel.querySelector('#gemini-legacy-key-field').hidden = !legacyKeyAvailable;
+        panel.querySelector('#gemini-use-legacy-key').checked = Boolean(usingLegacyKey);
     }
-    async function loadGeminiFree(panel) {
-        const version = panel._geminiFreeVersion = (panel._geminiFreeVersion || 0) + 1;
-        const valid = () => panel.isConnected && panel._geminiFreeVersion === version && panel.querySelector('#ai-provider').value === 'gemini-free';
-        const submit = panel.querySelector('#ai-settings-form button[type="submit"]');
-        submit.disabled = true;
+    async function loadGeminiPersonal(panel) {
+        const version = panel._geminiPersonalVersion = (panel._geminiPersonalVersion || 0) + 1;
+        const current = () => panel.isConnected && panel._geminiPersonalVersion === version && panel.querySelector('#ai-provider').value === 'gemini';
+        say('gemini-free-key-status', 'Lokale sleutelinstellingen laden…', panel);
         try {
-            const value = config?.providers?.['gemini-free']?.localAvailable ? await request('gemini-free', { action: 'get' }) : { keyConfigured: Boolean(sessionStorage.getItem(GEMINI_FREE_KEY)) };
-            if (valid()) showGeminiFreeMetadata(panel, value);
-        } catch { if (valid()) say('ai-save-status', 'De lokale Gemini-instellingen zijn niet bereikbaar.', panel); }
-        finally { if (valid()) submit.disabled = false; }
+            const value = await request('gemini-personal', { action: 'get' });
+            if (current()) showGeminiPersonalMetadata(panel, value);
+        } catch (error) {
+            if (current()) say('gemini-free-key-status', error.status ? error.message : 'De lokale Gemini-instellingen zijn niet bereikbaar.', panel);
+        }
     }
-    async function geminiFreeAction(panel, action) {
-        if (panel._geminiFreeBusy) return;
-        panel._geminiFreeBusy = true;
-        ++panel._geminiFreeVersion;
+    async function saveGeminiPersonal(panel, providerInput, model) {
+        if (panel._geminiPersonalTesting) return;
+        panel._geminiPersonalTesting = true;
+        ++panel._geminiPersonalVersion;
         const keyInput = panel.querySelector('#gemini-free-key');
-        const providerInput = panel.querySelector('#ai-provider');
+        const modelInput = panel.querySelector('#ai-gemini-model');
+        const legacyChoice = panel.querySelector('#gemini-use-legacy-key');
         const submit = panel.querySelector('#ai-settings-form button[type="submit"]');
-        const remove = panel.querySelector('#gemini-free-delete');
-        const body = { action, ...(action === 'save-test' ? { apiKey: keyInput.value } : {}) };
-        providerInput.disabled = submit.disabled = remove.disabled = keyInput.disabled = true;
-        say('ai-save-status', action === 'save-test' ? 'Verbinding met Gemini 3.5 Flash-Lite testen…' : 'Sleutel verwijderen…', panel);
+        providerInput.disabled = modelInput.disabled = keyInput.disabled = legacyChoice.disabled = submit.disabled = true;
+        say('ai-save-status', `Verbinding met ${model} testen…`, panel);
         try {
-            let value;
-            if (config?.providers?.['gemini-free']?.localAvailable) value = await request('gemini-free', body);
-            else if (action === 'delete-key') {
-                sessionStorage.removeItem(GEMINI_FREE_KEY);
-                value = { keyConfigured: false };
-            } else {
-                body.apiKey = body.apiKey.trim() || sessionStorage.getItem(GEMINI_FREE_KEY) || '';
-                value = await request('gemini-free', body);
-                sessionStorage.setItem(GEMINI_FREE_KEY, body.apiKey);
-            }
-            showGeminiFreeMetadata(panel, value);
-            if (action === 'save-test') {
-                const next = { provider: 'gemini-free', model: GEMINI_MODEL };
+            const value = await request('gemini-personal', { action: 'save-test', model, apiKey: keyInput.value, useLegacyKey: !legacyChoice.closest('label').hidden && legacyChoice.checked });
+            if (panel.isConnected) showGeminiPersonalMetadata(panel, value);
+            const next = { provider: 'gemini', model };
+            try { localStorage.setItem(PREFS_KEY, JSON.stringify(next)); }
+            catch { say('ai-save-status', 'De verbinding werkt, maar de modelkeuze kon niet worden opgeslagen in deze browser.', panel); return; }
+            prefs = next;
+            updateDashboardProvider();
+            say('ai-save-status', value.message, panel);
+        } catch (error) {
+            say('ai-save-status', error.status ? error.message : 'De lokale Gemini-instellingen zijn niet bereikbaar.', panel);
+        } finally {
+            keyInput.value = '';
+            panel._geminiPersonalTesting = false;
+            providerInput.disabled = legacyChoice.disabled = false;
+            if (providerInput.value === 'gemini') modelInput.disabled = keyInput.disabled = submit.disabled = false;
+        }
+    }
+    async function checkGeminiFree(panel, save = false) {
+        const version = panel._geminiFreeVersion = (panel._geminiFreeVersion || 0) + 1;
+        const current = () => panel.isConnected && panel._geminiFreeVersion === version && panel.querySelector('#ai-provider').value === 'gemini-free';
+        const submit = panel.querySelector('#ai-settings-form button[type="submit"]');
+        if (!save && user && !recovery && config?.providers?.['gemini-free']?.configured === false) {
+            submit.disabled = false;
+            say('ai-provider-status', FREE_GEMINI_UNCONFIGURED, panel);
+            return;
+        }
+        submit.disabled = true;
+        say('ai-provider-status', 'Beschikbaarheid controleren…', panel);
+        try {
+            const value = await request('gemini-free', { action: 'status' });
+            if (!current()) return;
+            say('ai-provider-status', 'Beschikbaar voor je KweekKompas-account.', panel);
+            if (save) {
+                const next = { provider: 'gemini-free', model: value.model };
                 try { localStorage.setItem(PREFS_KEY, JSON.stringify(next)); }
-                catch { say('ai-save-status', 'De verbinding werkt en de sleutel is lokaal opgeslagen, maar de AI-keuze kon niet in deze browser worden opgeslagen.', panel); return; }
+                catch { say('ai-save-status', 'Opslaan is niet mogelijk in deze browser.', panel); return; }
                 prefs = next;
                 updateDashboardProvider();
+                say('ai-save-status', 'Opgeslagen voor de tuinassistent en de zadenhulp.', panel);
             }
-            say('ai-save-status', value.message || 'De opgeslagen Gemini API-sleutel is verwijderd.', panel);
-        } catch (error) { say('ai-save-status', error.status ? error.message : 'De Gemini-instellingen konden niet worden verwerkt.', panel); }
-        finally {
-            keyInput.value = ''; delete body.apiKey;
-            providerInput.disabled = submit.disabled = remove.disabled = false;
-            keyInput.disabled = providerInput.value !== 'gemini-free';
-            panel._geminiFreeBusy = false;
-        }
+        } catch (error) {
+            if (current()) say('ai-provider-status', error.status ? error.message : 'Gemini – Free tier is nu niet bereikbaar.', panel);
+        } finally { if (current()) submit.disabled = false; }
     }
     function showCustomMetadata(panel, value) {
         panel.querySelector('#custom-api-address').value = value.address;
@@ -796,7 +900,7 @@
                 location.reload();
             } else if (kind === 'logout') {
                 accountVersion++;
-                await request('auth', { action: 'logout' }); user = null; cloud = null; conflictAccount = null; recovery = false; authMode = 'login'; authMessage = 'Uitgelogd. Je lokale tuin is behouden.'; displayAccount(panel, true);
+                await request('auth', { action: 'logout' }); accountVersion++; applyAccountSession({ user: null }); cloud = null; conflictAccount = null; authMode = 'login'; authMessage = 'Uitgelogd. Je lokale tuin is behouden.'; displayAccount(panel, true);
             } else if (kind === 'status') await readCloud(panel);
             else if (kind === 'upload' || kind === 'replace') {
                 if (kind === 'upload') await readCloud(panel);
@@ -912,9 +1016,14 @@
                 accountVersion++; auto.setAccount(null);
                 authMessage = 'Aanvraag wordt verstuurd…';
                 say('cloud-auth-status', authMessage, panel);
+                await accountSessionRequest?.catch(() => {});
                 const data = await request('auth', { action: mode, email: panel.querySelector('#cloud-email').value.trim(), ...(['login', 'signup', 'password'].includes(mode) ? { password } : {}) });
                 authMessage = data.message || (mode === 'password' ? 'Je nieuwe wachtwoord is opgeslagen. Je lokale tuin is behouden.' : 'Ingelogd. Je lokale tuin is behouden.');
-                if (data.user) { user = data.user; accountConfigured = true; accountFeedback = ''; recovery = false; auto.setAccount(user.id, true); authMode = 'login'; cloud = null; confirmationPending = false; closeAccount(true); }
+                if (data.user) {
+                    accountVersion++;
+                    applyAccountSession({ ...data, recovery: false });
+                    accountConfigured = true; accountFeedback = ''; auto.setAccount(user.id, true); authMode = 'login'; cloud = null; confirmationPending = false; closeAccount(true);
+                }
                 if (mode === 'signup' && !data.user) confirmationPending = true;
                 renderAuthMode(panel);
                 say('cloud-auth-status', authMessage, panel);
@@ -936,12 +1045,9 @@
         (choice ? panel.querySelector('[data-start-mode="login"]') : panel.querySelector(authMode === 'password' ? '#cloud-password' : '#cloud-email')).focus();
     }
     async function startAccountChoice() {
-        await callbackPromise;
         try {
-            const version = accountVersion;
-            const data = await request('auth');
-            if (version !== accountVersion) return;
-            user = data.user; recovery = Boolean(data.recovery); auto.setAccount(recovery ? null : user?.id);
+            await refreshAccountSession();
+            auto.setAccount(recovery ? null : user?.id);
             if (recovery) openAccountPopup('password');
             else if (!user && !sessionStorage.getItem(ACCOUNT_CHOICE) && !accountDialog?.open) openAccountPopup('choice');
         } catch (error) { console.warn('Accountstart:', error.message); /* Local use remains available when account service is offline. */ }
@@ -972,12 +1078,9 @@
         const marker = panel.querySelector('#account-settings-login');
         const version = accountVersion;
         try {
-            const data = await request('auth');
+            await refreshAccountSession();
             if (version !== accountVersion || !marker?.isConnected) return;
-            accountConfigured = Boolean(data.configured);
             accountFeedback = '';
-            user = data.user || null;
-            recovery = Boolean(data.recovery);
             if (CLOUD_SYNC_ENABLED) auto.setAccount(recovery ? null : user?.id);
         } catch (error) {
             if (version !== accountVersion || !marker?.isConnected) return;
@@ -998,9 +1101,11 @@
                 auto.pause('account'); auto.setAccount(null);
                 await auto.idle().catch(() => {});
             }
+            await accountSessionRequest?.catch(() => {});
             await request('auth', { action: 'logout' });
             if (version !== accountVersion) return;
-            user = null; cloud = null; conflictAccount = null; recovery = false;
+            accountVersion++;
+            applyAccountSession({ user: null }); cloud = null; conflictAccount = null;
             authMode = 'login'; accountConfigured = true;
             accountFeedback = 'Uitgelogd. Je lokale tuin is behouden.';
         } catch (error) {
@@ -1031,10 +1136,9 @@
         panel.querySelector('#custom-api-save').onclick = () => customAPIAction(panel, 'save');
         panel.querySelector('#custom-api-delete').onclick = () => customAPIAction(panel, 'delete-key');
         panel.querySelector('#custom-api-test').onclick = () => customAPIAction(panel, 'test');
-        panel.querySelector('#gemini-free-delete').onclick = () => geminiFreeAction(panel, 'delete-key');
         providerInput.value = prefs.provider;
         panel.querySelector('#ai-model').value = prefs.model || '';
-        if (config || providerInput.value !== 'gemini') updateModel(panel, true);
+        if (config || isLoopback || providerInput.value !== 'gemini') updateModel(panel, true);
         else renderGeminiModel(panel);
         if (providerInput.value === 'ollama') void refreshOllamaModels(panel);
         providerInput.onchange = () => {
@@ -1044,14 +1148,18 @@
         panel.querySelector('#ai-settings-form').onsubmit = event => {
             event.preventDefault();
             const provider = providerInput.value;
-            if (provider === 'gemini-free') { void geminiFreeAction(panel, 'save-test'); return; }
+            if (provider === 'gemini-free') { void checkGeminiFree(panel, true); return; }
             if (provider === 'openai-compatible') { customAPIAction(panel, 'save'); return; }
             if (!providers.includes(provider)) return;
             const model = panel.querySelector(provider === 'gemini' ? '#ai-gemini-model' : provider === 'chatgpt' ? '#ai-chatgpt-model' : '#ai-model').value.trim();
             if (provider === 'gemini' && !panel.querySelector('#ai-gemini-model').selectedOptions.length) return;
             if (!/^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,159}$/.test(model)) return say('ai-save-status', 'Vul een geldige modelnaam in.', panel);
+            if (provider === 'gemini' && isLoopback) { void saveGeminiPersonal(panel, providerInput, model); return; }
             try {
                 const next = { provider, model };
+                if (provider === 'gemini' && !isLoopback && legacyGeminiKey()) {
+                    sessionStorage.setItem(USE_LEGACY_GEMINI_KEY, String(panel.querySelector('#gemini-use-legacy-key').checked));
+                }
                 localStorage.setItem(PREFS_KEY, JSON.stringify(next));
                 prefs = next;
                 updateDashboardProvider();
@@ -1079,13 +1187,11 @@
             // Account status must remain usable even when another settings request stalls.
             accountPromise = (async () => {
                 try {
-                    await callbackPromise;
                     const version = accountVersion;
-                    const data = await request('auth');
+                    await refreshAccountSession();
                     if (version !== accountVersion) return;
                     if (!providerInput.isConnected) return;
-                    if (typeof data.configured !== 'boolean') throw new Error('Cloudconfiguratie kon niet worden gelezen. Je lokale tuin blijft beschikbaar.');
-                    user = data.user; recovery = Boolean(data.recovery); auto.setAccount(recovery ? null : user?.id); if (recovery) authMode = 'password'; cloud = null; displayAccount(panel, data.configured);
+                    auto.setAccount(recovery ? null : user?.id); if (recovery) authMode = 'password'; cloud = null; displayAccount(panel, accountConfigured);
                     if (user && !recovery) { try { await readCloud(panel); } catch (error) { say('cloud-status', `Je bent ingelogd. ${error.message}`, panel); } }
                 } catch (error) { say('cloud-status', error.message, panel); }
             })();
@@ -1095,11 +1201,15 @@
             await configPromise;
             updateDashboardProvider();
             if (!providerInput.isConnected) return;
+            if (isLoopback && providerInput.value === 'gemini') {
+                updateGeminiFreeAvailability(providerInput);
+                return;
+            }
             // Backend defaults never override the device's explicit choice.
             readPreferences();
             providerInput.value = prefs.provider;
             updateModel(panel, true);
-        } catch (error) { if (providerInput.isConnected) updateModel(panel, true); }
+        } catch (error) { if (providerInput.isConnected && !(isLoopback && providerInput.value === 'gemini')) updateModel(panel, true); }
         await accountPromise;
     }
     const removeSafetyBackup = () => new Promise((resolve, reject) => {
@@ -1128,6 +1238,9 @@
         catch { input.focus(); input.select(); status.textContent = 'Commando geselecteerd. Kopieer met Ctrl+C of via het selectiemenu.'; }
     });
     async function requestAI(route, body) {
+        if (!savedPreferences() && !accountSessionKnown) {
+            await refreshAccountSession().catch(() => {});
+        }
         const choice = readPreferences();
         const useProfile = localStorage.getItem(PROFILE_AI_CONSENT_KEY) === 'true' &&
             (route === 'seed-info' || route === 'tuinassistent' || route === 'gemini-ai' && ['fill_seed_info', 'garden_assistant'].includes(body?.mode));
@@ -1146,7 +1259,8 @@
                 try { return await window.KweekBrowserOllama.generate(route, aiBody, choice.model || 'gemma4:latest'); }
                 finally { updateDashboardProvider(); }
             }
-            const ai = choice.provider === 'gemini-free' && !config?.providers?.['gemini-free']?.localAvailable ? { ...choice, apiKey: sessionStorage.getItem(GEMINI_FREE_KEY) || '' } : choice;
+            const legacyKey = choice.provider === 'gemini' && !isLoopback && useHostedLegacyGeminiKey() ? legacyGeminiKey() : '';
+            const ai = legacyKey ? { ...choice, legacyKey } : choice;
             return await request(route, { ...aiBody, ai });
         }
         catch (error) {
@@ -1159,4 +1273,8 @@
         }
     }
     window.KweekServices = { settingsHTML, localHelpHTML, openLocalHelp, appendOllamaHelp, mount, removeSafetyBackup, updateDashboardProvider, requestAI };
+    const loadAccountSession = () => { void refreshAccountSession().catch(() => {}); };
+    if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', loadAccountSession, { once: true });
+    else loadAccountSession();
+    window.addEventListener('focus', () => { if (!busy && !savedPreferences()) loadAccountSession(); });
 })();

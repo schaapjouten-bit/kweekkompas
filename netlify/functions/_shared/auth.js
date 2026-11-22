@@ -26,12 +26,15 @@ const account = data => ({ configured: true, user: { id: data.user.id, email: da
 exports.handler = endpoint(async event => {
     if (event.httpMethod === 'GET') {
         if (!configured()) return reply(200, { configured: false, user: null });
+        const stored = readCookies(event);
+        if (!stored.kk_access && !stored.kk_refresh) return reply(200, { configured: true, user: null });
         try {
             const session = await authenticate(event);
-            return reply(200, { configured: true, user: { id: session.user.id, email: session.user.email }, recovery: readCookies(event).kk_recovery === session.user.id }, session.cookies);
+            return reply(200, { configured: true, user: { id: session.user.id, email: session.user.email }, recovery: stored.kk_recovery === session.user.id }, session.cookies);
         } catch (error) {
             if (error.status !== 401) throw error;
-            return reply(200, { configured: true, user: null }, cookies(null));
+            // A session read can arrive after a successful login. Only logout clears cookies.
+            return reply(200, { configured: true, user: null });
         }
     }
     if (event.httpMethod !== 'POST') throw new HttpError(405, 'Gebruik GET of POST.');

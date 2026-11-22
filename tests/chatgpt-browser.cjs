@@ -34,9 +34,27 @@ const { fixture } = require('./chatgpt-fixture.cjs');
             });
             const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
             await page.goto(base); await page.waitForFunction(() => window.KweekServices);
-            await page.evaluate(() => window.openSettingsSection('ai'));
-            await page.waitForFunction(() => !document.querySelector('#ai-provider [value="chatgpt"]').disabled);
-            await page.selectOption('#ai-provider', 'chatgpt');
+            const openAISettings = () => page.evaluate(() => window.openSettingsSection('ai'));
+            await openAISettings();
+            const provider = page.locator('#ai-provider');
+            await provider.waitFor();
+            const options = await provider.evaluate(select => Array.from(select.options)
+                .filter(option => !option.hidden)
+                .map(option => [option.value, option.text, option.disabled]));
+            assert.deepEqual(options, [
+                ['chatgpt', 'ChatGPT – eigen login (Nog niet beschikbaar)', true],
+                ['gemini', 'Gemini – eigen sleutel', false],
+                ['gemini-free', 'Gemini – Free tier', true],
+                ['ollama', 'Ollama', false]
+            ]);
+            assert.equal(await provider.inputValue(), 'ollama');
+
+            // An existing choice still loads even though the menu no longer offers it for selection.
+            await page.evaluate(() => localStorage.setItem('kweekkompas_ai', JSON.stringify({ provider: 'chatgpt', model: '' })));
+            await page.reload();
+            await page.waitForFunction(() => window.KweekServices);
+            await openAISettings();
+            await page.waitForFunction(() => document.querySelector('#ai-provider')?.value === 'chatgpt');
             await page.waitForSelector('#chatgpt-login:enabled');
             if (await page.locator('#chatgpt-login').isHidden()) await page.locator('#chatgpt-management summary').click();
             await page.click('#chatgpt-login');
@@ -58,7 +76,9 @@ const { fixture } = require('./chatgpt-fixture.cjs');
             await page.selectOption('#ai-provider', 'gemini');
             await page.waitForFunction(() => document.querySelector('#ai-gemini-model').value === 'gemini-3.5-flash-lite');
             assert.equal(await page.locator('#chatgpt-setup').isVisible(), false);
-            await page.selectOption('#ai-provider', 'chatgpt');
+            await page.reload();
+            await page.waitForFunction(() => window.KweekServices);
+            await openAISettings();
             await page.waitForFunction(() => document.querySelector('#ai-chatgpt-model').value === 'gpt-fixture');
             await page.evaluate(() => { document.querySelector('#chatgpt-management').open = true; });
             await page.click('#chatgpt-logout');

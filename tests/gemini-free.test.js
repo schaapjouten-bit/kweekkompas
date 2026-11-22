@@ -3,107 +3,142 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { PGlite } = require('@electric-sql/pglite');
+const { startFixtures, configureFixtures } = require('./service-fixtures.cjs');
 
-test('Gemini Free tier: lokale sleutel, expliciete test, vaste modelkeuze en beide AI-hulpen', async () => {
-    const originalEnv = { ...process.env };
+test('Gemini Free tier: session, fixed shared model, account limits, sanitized errors and independent legacy key', async () => {
+    const { createServer } = require('../scripts/dev-server.cjs');
+    const fixture = await startFixtures();
+    configureFixtures(fixture);
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'kweek-shared-gemini-'));
+    const legacyFile = path.join(directory, '.kweek-gemini-free.json');
+    const personalFile = path.join(directory, '.kweek-gemini.json');
+    fs.writeFileSync(legacyFile, JSON.stringify({ apiKey: 'legacy-personal-key' }));
+    fs.writeFileSync(personalFile, JSON.stringify({ apiKey: 'existing-personal-key' }));
+    const app = createServer({ geminiFreeFile: legacyFile, geminiPersonalFile: personalFile, chatGPTFile: path.join(directory, 'chatgpt.json') });
     const originalFetch = global.fetch;
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'kweek-gemini-free-'));
-    const file = path.join(directory, '.kweek-gemini-free.json');
     const calls = [];
-    let app, failure = 0, invalidAnswer = false;
+    let quotaExhausted = false;
+    global.fetch = async (url, options) => {
+        if (!String(url).startsWith('https://generativelanguage.googleapis.com/')) return originalFetch(url, options);
+        calls.push({ url: String(url), key: options.headers['x-goog-api-key'] });
+        if (quotaExhausted) return Response.json({ error: { message: 'shared-fixture-secret' } }, { status: 429 });
+        if (JSON.parse(options.body).generationConfig.maxOutputTokens) {
+            return Response.json({ candidates: [{ content: { parts: [{ text: '{"ok":true}' }] } }] });
+        }
+        return originalFetch(fixture.base + '/gemini', options);
+    };
     try {
-        const { createServer } = require('../scripts/dev-server.cjs');
-        app = createServer({ geminiFreeFile: file, chatGPTFile: path.join(directory, 'chatgpt.json') });
-        // Even with cloud configured, this personal connection needs no cloud login.
-        process.env.SUPABASE_URL = 'https://unused.example';
-        process.env.SUPABASE_PUBLISHABLE_KEY = 'unused';
-        process.env.GEMINI_API_KEY = 'existing-backend-secret';
-        global.fetch = async (url, options) => {
-            if (!String(url).startsWith('https://generativelanguage.googleapis.com/')) return originalFetch(url, options);
-            calls.push({ url: String(url), key: options.headers['x-goog-api-key'], body: JSON.parse(options.body) });
-            if (failure) return Response.json({ error: { message: 'sensitive-google-error' } }, { status: failure });
-            return Response.json({ candidates: [{ content: { parts: [{ thought: true, text: 'Internal thought' }, { text: invalidAnswer ? 'not-json' : JSON.stringify({ ok: true, answer: 'Mockadvies', actions: [], notes: 'Mockinformatie', sow_months: [], harvest_months: [] }) }] } }] });
-        };
         await new Promise(resolve => app.listen(0, '127.0.0.1', resolve));
-        const base = `http://127.0.0.1:${app.address().port}`;
-        const post = (route, body, origin = base) => originalFetch(`${base}/api/${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify(body) });
-        assert.equal((await post('gemini-free', { action: 'get' }, 'https://foreign.example')).status, 403);
-        assert.equal((await post('gemini-free', { action: 'get' }, '')).status, 403);
-        assert.equal((await originalFetch(base + '/api/gemini-free', { headers: { Origin: base } })).status, 405);
-        assert.deepEqual(await (await post('gemini-free', { action: 'get' })).json(), { model: 'gemini-3.5-flash-lite', keyConfigured: false });
-        assert.equal(calls.length, 0, 'Opening settings never probes Google');
-        assert.equal((await post('gemini-free', { action: 'save-test', apiKey: '' })).status, 400);
-        assert.equal((await post('gemini-free', { action: 'save-test', apiKey: 'bad\nkey' })).status, 400);
-        assert.equal((await post('gemini-free', null)).status, 400);
-        assert.equal((await post('tuinassistent', { question: 'Mockvraag', ai: { provider: 'gemini-free' } })).status, 400);
-        assert.equal(calls.length, 0, 'No fallback to the existing GEMINI_API_KEY');
+        const base = 'http://127.0.0.1:' + app.address().port;
+        const post = (route, body, cookie = '', origin = base) => originalFetch(base + '/api/' + route, {
+            method: 'POST', headers: { Origin: origin, Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const a = 'kk_access=' + fixture.tokens.a;
+        const b = 'kk_access=' + fixture.tokens.b;
+        const free = { provider: 'gemini-free', model: 'gemini-wrong-model', apiKey: 'browser-injected-key', id: fixture.ids.b };
+        const garden = { question: 'Kan ik tomaten buiten zetten?', ai: free };
+        const status = { action: 'status' };
+        delete process.env.GEMINI_FREE_API_KEY;
+        const unconfigured = await post('tuinassistent', garden, a);
+        assert.equal(unconfigured.status, 503);
+        assert.match((await unconfigured.json()).error, /gedeelde sleutel ontbreekt/);
+        assert.equal((await post('gemini-free', status, a)).status, 503);
+        assert.equal(calls.length, 0);
 
-        failure = 403;
-        const rejected = await post('gemini-free', { action: 'save-test', apiKey: 'new-mock-secret' });
-        assert.equal(rejected.status, 502);
-        assert.doesNotMatch(await rejected.text(), /new-mock-secret|sensitive-google-error/);
-        assert.equal(fs.existsSync(file), false);
-        failure = 0;
-        const saved = await post('gemini-free', { action: 'save-test', apiKey: 'personal-mock-secret' });
-        assert.equal(saved.status, 200);
-        const safe = await saved.json();
-        assert.equal(safe.keyConfigured, true);
-        assert.equal(safe.model, 'gemini-3.5-flash-lite');
-        assert.doesNotMatch(JSON.stringify(safe), /personal-mock-secret/);
-        assert.equal(calls.length, 2, 'Each explicit test sends exactly one request');
-        assert.equal(calls.at(-1).body.generationConfig.maxOutputTokens, 1024);
-        assert.equal(require('../scripts/gemini-free.cjs').createGeminiFree(file).metadata().keyConfigured, true, 'Key survives a server restart');
+        process.env.GEMINI_FREE_API_KEY = 'shared-fixture-secret';
+        const noSession = await post('tuinassistent', garden);
+        assert.equal(noSession.status, 401);
+        assert.match((await noSession.json()).error, /Log in bij KweekKompas/);
+        assert.equal((await post('gemini-free', status)).status, 401);
+        assert.equal((await post('tuinassistent', garden, 'kk_access=invalid')).status, 401);
+        assert.equal((await post('tuinassistent', garden, a, 'https://other.example')).status, 403);
+        assert.deepEqual(await (await post('gemini-free', status, a)).json(), { model: 'gemini-3.5-flash-lite' });
+        assert.equal((await post('gemini-free', { action: 'save-test', apiKey: 'old-key' }, a)).status, 400);
+        assert.equal(calls.length, 0);
 
         for (const [route, body] of [
-            ['tuinassistent', { question: 'Mockvraag', context: {} }],
-            ['seed-info', { name: 'Basilicum', existingFields: {} }],
-            ['gemini-ai', { mode: 'garden_assistant', input: 'Mockvraag', month: 10 }]
+            ['tuinassistent', garden],
+            ['seed-info', { name: 'Tomaat', ai: free }],
+            ['gemini-ai', { mode: 'garden_assistant', input: 'Testvraag', ai: free }]
         ]) {
-            const result = await post(route, { ...body, ai: { provider: 'gemini-free', model: 'gemini-unwanted-paid-model', apiKey: 'browser-injection' } });
-            assert.equal(result.status, 200, await result.text());
-            assert.equal(calls.at(-1).url, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent');
-            assert.equal(calls.at(-1).key, 'personal-mock-secret');
+            const result = await post(route, body, a);
+            const text = await result.text();
+            assert.equal(result.status, 200, text);
+            assert.doesNotMatch(text, /shared-fixture-secret|browser-injected-key/);
+            assert.ok(calls.at(-1).key === 'shared-fixture-secret');
+            assert.match(calls.at(-1).url, /\/gemini-3\.5-flash-lite:generateContent$/);
         }
-        const { providerConfig, callAI } = require('../netlify/functions/_shared/lib/ai');
-        assert.equal(providerConfig()['gemini-free'].configured, true);
-        assert.equal(process.env.GEMINI_API_KEY, 'existing-backend-secret');
-        assert.doesNotMatch(JSON.stringify(providerConfig()), /personal-mock-secret|existing-backend-secret/);
-        const beforeRead = calls.length;
-        await post('gemini-free', { action: 'get' });
-        assert.equal(calls.length, beforeRead);
-        assert.equal((await originalFetch(base + '/.kweek-gemini-free.json')).status, 404);
-        assert.equal((await originalFetch(base + '/scripts/gemini-free.cjs')).status, 404);
+        assert.equal(fixture.geminiFreeUsage.get('a'), 3);
+        assert.equal(fixture.geminiFreeUsage.has('b'), false);
+        fixture.geminiFreeUsage.set('a', 20);
+        const limited = await post('tuinassistent', garden, a);
+        assert.equal(limited.status, 429);
+        assert.match((await limited.json()).error, /daglimiet/);
+        assert.equal(calls.length, 3);
+        quotaExhausted = true;
+        const sharedLimited = await post('tuinassistent', garden, b);
+        assert.equal(sharedLimited.status, 429);
+        const message = await sharedLimited.text();
+        assert.match(message, /gedeelde Gemini-quotum/);
+        assert.doesNotMatch(message, /shared-fixture-secret/);
+        quotaExhausted = false;
+        assert.equal((await post('tuinassistent', garden, b)).status, 200);
+        assert.equal(fixture.geminiFreeUsage.get('b'), 2);
 
-        for (const status of [400, 403, 404, 429, 500]) {
-            failure = status;
-            const result = await post('gemini-free', { action: 'save-test', apiKey: 'rejected-replacement' });
-            assert.equal(result.status, status === 429 ? 429 : 502);
-            assert.doesNotMatch(await result.text(), /sensitive-google-error|rejected-replacement/);
-            assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).apiKey, 'personal-mock-secret', 'Failed replacement preserves the working key');
-        }
-        failure = 0;
-        invalidAnswer = true;
-        assert.equal((await post('gemini-free', { action: 'save-test', apiKey: 'rejected-replacement' })).status, 502);
-        assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).apiKey, 'personal-mock-secret');
-        invalidAnswer = false;
-        await post('gemini-free', { action: 'save-test', apiKey: '' });
-        assert.equal(calls.at(-1).key, 'personal-mock-secret', 'Empty field reuses the saved key');
-        const count = calls.length;
-        process.env.KWEEK_LOCAL_DEV = 'false';
-        assert.equal(providerConfig()['gemini-free'].available, true);
-        assert.equal(providerConfig()['gemini-free'].localAvailable, false);
-        await assert.rejects(callAI({ ai: { provider: 'gemini-free' } }, 'test', 'test'), { status: 400 });
-        assert.equal(calls.length, count, 'No fallback to backend credentials without a personal key');
-        process.env.KWEEK_LOCAL_DEV = 'true';
-        assert.equal((await (await post('gemini-free', { action: 'delete-key' })).json()).keyConfigured, false);
-        assert.equal(fs.existsSync(file), false);
-        assert.equal((await post('seed-info', { name: 'Basilicum', ai: { provider: 'gemini-free' } })).status, 400);
-        assert.equal(calls.length, count);
+        const personalStatus = await (await post('gemini-personal', { action: 'get' })).json();
+        assert.deepEqual(personalStatus, { keyConfigured: true, legacyKeyAvailable: true, usingLegacyKey: false });
+        const personal = { provider: 'gemini', model: 'gemini-4-neon' };
+        assert.equal((await post('tuinassistent', { ...garden, ai: personal })).status, 200);
+        assert.ok(calls.at(-1).key === 'existing-personal-key');
+        const migrated = await post('gemini-personal', { action: 'save-test', apiKey: '', useLegacyKey: true, model: personal.model });
+        assert.equal(migrated.status, 200);
+        assert.doesNotMatch(await migrated.text(), /legacy-personal-key/);
+        assert.equal((await post('tuinassistent', { ...garden, ai: personal })).status, 200);
+        assert.ok(calls.at(-1).key === 'legacy-personal-key');
+        assert.equal(fs.readFileSync(legacyFile, 'utf8'), JSON.stringify({ apiKey: 'legacy-personal-key' }));
+        assert.equal((await post('gemini-personal', { action: 'save-test', apiKey: '', useLegacyKey: false, model: personal.model })).status, 200);
+        assert.ok(calls.at(-1).key === 'existing-personal-key');
+        assert.equal((await originalFetch(base + '/.kweek-gemini.json')).status, 404);
     } finally {
-        if (app?.listening) await new Promise(resolve => app.close(resolve));
         global.fetch = originalFetch;
+        if (app.listening) await new Promise(resolve => app.close(resolve));
+        await fixture.stop();
         fs.rmSync(directory, { recursive: true, force: true });
-        for (const name of Object.keys(process.env)) if (!(name in originalEnv)) delete process.env[name];
-        Object.assign(process.env, originalEnv);
     }
+});
+
+test('The quota SQL permits exactly 20 requests per account and UTC day with no direct counter access', async () => {
+    const db = new PGlite();
+    const a = '11111111-1111-4111-8111-111111111111';
+    const b = '22222222-2222-4222-8222-222222222222';
+    try {
+        await db.exec(`create role anon; create role authenticated; create schema auth;
+            create table auth.users(id uuid primary key);
+            insert into auth.users values ('${a}'), ('${b}');
+            create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+            create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;`);
+        const dir = path.resolve(__dirname, '../supabase/migrations');
+        const file = fs.readdirSync(dir).find(name => name.endsWith('_gemini_free_daily_quota.sql'));
+        await db.exec(fs.readFileSync(path.join(dir, file), 'utf8'));
+        await db.exec('set role anon;');
+        const reserve = async () => (await db.query('select public.reserve_gemini_free_request() as ok')).rows[0].ok;
+        await assert.rejects(reserve, /permission denied/);
+        const asUser = id => db.exec(`reset role; set role authenticated; set request.jwt.claim.sub = '${id}';`);
+        await asUser(a);
+        await db.exec(`set request.jwt.claims = '{"is_anonymous":true}';`);
+        await assert.rejects(reserve, /insufficient_privilege/);
+        await db.exec(`set request.jwt.claims = '{}';`);
+        const attempts = await Promise.all(Array.from({ length: 25 }, reserve));
+        assert.equal(attempts.filter(Boolean).length, 20);
+        await assert.rejects(db.query('update kweekkompas_private.gemini_free_quota set request_count = 1'), /permission denied/);
+        await asUser(b);
+        assert.equal(await reserve(), true);
+        await db.exec('reset role;');
+        await db.query('update kweekkompas_private.gemini_free_quota set utc_day = utc_day - 1 where account_id = $1', [a]);
+        await asUser(a);
+        assert.equal(await reserve(), true);
+        await db.exec('reset role;');
+        assert.deepEqual((await db.query('select request_count from kweekkompas_private.gemini_free_quota order by account_id')).rows, [{ request_count: 1 }, { request_count: 1 }]);
+    } finally { await db.close(); }
 });

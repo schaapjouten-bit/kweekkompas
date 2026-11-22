@@ -2820,10 +2820,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             errorState.className = 'ai-error';
             errorState.appendChild(document.createTextNode('Fout: '));
             errorState.appendChild(document.createTextNode(err?.message || 'Onbekende fout'));
-            errorState.appendChild(document.createElement('br'));
-            const hint = document.createElement('small');
-            hint.textContent = 'Controleer je keuze bij Instellingen → AI.';
-            errorState.appendChild(hint);
+            if (err?.code !== 'INVALID_API_RESPONSE') {
+                errorState.appendChild(document.createElement('br'));
+                const hint = document.createElement('small');
+                hint.textContent = 'Controleer je keuze bij Instellingen → AI.';
+                errorState.appendChild(hint);
+            }
             sourceStatusEl?.replaceChildren(errorState);
             window.KweekServices?.appendOllamaHelp(errorState, err);
         } finally {

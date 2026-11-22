@@ -5,23 +5,28 @@ const os = require('node:os');
 const path = require('node:path');
 const { chromium } = require('playwright');
 const { createServer } = require('../scripts/dev-server.cjs');
+const { startFixtures, configureFixtures } = require('./service-fixtures.cjs');
 const output = path.resolve(__dirname, '../scratch/gemini-free');
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'kweek-gemini-ui-'));
 const file = path.join(directory, '.kweek-gemini-free.json');
+const personalFile = path.join(directory, '.kweek-gemini.json');
 const originalFetch = global.fetch;
 const calls = [], errors = [], checks = [];
 let failure = 0;
 global.fetch = async (url, options) => {
     if (String(url).startsWith('https://generativelanguage.googleapis.com/')) {
-        calls.push({ url: String(url), body: JSON.parse(options.body) });
-        if (failure) return Response.json({ error: { message: 'Provider secret error' } }, { status: failure });
+        calls.push({ url: String(url), body: JSON.parse(options.body), apiKey: options.headers['x-goog-api-key'] });
+        if (failure) return Response.json({ error: { message: 'Provider secret error', details: failure === 400 ? [{ reason: 'API_KEY_INVALID' }] : [] } }, { status: failure });
         return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ ok: true, answer: 'Basilicum houdt van warmte.', actions: [], name: 'Basilicum', type: 'Kruid', notes: 'Testinformatie', sow_months: ['maart'], harvest_months: ['juli'], tags: [] }) }] } }] });
     }
     if (String(url).includes('127.0.0.1:11434/api/tags')) return Response.json({ models: [{ name: 'gemma4:latest' }] });
     return originalFetch(url, options);
 };
 (async () => {
-    const server = createServer({ geminiFreeFile: file, chatGPTFile: path.join(directory, 'chatgpt.json') });
+    const fixture = await startFixtures();
+    configureFixtures(fixture);
+    process.env.GEMINI_FREE_API_KEY = 'fixture-shared-key';
+    const server = createServer({ geminiFreeFile: file, geminiPersonalFile: personalFile, chatGPTFile: path.join(directory, 'chatgpt.json') });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
     const browser = await chromium.launch();
@@ -51,64 +56,73 @@ global.fetch = async (url, options) => {
             await open();
             assert.equal(await page.inputValue('#ai-provider'), 'gemini');
             assert.equal(await page.inputValue('#ai-gemini-model'), 'gemini-3.8-flash');
-            assert.equal(await page.locator('#gemini-free-setup').isHidden(), true);
-            assert.equal(calls.length, count);
             await page.selectOption('#ai-provider', 'gemini-free');
-            await page.waitForFunction(() => !document.querySelector('#ai-settings-form button[type="submit"]').disabled);
             assert.equal(await page.inputValue('#ai-gemini-model'), 'gemini-3.5-flash-lite');
-            assert.equal(await page.locator('#ai-gemini-model option').count(), 1);
-            assert.equal(await submit.textContent(), 'Opslaan en testen');
-            assert.equal(await page.locator('#gemini-free-key').getAttribute('type'), 'password');
+            assert.equal(await page.locator('#ai-gemini-model').isDisabled(), true);
+            assert.equal(await page.locator('#gemini-free-key').isVisible(), false);
+            await page.waitForFunction(() => document.querySelector('#ai-provider-status').textContent.includes('Log in'));
             assert.equal(calls.length, count);
+            const login = await page.request.post(`${base}/api/auth`, {
+                headers: { Origin: base },
+                data: { action: 'login', email: 'a@example.test', password: 'test-password' }
+            });
+            assert.equal(login.status(), 200);
+            assert.ok((await context.cookies(base)).some(cookie => cookie.name === 'kk_access' && cookie.httpOnly));
             await submit.click();
-            assert.equal(calls.length, count, 'Empty key cannot trigger a test');
-            await page.locator('#settings-section-ai').screenshot({ path: path.join(output, `${width}-sleutelveld.png`) });
-            await page.fill('#gemini-free-key', 'neutral-browser-mock-key');
-            failure = 403;
-            await submit.click();
-            await page.waitForFunction(() => document.querySelector('#ai-save-status').textContent.includes('weigert'));
-            assert.equal(fs.existsSync(file), false);
-            assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('kweekkompas_ai'))), { provider: 'gemini', model: 'gemini-3.8-flash' });
-            assert.equal(await page.inputValue('#gemini-free-key'), '');
-            failure = 0;
-            await page.fill('#gemini-free-key', 'neutral-browser-mock-key');
-            await submit.click();
-            await page.waitForFunction(() => document.querySelector('#ai-save-status').textContent.includes('Verbinding geslaagd'));
-            assert.equal(calls.length, count + 2);
-            assert.equal(await page.inputValue('#gemini-free-key'), '');
-            assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('kweekkompas_ai'))), { provider: 'gemini-free', model: 'gemini-3.5-flash-lite' });
-            assert.match(await page.locator('#home-ai-provider').innerText(), /Gemini – Free tier/);
-            assert.equal(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }).includes('neutral-browser-mock-key')), false);
-            await page.locator('#settings-section-ai').screenshot({ path: path.join(output, `${width}-verbonden.png`) });
-            assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+            await page.waitForFunction(() => document.querySelector('#ai-save-status').textContent.includes('Opgeslagen'));
+            assert.equal(await page.locator('#ai-settings-form input[type="password"]:visible').count(), 0);
+            const transmitted = page.waitForRequest(request => request.url().endsWith('/api/tuinassistent') && request.method() === 'POST');
+            assert.equal(await page.evaluate(() => window.KweekServices.requestAI('tuinassistent', { question: 'Basilicum?' }).then(result => result.answer)), 'Basilicum houdt van warmte.');
+            assert.deepEqual((await transmitted).postDataJSON().ai, { provider: 'gemini-free', model: 'gemini-3.5-flash-lite' });
+            assert.equal(calls.length, count + 1);
+            assert.ok(calls.at(-1).apiKey === 'fixture-shared-key');
+            assert.deepEqual(await page.evaluate(() => window.KweekLocalData.captureCloud()), garden);
             await page.reload();
             await open();
-            await page.waitForFunction(() => document.querySelector('#gemini-free-key-status').textContent.includes('lokaal opgeslagen'));
-            assert.equal(await page.inputValue('#ai-provider'), 'gemini-free');
-            assert.equal(await page.inputValue('#gemini-free-key'), '');
-            assert.equal(calls.length, count + 2, 'Reload never re-tests the key');
-            await page.click('.settings-close-button');
-            await page.fill('#ai-question-input', 'Kan basilicum tegen vorst?');
-            await page.click('#btn-ask-ai');
-            await page.waitForSelector('#ai-assistant-output .ai-advies-card');
-            await page.evaluate(() => window.openAddForm());
-            await page.fill('#naam', 'Basilicum');
-            await page.click('#btn-auto-fill-info');
-            await page.waitForFunction(() => document.querySelector('#ai-source-status').textContent.includes('AI-voorstel opgehaald'));
-            assert.equal(calls.length, count + 4);
-            for (const call of calls.slice(count)) assert.match(call.url, /\/gemini-3\.5-flash-lite:generateContent$/);
-            assert.deepEqual(await page.evaluate(() => window.KweekLocalData.captureCloud()), garden, 'Settings and AI suggestions preserve garden data');
+            await page.waitForFunction(() => document.querySelector('#ai-provider').value === 'gemini-free');
+            assert.equal(await page.locator('#gemini-free-key').isVisible(), false);
+            const retained = { provider: 'gemini', model: 'gemini-3.1-flash-lite' };
+            await page.evaluate(choice => localStorage.setItem('kweekkompas_ai', JSON.stringify(choice)), retained);
+            await page.reload();
             await open();
-            await page.click('#gemini-free-delete');
-            await page.waitForFunction(() => document.querySelector('#ai-save-status').textContent.includes('verwijderd'));
-            assert.equal(fs.existsSync(file), false);
             await page.selectOption('#ai-provider', 'gemini');
-            assert.equal(await page.locator('#ai-gemini-model option').count(), 2);
-            await page.selectOption('#ai-gemini-model', 'gemini-3.8-flash');
+            assert.equal(await page.inputValue('#ai-gemini-model'), retained.model);
+            assert.deepEqual(await page.locator('#ai-gemini-model option').evaluateAll(options => options.map(option => option.value)),
+                ['gemini-4-neon', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', retained.model]);
+            assert.equal(await submit.textContent(), 'Opslaan en testen');
+            await page.selectOption('#ai-gemini-model', 'gemini-4-neon');
+            const keyInput = page.locator('#gemini-free-key');
+            for (const [status, message] of [[400, 'Ongeldige'], [403, 'geen toegang'], [404, 'geen toegang'], [429, 'quotum']]) {
+                failure = status;
+                const before = calls.length;
+                await keyInput.fill('fixture-unverified-personal-key');
+                await submit.click();
+                await page.waitForFunction(text => document.querySelector('#ai-save-status').textContent.includes(text), message);
+                assert.equal(calls.length, before + 1);
+                assert.equal(calls.at(-1).url.split('/').at(-1), 'gemini-4-neon:generateContent');
+                assert.ok(calls.at(-1).apiKey === 'fixture-unverified-personal-key');
+                assert.equal(await page.inputValue('#ai-gemini-model'), 'gemini-4-neon');
+                assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('kweekkompas_ai'))), retained);
+                assert.doesNotMatch(await page.locator('#ai-save-status').textContent(), /fixture-|Provider secret error/);
+            }
+            failure = 0;
+            await keyInput.fill('fixture-verified-personal-key');
             await submit.click();
-            assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('kweekkompas_ai'))), { provider: 'gemini', model: 'gemini-3.8-flash' });
-            assert.equal(await page.locator('#gemini-free-setup').isHidden(), true);
-            assert.equal(await submit.textContent(), 'AI-keuze opslaan');
+            await page.waitForFunction(() => document.querySelector('#ai-save-status').textContent.includes('Verbinding geslaagd'));
+            assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('kweekkompas_ai'))), { provider: 'gemini', model: 'gemini-4-neon' });
+            assert.equal(await keyInput.inputValue(), '');
+            assert.deepEqual(await page.evaluate(() => window.KweekServices.requestAI('tuinassistent', { question: 'Basilicum?' }).then(result => result.answer)), 'Basilicum houdt van warmte.');
+            assert.equal(calls.at(-1).url.split('/').at(-1), 'gemini-4-neon:generateContent');
+            assert.ok(calls.at(-1).apiKey === 'fixture-verified-personal-key');
+            const beforeUntrustedRequest = calls.length;
+            const untrusted = await page.request.post(`${base}/api/tuinassistent`, {
+                headers: { Origin: 'https://other.example' },
+                data: { question: 'Basilicum?', ai: { provider: 'gemini', model: 'gemini-4-neon' } }
+            });
+            assert.equal(untrusted.status(), 403);
+            assert.equal(calls.length, beforeUntrustedRequest);
+            assert.equal((await page.request.get(`${base}/.kweek-gemini.json`)).status(), 404);
+            assert.equal(await page.locator('#gemini-personal-note').isVisible(), true);
             await page.selectOption('#ai-provider', 'ollama');
             assert.equal(await page.locator('#ollama-setup').isVisible(), true);
             assert.equal(await page.locator('#gemini-free-key').isDisabled(), true);
@@ -120,6 +134,7 @@ global.fetch = async (url, options) => {
     } finally {
         await browser.close();
         await new Promise(resolve => server.close(resolve));
+        await fixture.stop();
     }
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => {
     global.fetch = originalFetch;
