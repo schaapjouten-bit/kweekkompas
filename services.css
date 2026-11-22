@@ -117,6 +117,24 @@ html:has(#wishlist-detail-modal:not(.hidden)), body:has(#wishlist-detail-modal:n
 #settings-panel .service-note:empty,
 #settings-panel #example-garden-status:empty { display: none; }
 
+#settings-panel .gemini-personal-form { gap: 10px; }
+#settings-panel .gemini-personal-form #gemini-free-setup { display: grid; gap: 6px; }
+#settings-panel .gemini-legacy-key-option {
+    display: flex;
+    align-items: start;
+    gap: 8px;
+    color: var(--primary-text);
+    font-size: 13px;
+    cursor: pointer;
+}
+#settings-panel .gemini-legacy-key-option input { flex: none; accent-color: var(--accent-primary); }
+#settings-panel .gemini-personal-form #ai-save-status { margin: 0; }
+#settings-panel .gemini-personal-form + .ai-profile-consent {
+    border-top: 1px solid var(--border-color);
+    border-radius: 0;
+    padding-top: 12px;
+}
+
 /* Quiet hover feedback for settings controls. */
 .settings-panel .settings-collapse > summary,
 .settings-panel .settings-field input:not([type="checkbox"]),

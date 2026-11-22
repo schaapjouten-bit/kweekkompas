@@ -122,7 +122,7 @@ global.fetch = async (url, options) => {
             assert.equal(untrusted.status(), 403);
             assert.equal(calls.length, beforeUntrustedRequest);
             assert.equal((await page.request.get(`${base}/.kweek-gemini.json`)).status(), 404);
-            assert.equal(await page.locator('#gemini-personal-note').isVisible(), true);
+            assert.equal(await page.locator('#gemini-free-key').isVisible(), true);
             await page.selectOption('#ai-provider', 'ollama');
             assert.equal(await page.locator('#ollama-setup').isVisible(), true);
             assert.equal(await page.locator('#gemini-free-key').isDisabled(), true);

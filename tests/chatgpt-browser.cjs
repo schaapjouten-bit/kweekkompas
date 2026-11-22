@@ -44,7 +44,7 @@ const { fixture } = require('./chatgpt-fixture.cjs');
             assert.deepEqual(options, [
                 ['chatgpt', 'ChatGPT – eigen login (Nog niet beschikbaar)', true],
                 ['gemini', 'Gemini – eigen sleutel', false],
-                ['gemini-free', 'Gemini – Free tier', true],
+                ['gemini-free', 'Gemini – Free tier', false],
                 ['ollama', 'Ollama', false]
             ]);
             assert.equal(await provider.inputValue(), 'ollama');
