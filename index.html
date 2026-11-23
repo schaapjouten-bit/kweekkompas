@@ -76,6 +76,9 @@
 <button class="shell-nav-item" data-shell-view="wishlist" data-view="wishlist" type="button" aria-label="Verlanglijst">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 8.8c0 5.2-8 10-8 10s-8-4.8-8-10A4.2 4.2 0 0 1 12 6a4.2 4.2 0 0 1 8 2.8Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg><span>Verlanglijst</span>
         </button>
+        <button class="shell-nav-item" id="shell-notes-button" type="button" aria-haspopup="dialog" aria-controls="garden-notes-dialog">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7m-7 4h7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg><span>Notities</span>
+        </button>
       </nav>
       <div class="sidebar-footer">
         <button class="shell-settings-item" id="shell-settings-button" type="button" aria-label="Open instellingen">
@@ -137,7 +140,7 @@
             <h2 id="home-title"><span class="home-heading-name">Mijn tuin</span></h2>
             <p class="home-subtitle"><span id="home-current-date"></span><span aria-hidden="true"> · </span><span class="home-season-tag">Tuinjaar <span id="header-year-select"></span></span></p>
           </div>
-          <button id="btn-add-plant-home" class="btn-primary" type="button"><span aria-hidden="true">+</span> Plant toevoegen</button>
+          <button id="btn-add-plant-home" class="btn-primary" type="button">Toevoegen</button>
         </div>
 
         <div id="home-insights" class="home-insights-list" aria-label="Snelle inzichten"></div>
@@ -299,38 +302,44 @@
       </section>
       <dialog id="nutrition-dialog" aria-labelledby="nutrition-title">
         <form id="nutrition-form">
-          <h2 id="nutrition-title">Product toevoegen</h2>
+          <div class="nutrition-form-header">
+            <h2 id="nutrition-title">Product toevoegen</h2>
+            <button id="nutrition-lookup" class="btn-secondary" type="button">Productinfo opzoeken</button>
+          </div>
           <div class="nutrition-fields">
             <label>Merk<input name="brand" required></label>
             <label>Productnaam<input name="name" required></label>
-            <div class="nutrition-lookup-row"><button id="nutrition-lookup" class="btn-secondary" type="button">Productinfo opzoeken</button></div>
             <label>Type<input name="type"></label>
-            <label class="nutrition-field-wide">Beschrijving<textarea name="description" rows="3"></textarea></label>
-            <label class="nutrition-field-wide">Geschikt voor<input name="suitableFor" placeholder="Bijv. rozen, tomaten of gazon"></label>
-            <label class="nutrition-field-wide">Toepassing<textarea name="application" rows="3"></textarea></label>
             <label>NPK<input name="npk"></label>
-            <label class="nutrition-field-wide">Dosering<textarea name="dosage" rows="3"></textarea></label>
+            <label>Geschikt voor<input name="suitableFor" placeholder="Bijv. rozen, tomaten of gazon"></label>
+            <label>Bronlink<input name="source" type="url" placeholder="https://"></label>
+            <label>Beschrijving<textarea name="description" rows="3"></textarea></label>
+            <label>Toepassing<textarea name="application" rows="3"></textarea></label>
+            <label class="nutrition-field-wide">Dosering<textarea name="dosage" rows="2"></textarea></label>
             <fieldset class="nutrition-period nutrition-field-wide">
               <legend>Gebruiksperiode</legend>
               <div id="nutrition-month-picker" class="month-picker" role="group" aria-label="Maanden waarin je dit product gebruikt"></div>
-              <div class="nutrition-range">
-                <label>Van<select id="nutrition-range-start" aria-label="Periode vanaf maand"></select></label>
-                <label>Tot en met<select id="nutrition-range-end" aria-label="Periode tot en met maand"></select></label>
-                <button id="nutrition-select-range" class="btn-secondary" type="button">Periode selecteren</button>
+              <details id="nutrition-range-panel">
+                <summary>Periode van–tot kiezen</summary>
+                <div class="nutrition-range">
+                  <label>Van<select id="nutrition-range-start" aria-label="Periode vanaf maand"></select></label>
+                  <label>Tot en met<select id="nutrition-range-end" aria-label="Periode tot en met maand"></select></label>
+                  <button id="nutrition-select-range" class="btn-secondary" type="button">Periode selecteren</button>
+                </div>
+              </details>
+              <div class="nutrition-period-options">
+                <div class="nutrition-repeat">
+                  <label>Herhalen<select name="repeatUnit"><option value="">Niet herhalen</option><option value="days">Dagen</option><option value="weeks">Weken</option></select></label>
+                  <label>Aantal<input name="repeatAmount" type="number" min="1" max="10000" step="1" inputmode="numeric" disabled></label>
+                </div>
+                <label>Toelichting<input name="period" placeholder="Bijvoorbeeld vanaf uitplanten"></label>
               </div>
-              <div class="nutrition-repeat">
-                <label>Herhalen<select name="repeatUnit"><option value="">Niet herhalen</option><option value="days">Dagen</option><option value="weeks">Weken</option></select></label>
-                <label>Aantal<input name="repeatAmount" type="number" min="1" max="10000" step="1" inputmode="numeric" disabled></label>
-              </div>
-              <label>Toelichting<input name="period" placeholder="Bijvoorbeeld vanaf uitplanten"></label>
             </fieldset>
-            <label class="nutrition-field-wide">Bronlink<input name="source" type="url" placeholder="https://"></label>
           </div>
           <details id="nutrition-lookup-panel">
-            <summary>Productlink of etikettekst toevoegen</summary>
-            <label>Productlink<input id="nutrition-lookup-url" type="url" placeholder="https://"></label>
-            <label>Etikettekst<textarea id="nutrition-lookup-text" rows="4" placeholder="Plak hier de tekst van het etiket"></textarea></label>
-            <button id="nutrition-use-source" class="btn-secondary" type="button">Bron gebruiken</button>
+            <summary>Etikettekst toevoegen</summary>
+            <label class="sr-only" for="nutrition-lookup-text">Etikettekst</label>
+            <textarea id="nutrition-lookup-text" rows="3" placeholder="Plak hier de tekst van het etiket"></textarea>
           </details>
           <p id="nutrition-feedback" role="status"></p>
           <div class="nutrition-actions"><button id="nutrition-delete" class="btn-secondary" type="button">Verwijderen</button><button id="nutrition-cancel" class="btn-secondary" type="button">Annuleren</button><button class="btn-primary" type="submit">Opslaan</button></div>
@@ -377,12 +386,19 @@
       <!-- LIJST VIEW -->
       <section id="view-list" class="view hidden">
         <div class="seed-list-shell">
-          <header class="seed-page-header">
+          <header class="seed-page-header seed-library-header">
             <div>
               <h2>Mijn zaden</h2>
               <p class="seed-page-intro">Een rustig overzicht van alles wat je wilt zaaien, verzorgen en oogsten.</p>
             </div>
-            <button id="btn-add-zaden-top" class="btn-primary seed-add-button" type="button">Zaad toevoegen</button>
+            <div class="seed-toolbar">
+              <label class="seed-search-field" for="search-input">
+                <span class="seed-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/></svg></span>
+                <span class="sr-only">Zoek in Mijn zaden</span>
+                <input type="text" id="search-input" placeholder="Zoek in zaden en notities…" autocomplete="off">
+              </label>
+              <button id="btn-scan-notes" class="btn-secondary seed-scan-button" type="button" title="Scan notities voor planten">Notities scannen</button>
+            </div>
           </header>
 
           <div class="seed-summary" aria-label="Samenvatting van je zaden">
@@ -391,32 +407,26 @@
             <button type="button" class="seed-summary-card" data-seed-summary="season" aria-pressed="false" aria-controls="seed-grid"><span class="seed-summary-label">Deze maand zaaien</span><strong id="seed-summary-season">0</strong></button>
           </div>
 
-          <div class="seed-toolbar">
-            <label class="seed-search-field" for="search-input">
-              <span class="seed-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/></svg></span>
-              <span class="sr-only">Zoek in Mijn zaden</span>
-              <input type="text" id="search-input" placeholder="Zoek op plantnaam of kenmerk..." autocomplete="off">
-            </label>
-            <button id="btn-latest-seeds" class="btn-secondary seed-scan-button" type="button" aria-pressed="false" aria-controls="seed-grid" title="Toon laatst toegevoegde planten eerst">Laatst toegevoegd</button>
-            <button id="btn-scan-notes" class="btn-secondary seed-scan-button" type="button" title="Scan notities voor planten">Notities scannen</button>
-          </div>
-
           <div class="seed-filter-row">
-          <div class="category-filters seed-filter-chips" id="category-filters" aria-label="Filter je zaden">
-             <button class="filter-chip active" data-filter="Alles" type="button">Alle zaden</button>
-             <button class="filter-chip" data-filter="Groente" type="button">Groente</button>
-             <button class="filter-chip" data-filter="Fruit" type="button">Fruit</button>
-             <button class="filter-chip" data-filter="Kruid" type="button">Kruid</button>
-             <button class="filter-chip" data-filter="Bloem" type="button">Bloem</button>
-             <button class="filter-chip" data-filter="Bloembol" type="button">Bloembol</button>
-             <button class="filter-chip" data-filter="Boom" type="button">Boom</button>
-             <button class="filter-chip" data-filter="Struik" type="button">Struik</button>
-             <button class="filter-chip" data-filter="Sierplant" type="button">Sierplant</button>
-          </div>
-          <div class="seed-group-toolbar">
-            <div class="category-filters seed-filter-chips" id="seed-group-filters" role="group" aria-label="Filter op groep"></div>
-            <button id="btn-review-seed-groups" class="btn-secondary seed-scan-button" type="button" aria-haspopup="dialog">Groepen indelen</button>
-          </div>
+            <div class="seed-filter-options">
+              <div class="category-filters seed-filter-chips" id="category-filters" aria-label="Filter je zaden">
+                <button class="filter-chip active" data-filter="Alles" type="button">Alle zaden</button>
+                <button class="filter-chip" data-filter="Groente" type="button">Groente</button>
+                <button class="filter-chip" data-filter="Fruit" type="button">Fruit</button>
+                <button class="filter-chip" data-filter="Kruid" type="button">Kruid</button>
+                <button class="filter-chip" data-filter="Bloem" type="button">Bloem</button>
+                <button class="filter-chip" data-filter="Bloembol" type="button">Bloembol</button>
+                <button class="filter-chip" data-filter="Boom" type="button">Boom</button>
+                <button class="filter-chip" data-filter="Struik" type="button">Struik</button>
+                <button class="filter-chip" data-filter="Sierplant" type="button">Sierplant</button>
+              </div>
+              <div class="category-filters seed-filter-chips" id="seed-group-filters" role="group" aria-label="Filter op groep"></div>
+            </div>
+            <div class="seed-filter-actions">
+              <button id="btn-latest-seeds" class="btn-secondary seed-scan-button" type="button" aria-pressed="false" aria-controls="seed-grid" title="Toon laatst toegevoegde planten eerst">Laatst toegevoegd</button>
+              <button id="btn-review-seed-groups" class="btn-secondary seed-scan-button" type="button" aria-haspopup="dialog">Groepen indelen</button>
+              <button id="btn-add-zaden-top" class="btn-primary seed-add-button" type="button">Toevoegen</button>
+            </div>
           </div>
         </div>
         <div id="seeds-context-banner" class="hidden"></div>
@@ -713,7 +723,6 @@
              <button id="btn-detail-plant-next" class="detail-plant-nav-button" type="button" aria-label="Volgende plant" title="Volgende plant"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 5 7 7-7 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></button>
            </div>
            <div class="detail-page-actions">
-             <button id="btn-detail-delete" class="btn-action-chip" type="button">Zaad verwijderen</button>
              <button id="btn-detail-edit" class="btn-edit-detail" type="button"><svg class="plant-detail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.8 4.3 4.3-.8L20 7.5 16.5 4 4 16.5Zm10.8-10.8 3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Bewerk</span></button>
            </div>
         </div>
@@ -809,6 +818,42 @@
       </div>
     </div>
   </div>
+
+  <dialog id="garden-notes-dialog" aria-labelledby="garden-notes-title">
+    <div class="garden-notes-header">
+      <h2 id="garden-notes-title">Mijn notities</h2>
+      <form method="dialog"><button class="btn-secondary" aria-label="Notities sluiten">Sluiten</button></form>
+    </div>
+    <div id="garden-notes-overview">
+      <div class="garden-notes-toolbar">
+        <input id="garden-notes-search" type="search" aria-label="Zoek in je notities" placeholder="Zoek in je notities…">
+        <button id="garden-notes-add" class="btn-primary" type="button">+ Nieuwe notitie</button>
+      </div>
+      <p id="garden-notes-empty" role="status"></p>
+      <ul id="garden-notes-list"></ul>
+    </div>
+    <form id="garden-notes-form" hidden>
+      <div class="garden-notes-editor">
+        <div class="garden-notes-writing">
+          <label>Titel<input name="title" required maxlength="120"></label>
+          <label>Notitie<textarea name="body" rows="9"></textarea></label>
+        </div>
+        <section class="garden-notes-attachments" aria-labelledby="garden-notes-attachments-title">
+          <h3 id="garden-notes-attachments-title">Bijlagen</h3>
+          <div id="garden-notes-drop">
+            <label class="garden-notes-file-picker">Bestanden kiezen<input id="garden-notes-files" class="sr-only" type="file" multiple></label>
+            <p>Sleep of plak een afbeelding of bestand. Max. 20 MB per bestand.</p>
+          </div>
+          <ul id="garden-notes-attachments"></ul>
+        </section>
+      </div>
+      <p id="garden-notes-feedback" role="status" hidden></p>
+      <div class="garden-notes-toolbar">
+        <button id="garden-notes-back" class="btn-secondary" type="button">Annuleren</button>
+        <button class="btn-primary" type="submit">Opslaan</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="seed-group-review" aria-labelledby="seed-group-review-title">
     <form id="seed-group-review-form">

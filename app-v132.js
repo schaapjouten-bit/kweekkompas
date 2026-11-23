@@ -2,6 +2,7 @@
 console.log("🚀 KWEEKKOMPAS REPAIR ENGINE STARTING...");
 
 let isSettingsOpen = false;
+const SEED_FAVORITES_SETTING = 'kweek_seed_favorites_separate';
 
 // --- SHARED APP-SHELL THEME ---
 // Theme values are intentionally small and explicit so legacy preferences can
@@ -1267,6 +1268,7 @@ function getSettingsHTML() {
                         <button type="button" class="theme-choice" data-theme-choice="playful" aria-pressed="false" onclick="window.setAppTheme('playful')"><span class="theme-choice-swatch theme-choice-swatch-playful" aria-hidden="true"></span><span>Warm</span></button>
                     </div>
                     <div class="settings-layout-control"><div><strong>Werkruimtebreedte</strong></div><div class="settings-layout-buttons" role="group" aria-label="Werkruimtebreedte"><button class="layout-toggle-btn" type="button" data-layout-choice="standard" onclick="window.toggleLayoutWidth('standard')">Standaard</button><button class="layout-toggle-btn" type="button" data-layout-choice="wide" onclick="window.toggleLayoutWidth('wide')">Breed</button></div></div>
+                    <label class="settings-layout-control settings-favorites-option"><input id="seed-favorites-separate" type="checkbox" ${localStorage.getItem(SEED_FAVORITES_SETTING) !== 'false' ? 'checked' : ''}><strong>Favorieten tonen</strong></label>
                 </section>
 
                 ${window.KweekServices?.settingsHTML() || ''}
@@ -2525,6 +2527,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let activeCategory = 'Alles';
     let activeSeedGroup = '';
     let activeSeedSummary = 'all';
+    let showSeparateSeedFavorites = localStorage.getItem(SEED_FAVORITES_SETTING) !== 'false';
+    let seedFavoritesCollapsed = false;
     let newestSeedsFirst = false;
     let activePlantStatus = null;
     let dashboardPlantStatus = 'Groeit';
@@ -3238,7 +3242,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const detailPlantNavigation = document.getElementById('detail-plant-navigation');
     const btnDetailPlantPrev = document.getElementById('btn-detail-plant-prev');
     const btnDetailPlantNext = document.getElementById('btn-detail-plant-next');
-    const btnDetailDelete = document.getElementById('btn-detail-delete');
     const btnQuickPhoto = document.getElementById('btn-quick-photo-search');
     if (inputNaam && btnQuickPhoto) {
         btnQuickPhoto.onclick = () => {
@@ -3387,13 +3390,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         seeds = seeds.filter(item => item.id !== seed.id);
         switchView('list');
         showToast('Zaadje verwijderd! 🗑️');
-    }
-
-    if (btnDetailDelete) {
-        btnDetailDelete.onclick = () => {
-            const seed = seeds.find(item => String(item.id) === viewDetail.dataset.currentSeedId);
-            return deleteSeedFromView(seed, btnDetailDelete);
-        };
     }
 
     async function saveCurrentForm() {
@@ -3563,6 +3559,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        if (!showSeparateSeedFavorites) {
+            items.forEach(seed => seedGrid.appendChild(createSeedCard(seed)));
+            return;
+        }
+
         const favorites = items.filter(seed => seed.isFavorite);
         const others = items.filter(seed => !seed.isFavorite);
 
@@ -3579,11 +3580,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             header.style.gridColumn = '1 / -1';
             header.textContent = label;
             seedGrid.appendChild(header);
+            return header;
         };
 
         if (favorites.length > 0) {
-            addSectionHeader('Favorieten', 'fav');
-            favorites.forEach(seed => seedGrid.appendChild(createSeedCard(seed)));
+            const header = addSectionHeader('Favorieten', 'fav');
+            const canCollapse = activeSeedSummary === 'all' && activeMonthFilter === null && !searchInput?.value.trim();
+            if (canCollapse) {
+                const toggle = document.createElement('button');
+                toggle.type = 'button';
+                toggle.id = 'seed-favorites-toggle';
+                toggle.className = 'seed-favorites-toggle';
+                toggle.textContent = 'Favorieten';
+                toggle.setAttribute('aria-expanded', String(!seedFavoritesCollapsed));
+                toggle.addEventListener('click', () => {
+                    seedFavoritesCollapsed = !seedFavoritesCollapsed;
+                    applyFilters();
+                    document.getElementById('seed-favorites-toggle')?.focus();
+                });
+                header.classList.add('collapsible');
+                header.replaceChildren(toggle);
+            }
+            if (!canCollapse || !seedFavoritesCollapsed) {
+                favorites.forEach(seed => seedGrid.appendChild(createSeedCard(seed)));
+            }
             if (others.length > 0) addSectionHeader('Overige zaden', '');
         }
         others.forEach(seed => seedGrid.appendChild(createSeedCard(seed)));
@@ -4272,6 +4292,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 carousel.appendChild(carouselItem);
             });
             gallerySection.appendChild(carousel);
+
+            const plantCard = make('button', 'detail-gallery-plant-card');
+            plantCard.type = 'button';
+            plantCard.setAttribute('aria-label', `Open plantenkaart van ${text(seed.naam)} in de fotogalerij`);
+            const plantCardImage = make('img');
+            plantCardImage.src = safeImages[0].url;
+            plantCardImage.alt = '';
+            plantCardImage.loading = 'lazy';
+            plantCard.appendChild(plantCardImage);
+            plantCard.addEventListener('click', () => openLightbox(safeImages, 0));
+            gallerySection.appendChild(plantCard);
+
             summaryColumn.appendChild(gallerySection);
         }
 
@@ -4573,11 +4605,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'nutrition-card';
-            const name = document.createElement('strong');
-            name.textContent = product.name;
             const details = document.createElement('span');
-            details.textContent = [product.brand, product.type].filter(Boolean).join(' · ');
-            button.append(name, details);
+            details.className = 'nutrition-card-details';
+            if (product.brand) {
+                const brand = document.createElement('span');
+                brand.className = 'nutrition-card-brand';
+                brand.textContent = product.brand;
+                details.append(brand);
+            }
+            const name = document.createElement('strong');
+            name.className = 'nutrition-card-name';
+            name.textContent = product.name;
+            details.append(name);
+            if (product.type) {
+                const type = document.createElement('span');
+                type.className = 'nutrition-card-type';
+                type.textContent = product.type;
+                details.append(type);
+            }
+            const arrow = document.createElement('span');
+            arrow.className = 'nutrition-card-arrow';
+            arrow.setAttribute('aria-hidden', 'true');
+            arrow.textContent = '→';
+            button.append(details, arrow);
             button.addEventListener('click', () => openNutrition(product));
             list.append(button);
         }
@@ -4601,12 +4651,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('nutrition-delete').hidden = !product;
         document.getElementById('nutrition-feedback').textContent = '';
         document.getElementById('nutrition-lookup-panel').open = false;
-        document.getElementById('nutrition-lookup-url').value = '';
+        document.getElementById('nutrition-range-panel').open = false;
         document.getElementById('nutrition-lookup-text').value = '';
         nutritionDialog.showModal();
     }
     document.getElementById('nutrition-add').addEventListener('click', () => openNutrition());
     document.getElementById('nutrition-cancel').addEventListener('click', () => nutritionDialog.close());
+    function isNutritionBackdrop(event) {
+        if (event.target !== nutritionDialog) return false;
+        const { left, right, top, bottom } = nutritionDialog.getBoundingClientRect();
+        return event.clientX < left || event.clientX > right || event.clientY < top || event.clientY > bottom;
+    }
+    let nutritionStartedOnBackdrop = false;
+    nutritionDialog.addEventListener('pointerdown', event => {
+        nutritionStartedOnBackdrop = isNutritionBackdrop(event);
+    });
+    nutritionDialog.addEventListener('click', event => {
+        if (nutritionStartedOnBackdrop && isNutritionBackdrop(event)) nutritionDialog.close();
+        nutritionStartedOnBackdrop = false;
+    });
     document.getElementById('nutrition-delete').addEventListener('click', () => {
         if (!window.confirm('Dit voedingsproduct verwijderen?')) return;
         try {
@@ -4633,7 +4696,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     const nutritionFeedback = document.getElementById('nutrition-feedback');
     const nutritionLookup = document.getElementById('nutrition-lookup');
-    const nutritionUseSource = document.getElementById('nutrition-use-source');
     async function nutritionSearchRequest(body) {
         const response = await fetch('/api/product-search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const data = await response.json();
@@ -4644,7 +4706,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const brand = nutritionForm.elements.brand.value.trim();
         const name = nutritionForm.elements.name.value.trim();
         if (!brand || !name) { nutritionFeedback.textContent = 'Vul eerst merk en productnaam in.'; return; }
-        nutritionLookup.disabled = nutritionUseSource.disabled = true;
+        nutritionLookup.disabled = true;
         nutritionFeedback.textContent = 'Productinformatie ophalen…';
         try {
             const text = suppliedText.trim() || (link ? (await nutritionSearchRequest({ action: 'page', url: link })).text : '');
@@ -4663,19 +4725,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                     count++;
                 }
             }
-            if (link && !nutritionForm.elements.source.value.trim()) nutritionForm.elements.source.value = link;
             nutritionFeedback.textContent = count ? `${count} velden aangevuld. Controleer de gegevens en sla de kaart zelf op.` : alreadyFilled === fields.length ? 'De velden zijn al ingevuld. Bestaande gegevens zijn behouden.' : text ? 'Geen letterlijke productspecificaties voor de lege velden gevonden. Controleer de bron of probeer etikettekst.' : 'Geen aanvullende informatie voor de lege velden gevonden. Je kunt een productlink of etikettekst toevoegen.';
         } catch (error) {
             nutritionFeedback.textContent = error.message || 'Productinformatie ophalen is niet gelukt.';
         } finally {
-            nutritionLookup.disabled = nutritionUseSource.disabled = false;
+            nutritionLookup.disabled = false;
         }
     }
-    nutritionLookup.addEventListener('click', () => applyNutritionSource());
-    nutritionUseSource.addEventListener('click', () => {
-        const link = document.getElementById('nutrition-lookup-url').value.trim();
+    nutritionLookup.addEventListener('click', () => {
+        const link = nutritionForm.elements.source.value.trim();
         const text = document.getElementById('nutrition-lookup-text').value;
-        if (!link && !text.trim()) { nutritionFeedback.textContent = 'Vul een productlink in of plak etikettekst.'; return; }
         if (link && !/^https:\/\//i.test(link)) { nutritionFeedback.textContent = 'Gebruik een HTTPS-productlink.'; return; }
         applyNutritionSource(link, text);
     });
@@ -4746,6 +4805,251 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (document.body.classList.contains('shell-menu-open')) closeShellMenu();
         toggleSettingsPanel_REPAIR_V131();
     });
+
+    const notesDialog = document.getElementById('garden-notes-dialog');
+    if (notesDialog) {
+        const overview = document.getElementById('garden-notes-overview');
+        const search = document.getElementById('garden-notes-search');
+        const list = document.getElementById('garden-notes-list');
+        const empty = document.getElementById('garden-notes-empty');
+        const form = document.getElementById('garden-notes-form');
+        const feedback = document.getElementById('garden-notes-feedback');
+        const title = form.elements.namedItem('title');
+        const body = form.elements.namedItem('body');
+        const addNote = document.getElementById('garden-notes-add');
+        const fileInput = document.getElementById('garden-notes-files');
+        const dropZone = document.getElementById('garden-notes-drop');
+        const attachmentList = document.getElementById('garden-notes-attachments');
+        const backButton = document.getElementById('garden-notes-back');
+        const saveButton = form.querySelector('button[type="submit"]');
+        const dateFormat = new Intl.DateTimeFormat('nl-NL', { dateStyle: 'medium' });
+        const previewTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif', 'image/bmp']);
+        let editingId = null;
+        let notes = [];
+        let attachments = [];
+        let attachmentUrls = [];
+        let storagePromise;
+        let openCount = 0;
+
+        function openNotesStorage() {
+            if (!storagePromise) {
+                storagePromise = new Promise((resolve, reject) => {
+                    const request = indexedDB.open('kweek-garden-notes', 1);
+                    request.onupgradeneeded = () => {
+                        const store = request.result.createObjectStore('notes', { keyPath: 'id' });
+                        try {
+                            const previous = JSON.parse(localStorage.getItem('kweek_garden_notes') ?? '[]');
+                            for (const note of previous) store.put(note);
+                        } catch {
+                            request.transaction.abort();
+                        }
+                    };
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                }).catch(error => {
+                    storagePromise = undefined;
+                    throw error;
+                });
+            }
+            return storagePromise;
+        }
+
+        async function useNotesStore(mode, action) {
+            const database = await openNotesStorage();
+            return new Promise((resolve, reject) => {
+                const transaction = database.transaction('notes', mode);
+                transaction.onabort = () => reject(transaction.error);
+                const request = action(transaction.objectStore('notes'));
+                transaction.oncomplete = () => resolve(request.result);
+            });
+        }
+
+        function clearAttachmentUrls() {
+            attachmentUrls.forEach(url => URL.revokeObjectURL(url));
+            attachmentUrls = [];
+        }
+
+        function showAttachments(focusRemoveAt) {
+            clearAttachmentUrls();
+            attachmentList.replaceChildren();
+            attachments.forEach((file, index) => {
+                const item = document.createElement('li');
+                const url = URL.createObjectURL(file);
+                attachmentUrls.push(url);
+                if (previewTypes.has(file.type)) {
+                    const image = document.createElement('img');
+                    image.src = url;
+                    image.alt = '';
+                    item.append(image);
+                }
+                const download = document.createElement('a');
+                download.href = url;
+                download.download = file.name;
+                download.textContent = file.name;
+                download.title = `Download ${file.name}`;
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'btn-secondary';
+                remove.textContent = '×';
+                remove.setAttribute('aria-label', `${file.name} verwijderen`);
+                remove.addEventListener('click', () => {
+                    attachments.splice(index, 1);
+                    showAttachments(index);
+                });
+                item.append(download, remove);
+                attachmentList.append(item);
+            });
+            if (focusRemoveAt !== undefined) {
+                const buttons = attachmentList.querySelectorAll('button');
+                (buttons[Math.min(focusRemoveAt, buttons.length - 1)] ?? fileInput).focus();
+            }
+        }
+
+        function addAttachments(files) {
+            if (saveButton.disabled) return;
+            let oversized = 0;
+            for (const file of files) {
+                if (file.size > 20 * 1024 * 1024) {
+                    oversized++;
+                    continue;
+                }
+                attachments.push(file);
+            }
+            feedback.textContent = oversized ? 'Bestanden groter dan 20 MB zijn overgeslagen.' : '';
+            feedback.hidden = !oversized;
+            showAttachments();
+        }
+
+        function openNote(note) {
+            editingId = note?.id ?? null;
+            title.value = note?.title ?? '';
+            body.value = note?.body ?? '';
+            attachments = [...(note?.attachments ?? [])];
+            showAttachments();
+            feedback.hidden = true;
+            overview.hidden = true;
+            form.hidden = false;
+            title.focus();
+        }
+
+        function showNotes() {
+            clearAttachmentUrls();
+            attachmentList.replaceChildren();
+            attachments = [];
+            form.hidden = true;
+            overview.hidden = false;
+            list.replaceChildren();
+            const query = search.value.trim().toLocaleLowerCase('nl-NL');
+            const matches = notes.filter(note => [note.title, note.body, ...(note.attachments ?? []).map(file => file.name)]
+                .some(value => value?.toLocaleLowerCase('nl-NL').includes(query)));
+            empty.hidden = matches.length > 0;
+            empty.textContent = notes.length ? 'Geen notities gevonden.' : 'Je hebt nog geen notities.';
+            for (const note of matches) {
+                const item = document.createElement('li');
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'garden-note-card';
+                const name = document.createElement('strong');
+                name.textContent = note.title;
+                const meta = document.createElement('span');
+                meta.className = 'garden-note-meta';
+                const count = note.attachments?.length ?? 0;
+                meta.textContent = `${dateFormat.format(note.updatedAt)}${count ? ` · ${count} ${count === 1 ? 'bijlage' : 'bijlagen'}` : ''}`;
+                button.append(name);
+                if (note.body?.trim()) {
+                    const snippet = document.createElement('span');
+                    snippet.className = 'garden-note-snippet';
+                    snippet.textContent = note.body.trim();
+                    button.append(snippet);
+                }
+                button.append(meta);
+                button.addEventListener('click', () => openNote(note));
+                item.append(button);
+                list.append(item);
+            }
+        }
+
+        document.getElementById('shell-notes-button')?.addEventListener('click', async () => {
+            if (document.body.classList.contains('shell-menu-open')) closeShellMenu();
+            const opening = ++openCount;
+            search.value = '';
+            search.disabled = addNote.disabled = true;
+            notes = [];
+            showNotes();
+            empty.textContent = 'Notities laden…';
+            notesDialog.showModal();
+            try {
+                const stored = await useNotesStore('readonly', store => store.getAll());
+                if (!notesDialog.open || opening !== openCount) return;
+                notes = stored.sort((a, b) => b.updatedAt - a.updatedAt);
+                search.disabled = addNote.disabled = false;
+                showNotes();
+            } catch {
+                if (opening === openCount) empty.textContent = 'Je notities konden niet worden geladen.';
+            }
+        });
+        notesDialog.addEventListener('close', clearAttachmentUrls);
+        search.addEventListener('input', showNotes);
+        addNote.addEventListener('click', () => openNote());
+        backButton.addEventListener('click', () => {
+            showNotes();
+            search.focus();
+        });
+        fileInput.addEventListener('change', () => {
+            addAttachments(fileInput.files);
+            fileInput.value = '';
+        });
+        form.addEventListener('paste', event => {
+            const files = event.clipboardData?.files;
+            if (!files?.length) return;
+            if (!event.clipboardData.getData('text/plain')) event.preventDefault();
+            addAttachments(files);
+        });
+        form.addEventListener('dragover', event => {
+            if (!event.dataTransfer.types.includes('Files')) return;
+            event.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+        form.addEventListener('dragleave', event => {
+            if (!form.contains(event.relatedTarget)) dropZone.classList.remove('drag-over');
+        });
+        form.addEventListener('drop', event => {
+            if (!event.dataTransfer.files.length) return;
+            event.preventDefault();
+            dropZone.classList.remove('drag-over');
+            addAttachments(event.dataTransfer.files);
+        });
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            if (saveButton.disabled) return;
+            const name = title.value.trim();
+            if (!name) {
+                feedback.textContent = 'Geef je notitie een titel.';
+                feedback.hidden = false;
+                title.focus();
+                return;
+            }
+            const opening = openCount;
+            const note = { id: editingId ?? crypto.randomUUID(), title: name, body: body.value, attachments: [...attachments], updatedAt: Date.now() };
+            saveButton.disabled = backButton.disabled = true;
+            try {
+                await useNotesStore('readwrite', store => store.put(note));
+            } catch {
+                if (notesDialog.open && opening === openCount) {
+                    feedback.textContent = 'Opslaan is niet gelukt. Je tekst en bijlagen staan nog in het venster.';
+                    feedback.hidden = false;
+                }
+                return;
+            } finally {
+                saveButton.disabled = backButton.disabled = false;
+            }
+            if (!notesDialog.open || opening !== openCount) return;
+            notes = [note, ...notes.filter(entry => entry.id !== note.id)];
+            search.value = '';
+            showNotes();
+            search.focus();
+        });
+    }
 
     // MOBILE NAV LISTENERS (Safe & Robust)
     document.querySelectorAll('.mobile-nav-item').forEach(btn => {
@@ -5925,7 +6229,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             seedGroups.push(group);
             addSeedGroupChip(group);
         }
-        const q = searchInput.value.toLowerCase();
+        const q = searchInput.value.trim().toLowerCase();
         let filtered = getSeedSummarySelection(activeSeedSummary);
         if (activePlantStatus) filtered = filtered.filter(s => activePlantStatus === 'Actief' ? activeGardenStatuses.includes(s.status) : s.status === activePlantStatus);
         const currentMonth = new Date().getMonth();
@@ -5946,8 +6250,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 3. Search query
         if (q) {
-            filtered = filtered.filter(s => s.naam.toLowerCase().includes(q)
-                || (Array.isArray(s.tags) && s.tags.some(tag => typeof tag === 'string' && tag.toLowerCase().includes(q))));
+            filtered = filtered.filter(seed => [seed.naam, seed.ervaringen, ...(Array.isArray(seed.tags) ? seed.tags : [])]
+                .some(value => typeof value === 'string' && value.toLowerCase().includes(q)));
         }
 
         if (newestSeedsFirst) filtered = [...filtered].sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
@@ -5978,6 +6282,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     searchInput.oninput = applyFilters;
+    document.addEventListener('change', event => {
+        if (event.target.id !== 'seed-favorites-separate') return;
+        showSeparateSeedFavorites = event.target.checked;
+        seedFavoritesCollapsed = false;
+        localStorage.setItem(SEED_FAVORITES_SETTING, String(showSeparateSeedFavorites));
+        applyFilters();
+    });
     const latestSeedsButton = document.getElementById('btn-latest-seeds');
     if (latestSeedsButton) latestSeedsButton.onclick = () => {
         newestSeedsFirst = !newestSeedsFirst;
