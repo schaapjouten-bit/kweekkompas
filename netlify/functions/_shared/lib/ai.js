@@ -7,15 +7,21 @@ const { ollamaBase } = require('./ollama');
 const geminiFreeAPI = require('./gemini-free');
 const contract = require('../../../../ai-contract');
 const providers = ['gemini', 'gemini-free', 'ollama', 'openai-compatible', 'chatgpt', 'openai'];
+function safeRead(fn, fallback) {
+    try { return fn(); }
+    catch { return fallback; }
+}
 function providerConfig() {
-    const localAPI = env('KWEEK_LOCAL_DEV') === 'true' && globalThis.KweekLocalAPI;
-    const custom = localAPI ? localAPI.get() : {};
+    const isLocal = env('KWEEK_LOCAL_DEV') === 'true';
+    const localAPI = isLocal && globalThis.KweekLocalAPI;
+    const custom = localAPI ? safeRead(() => localAPI.get(), {}) : {};
+    const openaiKey = isLocal && globalThis.KweekOpenAIPersonal ? safeRead(() => globalThis.KweekOpenAIPersonal.getKey(), '') : '';
     return {
         gemini: { label: 'Gemini', configured: Boolean(env('GEMINI_API_KEY')), model: env('GEMINI_MODEL') || '', models: [] },
-        openai: { label: 'GPT – eigen sleutel', configured: Boolean(env('KWEEK_LOCAL_DEV') === 'true' && globalThis.KweekOpenAIPersonal?.getKey()), model: 'gpt-5-mini', models: ['gpt-5-mini'] },
+        openai: { label: 'GPT – eigen sleutel', configured: Boolean(openaiKey), model: 'gpt-5-mini', models: ['gpt-5-mini'] },
         'gemini-free': { label: 'Gemini – Free tier', available: true, configured: geminiFreeAPI.configured(), model: geminiFreeAPI.MODEL, models: [] },
-        chatgpt: { label: 'ChatGPT', localAvailable: Boolean(env('KWEEK_LOCAL_DEV') === 'true' && globalThis.KweekChatGPT), configured: Boolean(env('KWEEK_LOCAL_DEV') === 'true' && globalThis.KweekChatGPT?.status().connected), model: '', models: [] },
-        ollama: { label: 'Lokale AI (Ollama)', configured: Boolean(env('OLLAMA_BASE_URL') || env('KWEEK_LOCAL_DEV') === 'true'), model: env('OLLAMA_MODEL') || 'llama3:latest', models: (env('OLLAMA_MODELS') || '').split(',').filter(Boolean) },
+        chatgpt: { label: 'ChatGPT', localAvailable: Boolean(isLocal && globalThis.KweekChatGPT), configured: Boolean(isLocal && safeRead(() => globalThis.KweekChatGPT?.status().connected, false)), model: '', models: [] },
+        ollama: { label: 'Lokale AI (Ollama)', configured: Boolean(env('OLLAMA_BASE_URL') || isLocal), model: env('OLLAMA_MODEL') || 'llama3:latest', models: (env('OLLAMA_MODELS') || '').split(',').filter(Boolean) },
         'openai-compatible': { label: 'Eigen API', localAvailable: Boolean(localAPI), configured: Boolean(custom.address), model: custom.model || '', models: [] }
     };
 }

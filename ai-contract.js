@@ -118,6 +118,17 @@ Output uitsluitend geldig JSON volgens dit schema:
   ]
 }`;
     const invalid = (status, message) => { throw Object.assign(new Error(message), { status }); };
+    const MAX_PROMPT_OBJECT_BYTES = 16_000;
+    function serializePromptObject(value, label, maxBytes = MAX_PROMPT_OBJECT_BYTES) {
+        if (value === undefined || value === null) return '{}';
+        if (typeof value !== 'object' || Array.isArray(value)) invalid(400, `De meegestuurde ${label} zijn ongeldig.`);
+        let serialized;
+        try { serialized = JSON.stringify(value); } catch { invalid(400, `De meegestuurde ${label} zijn ongeldig.`); }
+        if (new TextEncoder().encode(serialized).length > maxBytes) {
+            invalid(400, `De meegestuurde ${label} zijn te groot voor de AI-aanvraag (maximaal ${Math.round(maxBytes / 1000)} KB). Kort de gegevens in en probeer opnieuw.`);
+        }
+        return serialized;
+    }
     function gardenContextNote(body) {
         const source = body.gardenContext;
         if (!source || typeof source !== 'object' || Array.isArray(source)) return '';
@@ -142,12 +153,14 @@ Output uitsluitend geldig JSON volgens dit schema:
         }
         if (route === 'seed-info') {
             if (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 300) invalid(400, 'Vul een plantnaam in.');
-            if (body.nutritionOnly === true) return { system: nutritionSystem, prompt: JSON.stringify({ plant: body.name.trim(), bestaandeGegevens: body.existingFields || {} }) + gardenContextNote(body) };
-            return { system: seedSystem, prompt: 'Plant/zaad: ' + body.name + '. Bestaande velden: ' + JSON.stringify(body.existingFields || {}) + gardenContextNote(body) };
+            const existing = serializePromptObject(body.existingFields, 'plantgegevens');
+            if (body.nutritionOnly === true) return { system: nutritionSystem, prompt: `{"plant":${JSON.stringify(body.name.trim())},"bestaandeGegevens":${existing}}` + gardenContextNote(body) };
+            return { system: seedSystem, prompt: 'Plant/zaad: ' + body.name + '. Bestaande velden: ' + existing + gardenContextNote(body) };
         }
         if (route === 'tuinassistent') {
             if (typeof body.question !== 'string' || !body.question.trim() || body.question.length > 4000) invalid(400, 'Vul een korte tuinvraag in.');
-            return { system: gardenSystem, prompt: 'Vraag: ' + body.question + '. Tuincontext: ' + JSON.stringify(body.context || {}) + gardenContextNote(body) };
+            const context = serializePromptObject(body.context, 'tuincontext');
+            return { system: gardenSystem, prompt: 'Vraag: ' + body.question + '. Tuincontext: ' + context + gardenContextNote(body) };
         }
         invalid(400, 'Onbekende AI-hulp.');
     }

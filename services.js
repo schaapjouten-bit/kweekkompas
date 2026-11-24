@@ -138,6 +138,19 @@
         void pending.then(clear, clear);
         return pending;
     }
+    function loadConfig() {
+        if (config) return Promise.resolve(config);
+        if (!configPromise) {
+            configPromise = request('ai-config').then(value => {
+                config = value;
+                return value;
+            }).catch(error => {
+                configPromise = null;
+                throw error;
+            });
+        }
+        return configPromise;
+    }
     async function updateDashboardProvider() {
         readPreferences();
         const button = document.getElementById('home-ai-provider');
@@ -168,8 +181,8 @@
         };
         display();
         if (!config) {
-            configPromise ||= request('ai-config').then(value => { config = value; }).catch(() => {});
-            await configPromise; display();
+            await loadConfig().catch(() => {});
+            display();
         }
     }
     async function request(route, body, { signal } = {}) {
@@ -1255,8 +1268,7 @@
             })();
         }
         try {
-            configPromise ||= request('ai-config').then(value => { config = value; });
-            await configPromise;
+            await loadConfig();
             updateDashboardProvider();
             if (!providerInput.isConnected) return;
             if (providerInput.value === 'gemini-free') { void checkGeminiFree(panel); return; }

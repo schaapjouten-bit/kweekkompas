@@ -47,8 +47,17 @@
                     const db = event.target.result;
                     if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'key' });
                 };
-                request.onsuccess = event => resolve(event.target.result);
+                request.onsuccess = event => {
+                    const db = event.target.result;
+                    db.onclose = () => { databasePromise = null; };
+                    db.onversionchange = () => { db.close(); databasePromise = null; };
+                    resolve(db);
+                };
                 request.onerror = event => reject(event.target.error || new Error('Lokale opslag is niet beschikbaar.'));
+                request.onblocked = () => reject(new Error('Lokale opslag is niet beschikbaar.'));
+            }).catch(error => {
+                databasePromise = null;
+                throw error;
             });
             return databasePromise;
         }
@@ -282,6 +291,7 @@
                 } catch {
                     initialized = true;
                     persistenceWarning = true;
+                    initPromise = null;
                 }
                 render();
                 return statusMessage();

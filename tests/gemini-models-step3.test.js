@@ -101,15 +101,15 @@ test('invalid credential: one attempt, safe error, no retry after five minutes',
         assert.equal(attempts, 1);
     } finally { Date.now = oldNow; }
 }));
-test('network and malformed replies give one cached, clear error; missing key makes no request', () => isolated(async (_, handler) => {
+test('network and malformed replies clear cache for retry; missing key makes no request', () => isolated(async (_, handler) => {
     let attempts = 0;
     global.fetch = async () => { attempts++; throw new Error('private external detail'); };
     const result = await handler({ httpMethod: 'GET' });
     assert.equal(result.statusCode, 502); assert.doesNotMatch(result.body, /private external detail/);
-    await handler({ httpMethod: 'GET' }); assert.equal(attempts, 1);
+    await handler({ httpMethod: 'GET' }); assert.equal(attempts, 2);
     delete process.env.GEMINI_API_KEY;
     assert.equal((await handler({ httpMethod: 'GET' })).statusCode, 503);
-    assert.equal(attempts, 1);
+    assert.equal(attempts, 2);
     process.env.GEMINI_API_KEY = 'different-dummy-secret';
     global.fetch = async () => Response.json({ models: {} });
     assert.equal((await handler({ httpMethod: 'GET' })).statusCode, 502);

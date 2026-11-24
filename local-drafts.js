@@ -6,8 +6,16 @@
     const open = () => database ||= new Promise((resolve, reject) => {
         const request = indexedDB.open('KweekKompasDrafts', 1);
         request.onupgradeneeded = () => request.result.createObjectStore('media');
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(new Error('Conceptfoto’s konden niet worden bewaard.'));
+        request.onsuccess = () => {
+            const db = request.result;
+            db.onclose = () => { database = null; };
+            db.onversionchange = () => { db.close(); database = null; };
+            resolve(db);
+        };
+        request.onerror = request.onblocked = () => reject(new Error('Conceptfoto’s konden niet worden bewaard.'));
+    }).catch(error => {
+        database = null;
+        throw error;
     });
     const media = async (key, action, value) => {
         const db = await open();

@@ -89,6 +89,7 @@ function getGeminiModels() {
     if (!cached || cached.key !== key || cached.expires <= Date.now()) {
         const entry = { key, expires: Date.now() + 5 * 60_000 };
         entry.promise = fetchModels(key, entry).catch(error => {
+            if (cached === entry && entry.expires !== Infinity) cached = null;
             throw error instanceof HttpError ? error : new HttpError(502, 'Gemini-modellenlijst niet beschikbaar. Je bestaande keuze blijft behouden.');
         });
         cached = entry;

@@ -44,7 +44,9 @@ test('registration, confirmation, reset, recovery and error distinctions', async
         const confirm = await handler(event({ action: 'callback', type: 'email', token_hash: 'valid-fixture-hash' }));
         assert.equal(JSON.parse(confirm.body).recovery, false);
         const denied = await handler(event({ action: 'password', password: 'new-password' }, jar(confirm))); assert.equal(denied.statusCode, 401);
-        const recovery = await handler(event({ action: 'callback', type: 'recovery', access_token: fixture.tokens.a, refresh_token: 'refresh-a' }));
+        const setSessionRecovery = await handler(event({ action: 'callback', type: 'recovery', access_token: fixture.tokens.a, refresh_token: 'refresh-a' }));
+        assert.equal(setSessionRecovery.statusCode, 400); assert.equal(setSessionRecovery.multiValueHeaders, undefined);
+        const recovery = await handler(event({ action: 'callback', type: 'recovery', token_hash: 'valid-fixture-hash' }));
         assert.equal(recovery.statusCode, 200); assert.equal(JSON.parse(recovery.body).recovery, true); assert.doesNotMatch(recovery.body, /access_token|refresh_token/);
         const changed = await handler(event({ action: 'password', password: 'new-password' }, jar(recovery))); assert.equal(changed.statusCode, 200);
         assert.ok(changed.multiValueHeaders['Set-Cookie'].some(c => c.startsWith('kk_recovery=;') && c.includes('Max-Age=0')));
