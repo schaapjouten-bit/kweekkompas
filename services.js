@@ -2,6 +2,7 @@
 (() => {
     const gardenStorage = window.KweekScope?.storage || localStorage;
     const isRegularUser = () => window.KweekScope?.role === 'user';
+    const isHostedAdmin = () => !isLoopback && window.KweekScope?.role === 'admin';
     const PREFS_KEY = 'kweekkompas_ai';
     const PROVIDER_MODELS_KEY = 'kweekkompas_ai_provider_models';
     const OPENAI_MODEL = 'gpt-5-mini';
@@ -333,7 +334,7 @@
             <form id="ai-settings-form" class="service-form">
                 <div class="settings-form-grid">
                     <label class="settings-field"><span>Provider</span><select id="ai-provider">
-                        <option value="openai" ${isLoopback ? '' : 'hidden disabled'}>GPT – via API</option>
+                        <option value="openai" ${isLoopback || isHostedAdmin() ? '' : 'hidden disabled'}>GPT – via API</option>
                         <option value="gemini">Gemini – via API</option>
                         <option value="gemini-free">Gemini – Free tier</option>
                         <option value="ollama">Ollama</option>
@@ -581,13 +582,13 @@
         const model = panel.querySelector('#ai-model');
         const select = panel.querySelector('#ai-gemini-model');
         const isFree = provider === 'gemini-free';
-        const isPersonal = provider === 'gemini' && isLoopback;
-        const isOpenAI = provider === 'openai' && isLoopback;
+        const isPersonal = provider === 'gemini' && (isLoopback || isHostedAdmin());
+        const isOpenAI = provider === 'openai' && (isLoopback || isHostedAdmin());
         const isGemini = provider === 'gemini' || isFree;
         const freeKey = panel.querySelector('#gemini-free-key');
         if (panel._geminiKeyProvider !== provider) {
             freeKey.value = '';
-            if (isLoopback && (isPersonal || panel._geminiKeyProvider === 'gemini')) say('ai-save-status', '', panel);
+            if (isPersonal || panel._geminiKeyProvider === 'gemini') say('ai-save-status', '', panel);
         }
         panel._geminiKeyProvider = provider;
         providerInput.form.classList.toggle('gemini-personal-form', isPersonal || isOpenAI);
@@ -751,10 +752,16 @@
         const version = panel._geminiPersonalVersion = (panel._geminiPersonalVersion || 0) + 1;
         const current = () => panel.isConnected && panel._geminiPersonalVersion === version && panel.querySelector('#ai-provider').value === 'gemini';
         try {
-            const value = await request('gemini-personal', { action: 'get' });
+            const value = isLoopback
+                ? await request('gemini-personal', { action: 'get' })
+                : await request('admin-personal-ai', { action: 'get' }).then(result => ({
+                    keyConfigured: result.geminiConfigured,
+                    legacyKeyAvailable: Boolean(legacyGeminiKey()),
+                    usingLegacyKey: useHostedLegacyGeminiKey()
+                }));
             if (current()) showGeminiPersonalMetadata(panel, value);
         } catch (error) {
-            if (current()) say('ai-save-status', error.status ? error.message : 'De lokale Gemini-instellingen zijn niet bereikbaar.', panel);
+            if (current()) say('ai-save-status', error.status ? error.message : 'De persoonlijke Gemini-instellingen zijn niet bereikbaar.', panel);
         }
     }
     async function saveGeminiPersonal(panel, providerInput, model, saveVersion) {
@@ -766,9 +773,24 @@
         const legacyChoice = panel.querySelector('#gemini-use-legacy-key');
         const submit = panel.querySelector('#ai-settings-form button[type="submit"]');
         providerInput.disabled = modelInput.disabled = keyInput.disabled = legacyChoice.disabled = submit.disabled = true;
-        say('ai-save-status', `Verbinding met ${model} testen…`, panel);
+        const useHostedLegacy = !isLoopback && legacyGeminiKey() && !legacyChoice.closest('label').hidden && legacyChoice.checked && !keyInput.value.trim();
+        say('ai-save-status', useHostedLegacy ? 'Instelling opslaan…' : `Verbinding met ${model} testen…`, panel);
         try {
-            const value = await request('gemini-personal', { action: 'save-test', model, apiKey: keyInput.value, useLegacyKey: !legacyChoice.closest('label').hidden && legacyChoice.checked });
+            if (useHostedLegacy) {
+                sessionStorage.setItem(USE_LEGACY_GEMINI_KEY, 'true');
+                const next = { provider: 'gemini', model };
+                storeProviderChoice(next); prefs = next; updateDashboardProvider();
+                say('ai-save-status', 'Opgeslagen voor de tuinassistent en de zadenhulp.', panel);
+                return;
+            }
+            const value = isLoopback
+                ? await request('gemini-personal', { action: 'save-test', model, apiKey: keyInput.value, useLegacyKey: !legacyChoice.closest('label').hidden && legacyChoice.checked })
+                : await request('admin-personal-ai', { action: 'save-test', provider: 'gemini', model, apiKey: keyInput.value }).then(result => ({
+                    ...result,
+                    legacyKeyAvailable: Boolean(legacyGeminiKey()),
+                    usingLegacyKey: false
+                }));
+            if (!isLoopback && legacyGeminiKey()) sessionStorage.setItem(USE_LEGACY_GEMINI_KEY, 'false');
             if (saveVersion !== providerSaveVersion) return;
             if (panel.isConnected && providerInput.value === 'gemini') showGeminiPersonalMetadata(panel, value);
             const next = { provider: 'gemini', model };
@@ -778,7 +800,7 @@
             updateDashboardProvider();
             say('ai-save-status', value.message, panel);
         } catch (error) {
-            say('ai-save-status', error.status ? error.message : 'De lokale Gemini-instellingen zijn niet bereikbaar.', panel);
+            say('ai-save-status', error.status ? error.message : 'De persoonlijke Gemini-instellingen zijn niet bereikbaar.', panel);
         } finally {
             keyInput.value = '';
             panel._geminiPersonalTesting = false;
@@ -788,13 +810,15 @@
     }
     async function loadOpenAIPersonal(panel) {
         try {
-            const result = await request('openai-personal', { action: 'get' });
+            const result = isLoopback
+                ? await request('openai-personal', { action: 'get' })
+                : await request('admin-personal-ai', { action: 'get' }).then(data => ({ keyConfigured: data.openaiConfigured }));
             if (!panel.isConnected || panel.querySelector('#ai-provider').value !== 'openai') return;
             const input = panel.querySelector('#openai-personal-key');
             input.placeholder = result.keyConfigured ? 'Nieuwe API-sleutel' : 'Plak je OpenAI API-sleutel';
             input.required = !result.keyConfigured;
             say('openai-personal-key-status', result.keyConfigured ? 'Je sleutel is ingesteld. Laat het veld leeg om die te behouden.' : '', panel);
-        } catch (error) { if (panel.isConnected) say('ai-save-status', error.status ? error.message : 'De lokale GPT-instellingen zijn niet bereikbaar.', panel); }
+        } catch (error) { if (panel.isConnected) say('ai-save-status', error.status ? error.message : 'De persoonlijke GPT-instellingen zijn niet bereikbaar.', panel); }
     }
     async function saveOpenAIPersonal(panel, providerInput, model, saveVersion) {
         const input = panel.querySelector('#openai-personal-key');
@@ -803,7 +827,9 @@
         providerInput.disabled = modelInput.disabled = input.disabled = submit.disabled = true;
         say('ai-save-status', `Verbinding met ${model} testen…`, panel);
         try {
-            const result = await request('openai-personal', { action: 'save-test', model, apiKey: input.value });
+            const result = isLoopback
+                ? await request('openai-personal', { action: 'save-test', model, apiKey: input.value })
+                : await request('admin-personal-ai', { action: 'save-test', provider: 'openai', model, apiKey: input.value });
             if (saveVersion !== providerSaveVersion) return;
             const next = { provider: 'openai', model };
             storeProviderChoice(next);
@@ -1392,8 +1418,8 @@
             if (provider === 'gemini' && !panel.querySelector('#ai-gemini-model').selectedOptions.length) return;
             if (!/^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,159}$/.test(model)) return say('ai-save-status', 'Vul een geldige modelnaam in.', panel);
             const saveVersion = ++providerSaveVersion;
-            if (provider === 'gemini' && isLoopback) { void saveGeminiPersonal(panel, providerInput, model, saveVersion); return; }
-            if (provider === 'openai' && isLoopback) { void saveOpenAIPersonal(panel, providerInput, model, saveVersion); return; }
+            if (provider === 'gemini' && (isLoopback || isHostedAdmin())) { void saveGeminiPersonal(panel, providerInput, model, saveVersion); return; }
+            if (provider === 'openai' && (isLoopback || isHostedAdmin())) { void saveOpenAIPersonal(panel, providerInput, model, saveVersion); return; }
             try {
                 const next = { provider, model };
                 if (provider === 'gemini' && !isLoopback && legacyGeminiKey()) {

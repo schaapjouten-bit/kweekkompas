@@ -7744,6 +7744,7 @@ textarea:focus-visible, [tabindex]:focus-visible {
 .settings-local-backup h4 { margin: 0; color: var(--primary-text); font-size: 14px; }
 .settings-local-backup p { max-width: 520px; margin: 5px 0 0; color: var(--secondary-text); font-size: 12px; line-height: 1.5; }
 .settings-local-backup .settings-local-backup-status { color: var(--primary-text); font-size: 11px; }
+.settings-local-backup-actions { display: flex; flex-wrap: wrap; gap: 8px; flex: 0 0 auto; }
 .settings-local-backup button { flex: 0 0 auto; }
 
 .settings-danger-zone {

@@ -215,3 +215,218 @@ test('empty app preserves wishlists and planning as well as plant records', asyn
         assert.equal(h.files.get(FILE_NAME), original);
     }
 });
+
+test('chooseDirectory invokes pickDirectory synchronously before pending init completes and resets stale metadata', async () => {
+    const events = [];
+    let releaseInit;
+    const persistence = {
+        async get(key) {
+            events.push(`get:${key}`);
+            if (key === 'directory') await new Promise(resolve => { releaseInit = resolve; });
+            return key === 'last-saved' ? { savedAt: '2025-01-01T08:00:00.000Z', seedCount: 99 } : undefined;
+        },
+        async set(key, value) { events.push(`set:${key}:${value ? 'val' : 'null'}`); }
+    };
+    const files = new Map();
+    const newDir = {
+        name: 'Nieuwe map',
+        async queryPermission() { return 'granted'; },
+        async requestPermission() { return 'granted'; },
+        async getFileHandle(name, opts = {}) {
+            if (!files.has(name) && !opts.create) throw Object.assign(new Error('Missing'), { name: 'NotFoundError' });
+            return {
+                async getFile() { return { text: async () => files.get(name), lastModified: Date.parse('2026-10-14T10:30:00.000Z') }; },
+                async createWritable() {
+                    let content = '';
+                    return { async write(blob) { content = await blob.text(); }, async close() { files.set(name, content); } };
+                }
+            };
+        },
+        async getDirectoryHandle() { return { getFileHandle: async () => ({}) }; }
+    };
+    const manager = create({
+        persistence,
+        pickDirectory: async () => {
+            events.push('pickDirectory');
+            return newDir;
+        },
+        capture: async () => ({ backupVersion: 1, seeds: [{ id: 1, naam: 'Tomaat' }] }),
+        now: () => new Date('2026-10-14T10:30:00.000Z')
+    });
+
+    const initTask = manager.init();
+    const pickTask = manager.chooseDirectory();
+    // pickDirectory must be invoked synchronously before init's persistence get resolves.
+    assert.ok(events.includes('pickDirectory'));
+    releaseInit();
+    await initTask;
+    assert.equal(await pickTask, true);
+    assert.equal(manager.state().lastSaved.seedCount, 1);
+    assert.match(manager.state().status, /Back-upmap ingesteld\..*1 plant.*Nieuwe map/);
+});
+
+test('backupNow writes immediately, archives changed versions, re-requests permission, and reports denied access', async () => {
+    const h = createHarness();
+    assert.equal(await h.manager.backupNow(), false);
+    assert.match(h.manager.state().status, /Kies eerst een back-upmap/);
+
+    await h.manager.chooseDirectory();
+    assert.equal(h.writes.length, 1);
+
+    // Force write even if unchanged, and update timestamp.
+    assert.equal(await h.manager.backupNow(), true);
+    assert.equal(h.writes.length, 2);
+    assert.equal(h.history.size, 0);
+    assert.match(h.manager.state().status, /Back-up nu opgeslagen/);
+
+    // Changed garden archives previous version before writing new one.
+    h.setBackup({ backupVersion: 1, seeds: [{ id: 1, naam: 'Paprika' }, { id: 2, naam: 'Ui' }] });
+    assert.equal(await h.manager.backupNow(), true);
+    assert.equal(h.writes.length, 3);
+    assert.equal(h.history.size, 1);
+    assert.match(h.manager.state().status, /2 planten/);
+
+    // Prompt permission is re-requested and succeeds.
+    h.setPermission('prompt');
+    assert.equal(await h.manager.backupNow(), true);
+    assert.equal(h.manager.state().permissionNeeded, false);
+
+    // Denied permission gives clear feedback.
+    h.directory.queryPermission = async () => 'denied';
+    h.directory.requestPermission = async () => 'denied';
+    assert.equal(await h.manager.backupNow(), false);
+    assert.equal(h.manager.state().permissionNeeded, true);
+    assert.match(h.manager.state().status, /toegang tot de map/i);
+});
+
+test('changed() waits for in-flight init() so early changes are still backed up', async () => {
+    const first = createHarness();
+    await first.manager.chooseDirectory();
+
+    let releaseDir;
+    const delayedPersistence = {
+        async get(key) {
+            if (key === 'directory') await new Promise(resolve => { releaseDir = resolve; });
+            return first.values.get(key);
+        },
+        async set(key, value) { first.values.set(key, value); }
+    };
+    let currentBackup = { backupVersion: 1, seeds: [{ id: 1, naam: 'Vroege wijziging' }] };
+    const second = create({
+        persistence: delayedPersistence,
+        pickDirectory: async () => first.directory,
+        capture: async () => currentBackup,
+        now: () => new Date('2026-10-14T10:35:00.000Z')
+    });
+
+    const initTask = second.init();
+    const changeTask = second.changed();
+    releaseDir();
+    await initTask;
+    assert.equal(await changeTask, true);
+    assert.equal(first.writes.at(-1).seeds[0].naam, 'Vroege wijziging');
+});
+
+test('account scopes isolate databases and backup subdirectories inside the same folder', async () => {
+    const dbNames = [];
+    const subFiles = new Map();
+    const makeSubDir = subName => ({
+        async getFileHandle(name, opts = {}) {
+            const key = `${subName}/${name}`;
+            if (!subFiles.has(key) && !opts.create) throw Object.assign(new Error('Missing'), { name: 'NotFoundError' });
+            return {
+                async getFile() { return { text: async () => subFiles.get(key), lastModified: Date.parse('2026-10-14T10:30:00.000Z') }; },
+                async createWritable() {
+                    let content = '';
+                    return { async write(blob) { content = await blob.text(); }, async close() { subFiles.set(key, content); } };
+                }
+            };
+        },
+        async getDirectoryHandle(name) {
+            return makeSubDir(`${subName}/${name}`);
+        }
+    });
+    const sharedDir = {
+        name: 'Gedeelde map',
+        async queryPermission() { return 'granted'; },
+        async requestPermission() { return 'granted'; },
+        async getFileHandle(name, opts = {}) { return makeSubDir('root').getFileHandle(name, opts); },
+        async getDirectoryHandle(name) { return makeSubDir(name); }
+    };
+
+    const scopeA = { id: '11111111-1111-4111-8111-111111111111', legacy: false, database: n => `${n}::${scopeA.id}` };
+    const scopeB = { id: '22222222-2222-4222-8222-222222222222', legacy: false, database: n => `${n}::${scopeB.id}` };
+    const makeIndexedDB = () => {
+        const storeMap = new Map();
+        return {
+            open(name) {
+                dbNames.push(name);
+                const req = {};
+                queueMicrotask(() => {
+                    const db = {
+                        objectStoreNames: { contains: () => true },
+                        transaction: () => {
+                            const tx = {};
+                            return {
+                                objectStore: () => ({
+                                    get(key) {
+                                        const getReq = {};
+                                        queueMicrotask(() => { getReq.result = storeMap.has(key) ? { key, value: storeMap.get(key) } : undefined; getReq.onsuccess?.(); });
+                                        return getReq;
+                                    },
+                                    put({ key, value }) {
+                                        storeMap.set(key, value);
+                                        queueMicrotask(() => tx.oncomplete?.());
+                                    }
+                                }),
+                                set oncomplete(fn) { tx.oncomplete = fn; },
+                                get oncomplete() { return tx.oncomplete; }
+                            };
+                        }
+                    };
+                    req.onsuccess?.({ target: { result: db } });
+                });
+                return req;
+            }
+        };
+    };
+
+    const managerA = create({ scope: () => scopeA, indexedDB: makeIndexedDB(), pickDirectory: async () => sharedDir, capture: async () => ({ backupVersion: 1, seeds: [{ id: 1, naam: 'Tuin A' }] }) });
+    const managerB = create({ scope: () => scopeB, indexedDB: makeIndexedDB(), pickDirectory: async () => sharedDir, capture: async () => ({ backupVersion: 1, seeds: [{ id: 2, naam: 'Tuin B' }] }) });
+
+    await managerA.chooseDirectory();
+    await managerB.chooseDirectory();
+
+    assert.ok(dbNames.includes(`KweekKompasBackupLocation::${scopeA.id}`));
+    assert.ok(dbNames.includes(`KweekKompasBackupLocation::${scopeB.id}`));
+    assert.equal(JSON.parse(subFiles.get(`KweekKompas-account-${scopeA.id}/${FILE_NAME}`)).seeds[0].naam, 'Tuin A');
+    assert.equal(JSON.parse(subFiles.get(`KweekKompas-account-${scopeB.id}/${FILE_NAME}`)).seeds[0].naam, 'Tuin B');
+    assert.equal(subFiles.has(`root/${FILE_NAME}`), false);
+});
+
+test('render() updates status, choose button, and backup-now button states accurately', async () => {
+    const elements = {
+        '#local-backup-status': { textContent: '' },
+        '#local-backup-choose': { hidden: false, textContent: '', disabled: false },
+        '#local-backup-now': { hidden: false, textContent: '', disabled: false }
+    };
+    const doc = { querySelector: sel => elements[sel] || null };
+    const h = createHarness();
+    const manager = create({
+        persistence: h.persistence,
+        pickDirectory: async () => h.directory,
+        capture: async () => ({ backupVersion: 1, seeds: [{ id: 1, naam: 'Tomaat' }] }),
+        document: doc,
+        now: () => new Date('2026-10-14T10:30:00.000Z')
+    });
+
+    await manager.init();
+    assert.equal(elements['#local-backup-now'].disabled, true);
+    assert.equal(elements['#local-backup-choose'].textContent, 'Kies back-upmap');
+
+    await manager.chooseDirectory();
+    assert.equal(elements['#local-backup-now'].disabled, false);
+    assert.equal(elements['#local-backup-now'].textContent, 'Back-up nu maken');
+    assert.equal(elements['#local-backup-choose'].textContent, 'Back-upmap wijzigen');
+    assert.match(elements['#local-backup-status'].textContent, /1 plant/);
+});

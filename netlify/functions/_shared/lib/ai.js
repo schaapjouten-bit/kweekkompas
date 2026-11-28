@@ -6,6 +6,7 @@ const { generateOpenAI } = require('./openai');
 const { ollamaBase } = require('./ollama');
 const geminiFreeAPI = require('./gemini-free');
 const central = require('./central-ai');
+const adminPersonal = require('./admin-personal-ai');
 const budget = require('./ai-budget');
 const contract = require('../../../../ai-contract');
 const providers = ['gemini', 'gemini-free', 'ollama', 'openai-compatible', 'chatgpt', 'openai'];
@@ -75,7 +76,10 @@ async function callAI(body, system, prompt, session, { timeoutMs = 45_000 } = {}
     const config = providerConfig()[provider];
     if (provider === 'openai') {
         const personal = env('KWEEK_LOCAL_DEV') === 'true' && globalThis.KweekOpenAIPersonal;
-        const apiKey = personal && personal.getKey();
+        const storedKey = !personal && session?.user?.app_metadata?.kweek_role === 'admin'
+            ? await adminPersonal.readKey('openai').catch(() => null)
+            : null;
+        const apiKey = (personal && personal.getKey()) || storedKey || env('OPENAI_API_KEY')?.trim();
         if (!apiKey) throw new HttpError(503, 'Vul je OpenAI API-sleutel in bij Instellingen → AI.');
         return contract.parse(await generateOpenAI({ apiKey, model: body.ai?.model || 'gpt-5-mini', system, prompt, timeoutMs }));
     }
@@ -95,7 +99,10 @@ async function callAI(body, system, prompt, session, { timeoutMs = 45_000 } = {}
         if (!personal && migratedKey !== undefined && (!session?.user || typeof migratedKey !== 'string' || !/^[\x21-\x7e]{1,8192}$/.test(migratedKey))) {
             throw new HttpError(400, 'De eerdere eigen Gemini-sleutel kan niet worden gebruikt.');
         }
-        const apiKey = personal ? personal.getKey() : migratedKey ?? env('GEMINI_API_KEY');
+        const storedKey = !personal && !migratedKey && session?.user?.app_metadata?.kweek_role === 'admin'
+            ? await adminPersonal.readKey('gemini').catch(() => null)
+            : null;
+        const apiKey = personal ? personal.getKey() : migratedKey ?? storedKey ?? env('GEMINI_API_KEY');
         if (!apiKey) throw new HttpError(503, 'Vul je Gemini API-sleutel in bij Instellingen → AI.');
         if (!model) model = (await getGeminiModels()).defaultModel;
         return contract.parse(await generateGemini({ apiKey, model, system, prompt, timeoutMs }));

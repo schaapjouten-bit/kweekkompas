@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 if (fs.existsSync(path.join(root, '.env'))) process.loadEnvFile(path.join(root, '.env'));
 process.env.KWEEK_LOCAL_DEV = 'true';
 const pages = new Set(['index.html', 'account-storage.js', 'account-bootstrap.js', 'app-v132.js', 'plant-lifecycle.js', 'ai-contract.js', 'browser-ollama.js', 'cloud-data.js', 'photo-storage.js', 'auto-sync.js', 'local-backup.js', 'local-drafts.js', 'services.js', 'services.css', 'styles.css', 'calendar.css', 'onboarding.css', 'planner.css', 'wishlist.css']);
-const routes = new Set(['auth', 'cloud-sync', 'photo-access', 'photo-search', 'ai-config', 'ai-models', 'seed-info', 'tuinassistent', 'gemini-ai', 'gemini-free', 'central-ai-config', 'ai-budget', 'user-management', 'product-search']);
+const routes = new Set(['auth', 'cloud-sync', 'photo-access', 'photo-search', 'ai-config', 'ai-models', 'seed-info', 'tuinassistent', 'gemini-ai', 'gemini-free', 'central-ai-config', 'admin-personal-ai', 'ai-budget', 'user-management', 'product-search']);
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
 function createServer({ localAPIFile = path.join(root, '.kweek-local-api.json'), geminiFreeFile = path.join(root, '.kweek-gemini-free.json'), geminiPersonalFile = path.join(root, '.kweek-gemini.json'), chatGPTFile = path.join(root, '.kweek-chatgpt.json'), chatGPTOptions } = {}) {
     const localAPI = require('./local-api.cjs').createLocalAPI(localAPIFile);
