@@ -22,9 +22,12 @@ const translations = {
 const text = value => typeof value === 'string' ? value.replace(/<[^>]*>/g, ' ').replace(/&(?:nbsp|#160);/gi, ' ').replace(/&amp;/gi, '&').replace(/&#39;|&apos;/gi, "'").replace(/&quot;/gi, '"').replace(/\s+/g, ' ').trim().slice(0, 400) : '';
 const httpsURL = value => { try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : ''; } catch { return ''; } };
 const referral = url => { try { const u = new URL(url); u.searchParams.set('utm_source','kweekkompas'); u.searchParams.set('utm_medium','referral'); return u.href; } catch { return ''; } };
-async function getJSON(url, headers = {}) {
+async function getJSON(url, headers = {}, sourceName = '') {
     const response = await fetch(url, { headers, redirect: 'error', signal: AbortSignal.timeout(12000) });
-    if (!response.ok) throw new Error('source unavailable');
+    if (!response.ok) {
+        if (sourceName === 'Unsplash') console.warn(`[KweekKompas] Unsplash fout: HTTP ${response.status}`);
+        throw new Error('source unavailable');
+    }
     return response.json();
 }
 async function commons(query, page) {
@@ -43,10 +46,13 @@ async function commons(query, page) {
 }
 async function unsplash(query, page) {
     const key = env('UNSPLASH_ACCESS_KEY')?.trim();
-    if (!key) throw new Error('source unavailable');
+    if (!key) {
+        console.warn('[KweekKompas] Unsplash: UNSPLASH_ACCESS_KEY ontbreekt.');
+        throw new Error('source unavailable');
+    }
     const url = new URL('https://api.unsplash.com/search/photos');
     url.searchParams.set('query',query); url.searchParams.set('page',String(page)); url.searchParams.set('per_page','12');
-    const data = await getJSON(url, { Authorization:`Client-ID ${key}`, 'Accept-Version':'v1' });
+    const data = await getJSON(url, { Authorization:`Client-ID ${key}`, 'Accept-Version':'v1' }, 'Unsplash');
     if (!Array.isArray(data.results)) throw new Error('source unavailable');
     const photos = data.results.flatMap(item => {
         const image = httpsURL(item.urls?.regular || item.urls?.small), original = httpsURL(item.links?.html), author = httpsURL(item.user?.links?.html);

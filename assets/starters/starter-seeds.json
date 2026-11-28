@@ -1,0 +1,289 @@
+[
+  {
+    "naam": "Komkommer Marketmore",
+    "code": "",
+    "type": "Groente",
+    "standplaats": "Kas",
+    "water": "Hoog",
+    "status": "Voorraad",
+    "sownAt": null,
+    "fase_gezaaid": false,
+    "fase_groeit": false,
+    "fase_geoogst": false,
+    "zaaitijd": "Apr, Mei",
+    "oogsttijd": "Jul, Aug, Sep",
+    "lastSownYear": 2026,
+    "ervaringScore": 4,
+    "purchaseYear": 2026,
+    "shopLink": "",
+    "beschrijving": "ZAAIEN:\nZaaien: maanden Binnen: januari-april Buiten: mei-juni\nSeizoen: jaarlijks\nHoogte: 8 inch\nOogstseizoen: 60 tot 68 dagen tot rijpheid\nOmgeving: volle zon,\nBodemtype: krijt, zand, leem\nKiemtijd: 7-10 dagen\nTemperatuur: 61 °C\nZaden water geven: alleen de grond nat maken\nPlanten water geven: eenmaal per week water geven\nDiepte: 10 mm diep in de grond drukken\nPlantafstand: 90 cm uit elkaar\nIdeaal voor: moestuinen broeikas",
+    "voeding": "Bij aanplant: Gebruik bij het uitplanten rijpe compost in de grond; bij het zaaien in potjes is extra voeding niet nodig.\nTijdens groei: Geef tijdens de vruchtvorming zo nodig vloeibare voeding voor vruchtgewassen.\nWanneer/hoe vaak: Begin wanneer de eerste vruchten groeien en herhaal volgens het etiket van het product.\nLet op: Bemest niet overmatig vóór de vruchtvorming. Stop wanneer de plant aan het einde van het seizoen geen vruchten meer vormt.",
+    "ervaringen": "Marketmore is een van de grootste komkommers die er zijn. Makretmore-komkommer produceert veel fruit met een rijke groene kleur en een gladde schil. Cucumber Marketmore heeft een milde smaak, maar heeft wel een knapperige textuur als het wordt gegeten. Marketmore is gemakkelijk te kweken door middel van zaadjes en is een geweldige aanvulling op je tuin en in salades. Marketmore kan tot 8 inch lang worden en is een eenjarige plant. Maketmore gedijt goed in goed doorlatende grond en met toegang tot zonlicht. Marketmore kan na 60-68 dagen worden geoogst.",
+    "images": [
+      {
+        "url": "assets/starters/examples/komkommer-marketmore-1.webp",
+        "source": "upload"
+      },
+      {
+        "url": "assets/starters/examples/komkommer-marketmore-2.png",
+        "source": "upload"
+      },
+      {
+        "url": "assets/starters/examples/komkommer-marketmore-3.png",
+        "source": "upload"
+      },
+      {
+        "url": "assets/starters/examples/komkommer-marketmore-4.webp",
+        "source": "upload"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1602343244137-a142ba5c7b22?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5MjM0NDJ8MHwxfHNlYXJjaHw5fHxjdWN1bWJlciUyME1hcmtldG1vcmV8ZW58MHx8fHwxNzkxODgzMTk3fDA&ixlib=rb-4.1.0&q=80&w=1080",
+        "source": "web",
+        "id": "0ov8UwaTY0U",
+        "title": "a pile of cucumbers sitting next to each other",
+        "description": "",
+        "photographer": "Mohammadreza Ghasemian",
+        "sourceLink": "https://unsplash.com/@mohammadreza_ghasemian",
+        "imageUrl": "https://images.unsplash.com/photo-1602343244137-a142ba5c7b22?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5MjM0NDJ8MHwxfHNlYXJjaHw5fHxjdWN1bWJlciUyME1hcmtldG1vcmV8ZW58MHx8fHwxNzkxODgzMTk3fDA&ixlib=rb-4.1.0&q=80&w=1080",
+        "alt": "a pile of cucumbers sitting next to each other"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1687199129822-b54237c7bdb2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5MjM0NDJ8MHwxfHNlYXJjaHwxM3x8Y3VjdW1iZXIlMjBNYXJrZXRtb3JlfGVufDB8fHx8MTc5MTg4MzE5N3ww&ixlib=rb-4.1.0&q=80&w=1080",
+        "source": "web",
+        "id": "BCbPcWoUto8",
+        "title": "a pile of cucumbers sitting next to each other",
+        "description": "",
+        "photographer": "Bovia & Co. Photography",
+        "sourceLink": "https://unsplash.com/@boviaco",
+        "imageUrl": "https://images.unsplash.com/photo-1687199129822-b54237c7bdb2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5MjM0NDJ8MHwxfHNlYXJjaHwxM3x8Y3VjdW1iZXIlMjBNYXJrZXRtb3JlfGVufDB8fHx8MTc5MTg4MzE5N3ww&ixlib=rb-4.1.0&q=80&w=1080",
+        "alt": "a pile of cucumbers sitting next to each other"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1628110327712-48e051f233d9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5MjM0NDJ8MHwxfHNlYXJjaHwxMHx8Y3VjdW1iZXIlMjBNYXJrZXRtb3JlfGVufDB8fHx8MTc5MTg4MzE5N3ww&ixlib=rb-4.1.0&q=80&w=1080",
+        "source": "web",
+        "id": "S-xD2Mi2FLs",
+        "title": "person holding green cucumber on brown woven basket",
+        "description": "",
+        "photographer": "Klara Kulikova",
+        "sourceLink": "https://unsplash.com/@kkalerry",
+        "imageUrl": "https://images.unsplash.com/photo-1628110327712-48e051f233d9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5MjM0NDJ8MHwxfHNlYXJjaHwxMHx8Y3VjdW1iZXIlMjBNYXJrZXRtb3JlfGVufDB8fHx8MTc5MTg4MzE5N3ww&ixlib=rb-4.1.0&q=80&w=1080",
+        "alt": "person holding green cucumber on brown woven basket"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1611048661702-7b55eed346b4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5MjM0NDJ8MHwxfHNlYXJjaHw2fHxjdWN1bWJlciUyME1hcmtldG1vcmV8ZW58MHx8fHwxNzkxODgzMTk3fDA&ixlib=rb-4.1.0&q=80&w=1080",
+        "source": "web",
+        "id": "Za9HGBK5ALA",
+        "title": "close up photo of green vegetable",
+        "description": "a bunch of cucumbers",
+        "photographer": "Keriliwi",
+        "sourceLink": "https://unsplash.com/@keriliwi",
+        "imageUrl": "https://images.unsplash.com/photo-1611048661702-7b55eed346b4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5MjM0NDJ8MHwxfHNlYXJjaHw2fHxjdWN1bWJlciUyME1hcmtldG1vcmV8ZW58MHx8fHwxNzkxODgzMTk3fDA&ixlib=rb-4.1.0&q=80&w=1080",
+        "alt": "close up photo of green vegetable"
+      }
+    ],
+    "tags": [
+      "Voorzaaien",
+      "Klimplant",
+      "Snelle groeier",
+      "Eenjarig",
+      "Eetbaar",
+      "Gevoelig voor vorst"
+    ],
+    "isPerennial": false,
+    "featuredImageUrl": "https://images.unsplash.com/photo-1687199129822-b54237c7bdb2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w5MjM0NDJ8MHwxfHNlYXJjaHwxM3x8Y3VjdW1iZXIlMjBNYXJrZXRtb3JlfGVufDB8fHx8MTc5MTg4MzE5N3ww&ixlib=rb-4.1.0&q=80&w=1080",
+    "isFavorite": true,
+    "image": "",
+    "seedGroup": "komkommer-augurk"
+  },
+  {
+    "naam": "Snijbiet Orange Glory",
+    "code": "",
+    "type": "Groente",
+    "standplaats": "Zon",
+    "water": "Gemiddeld",
+    "status": "Groeit",
+    "sownAt": null,
+    "fase_gezaaid": true,
+    "fase_groeit": true,
+    "fase_geoogst": false,
+    "zaaitijd": "Feb, Mrt, Apr",
+    "oogsttijd": "Jun, Jul, Aug, Sep, Okt, Nov",
+    "lastSownYear": 2026,
+    "ervaringScore": 4,
+    "purchaseYear": 2026,
+    "shopLink": "https://www.etsy.com/nl/listing/4423885108/snijbiet-orange-glory-180-zaden-beta?sr_prefetch=1&pf_from=shop_home&ga_search_query=snijbiet&ref=shop_items_search_3&crt=1&logging_key=5f35688ce82220b8fcabc2cdd9e1590b64e6b50b%3A4423885108",
+    "beschrijving": "Zaai- en kweektips\n● Direct zaaien op de plek waar de planten zullen groeien: verplanten is minimaal.\n● Dun zaailingen vroeg uit om opeenhoping te voorkomen en een sterke groei te stimuleren.\n● Oogst regelmatig de buitenste bladeren voor een lange, continue aanvoer.\n● Geef tijdens droge periodes regelmatig water om de bladeren zacht te houden.\n● Voor de beste kleur en smaak om de paar weken licht bemesten met een uitgebalanceerde meststof.\n● Verdraagt lichte vorst: in milde gebieden kunnen planten overwinteren voor een vroege voorjaarsbloei.",
+    "voeding": "Bij aanplant: Werk eventueel rijpe compost door arme volle grond.\nTijdens groei: In volle grond is doorgaans geen extra voeding nodig, tenzij de bodem arm is.\nWanneer/hoe vaak: Geef alleen zo nodig geschikte groentevoeding; volg voor dosering en frequentie het etiket.\nLet op: Vermijd overbemesting. Regelmatig voeden om de paar weken is geen standaardadvies.",
+    "ervaringen": "Snijbiet 'Orange Glory': levendige, productieve en heerlijke bladbiet\n\n'Orange Glory' is een opvallende en gemakkelijk te kweken snijbiet die glanzende, donkergroene bladeren produceert met levendig oranje stengels en nerven. Zowel decoratief als eetbaar, het is perfect voor salades, wokgerechten en gestoomde gerechten, en combineert schoonheid met een uitzonderlijke smaak en opbrengst. Deze kleurrijke bladbiet voegt helderheid toe aan moestuinen, containers of bloemranden en blijft een lang seizoen produceren.",
+    "images": [
+      {
+        "url": "assets/starters/examples/snijbiet-orange-glory-1.webp",
+        "source": "upload"
+      },
+      {
+        "url": "assets/starters/examples/snijbiet-orange-glory-2.png",
+        "source": "upload"
+      },
+      {
+        "url": "assets/starters/examples/snijbiet-orange-glory-3.webp",
+        "source": "upload"
+      },
+      {
+        "url": "assets/starters/examples/snijbiet-orange-glory-4.webp",
+        "source": "upload"
+      }
+    ],
+    "tags": [
+      "Direct zaaien",
+      "Eenjarig",
+      "Tweejarig",
+      "Eetbaar",
+      "Geschikt om in te vriezen",
+      "Beginner",
+      "Makkelijk"
+    ],
+    "isPerennial": false,
+    "featuredImageUrl": "assets/starters/examples/snijbiet-orange-glory-2.png",
+    "isFavorite": true,
+    "image": ""
+  },
+  {
+    "naam": "Japanse zelkova (Zelkova serrata)",
+    "code": "",
+    "type": "Boom",
+    "standplaats": "Zon",
+    "water": "Gemiddeld",
+    "status": "Voorraad",
+    "sownAt": null,
+    "fase_gezaaid": false,
+    "fase_groeit": false,
+    "fase_geoogst": false,
+    "zaaitijd": "Feb, Mrt",
+    "oogsttijd": "",
+    "lastSownYear": null,
+    "ervaringScore": 0,
+    "purchaseYear": 2026,
+    "shopLink": "",
+    "beschrijving": "Algemeen:\nDe Japanse zelkova (Zelkova serrata) is een middelgrote tot grote loofboom met een vaasvormige kroon en getande bladeren die in de herfst prachtig geel tot roodbruin verkleuren.\n\nZaaien: februari, maart\nKiemduur: onbekend\nKiemtemperatuur: onbekend\n\nZaaimethode:\nZaai binnen in potjes in het vroege voorjaar; zaden kunnen een koudeperiode nodig hebben om te ontkiemen.\n\nUitplanten:\nPlant jonge bomen in de volle grond in de herfst of het vroege voorjaar wanneer de grond vorstvrij is.\n\nStandplaats: volle zon\nGrond: goed doorlatende, vruchtbare en vochthoudende grond\n\nWater:\nGeef jonge bomen regelmatig water tijdens droge periodes; volwassen bomen hebben een diep wortelstelsel en zijn redelijk droogtetolerant.\n\nPlantafstand: onbekend\nHoogte: onbekend\n\nSeizoen: vaste plant",
+    "voeding": "Bij aanplant: rijpe compost kan de bodem bij de aanplant verbeteren\nTijdens groei: geen extra voeding nodig bij een gezonde bodem\nWanneer/hoe vaak: volg het etiket bij eventuele specifieke bodemverbetering en hanteer geen vast weekschema\nLet op: vermijd overbemesting",
+    "ervaringen": "",
+    "images": [
+      {
+        "url": "assets/starters/examples/japanse-zelkova-1.webp",
+        "source": "upload"
+      },
+      {
+        "url": "assets/starters/examples/japanse-zelkova-2.webp",
+        "source": "upload"
+      },
+      {
+        "url": "assets/starters/examples/japanse-zelkova-3.webp",
+        "source": "upload"
+      }
+    ],
+    "tags": [
+      "Vaste plant",
+      "Winterhard",
+      "Sierplant"
+    ],
+    "isPerennial": false,
+    "featuredImageUrl": "assets/starters/examples/japanse-zelkova-2.webp",
+    "isFavorite": false
+  },
+  {
+    "naam": "Peterselie Moskrul",
+    "code": "",
+    "type": "Kruid",
+    "standplaats": "Zon",
+    "water": "Gemiddeld",
+    "status": "Voorraad",
+    "sownAt": null,
+    "fase_gezaaid": false,
+    "fase_groeit": false,
+    "fase_geoogst": false,
+    "zaaitijd": "Mrt, Apr, Mei, Jun",
+    "oogsttijd": "Jun, Jul, Aug, Sep, Okt, Nov, Dec",
+    "lastSownYear": null,
+    "ervaringScore": 0,
+    "purchaseYear": 2026,
+    "shopLink": "",
+    "beschrijving": "Algemeen:\nPeterselie Moskrul is een populair tweejarig kruid met sterk gekruld blad dat fris van smaak is en vaak wordt gebruikt als garnituur.\n\nZaaien: maart, april, mei, juni\nKiemduur: 14 tot 30 dagen\nKiemtemperatuur: 15 tot 20 °C\n\nZaaimethode:\nZaai vanaf maart tot en met juni direct in de volle grond of in potten. Vanwege de penwortel is voorzaaien in losse potjes vaak handiger dan direct ter plaatse zaaien als je wilt verplanten.\n\nUitplanten:\nPlant voorgekweekte zaailingen vanaf april tot in juli uit op de uiteindelijke plek met een onderlinge afstand van circa 15 centimeter.\n\nStandplaats: halfschaduw\nGrond: humusrijke, goed doorlatende grond\n\nWater:\nGeef regelmatig water om de grond licht vochtig te houden.\n\nPlantafstand: ± 15 cm\nHoogte: ± 25 cm\n\nBloei: mei, juni\nOogst: juni, juli, augustus, september, oktober, november, december\nSeizoen: tweejarig",
+    "voeding": "Bij aanplant: rijpe compost kan de bodem verbeteren, terwijl potten vragen om geschikte potgrond.\nTijdens groei: in de volle grond is extra voeding doorgaans niet nodig tenzij de bodem erg arm is; potteelt kan lichte vloeibare voeding vragen.\nWanneer/hoe vaak: verwijs bij een gekocht product voor dosering en frequentie naar het etiket.\nLet op: houd het vochtgehalte gelijkmatig en vermijd overbemesting.",
+    "ervaringen": "",
+    "images": [
+      {
+        "url": "assets/starters/examples/peterselie-moskrul-1.webp",
+        "source": "upload"
+      },
+      {
+        "url": "assets/starters/examples/peterselie-moskrul-2.webp",
+        "source": "upload"
+      },
+      {
+        "url": "assets/starters/examples/peterselie-moskrul-3.webp",
+        "source": "upload"
+      }
+    ],
+    "tags": [
+      "Direct zaaien",
+      "Eetbaar",
+      "Potten"
+    ],
+    "isPerennial": false,
+    "featuredImageUrl": "assets/starters/examples/peterselie-moskrul-2.webp",
+    "cardImageCrop": {
+      "fit": "cover",
+      "zoom": 1,
+      "x": 0.5,
+      "y": 0.5
+    },
+    "isFavorite": false
+  },
+  {
+    "naam": "Goudsbloem Geisha Girl",
+    "code": "4107",
+    "type": "Bloem",
+    "standplaats": "Zon",
+    "water": "Gemiddeld",
+    "status": "Voorraad",
+    "sownAt": null,
+    "fase_gezaaid": false,
+    "fase_groeit": false,
+    "fase_geoogst": false,
+    "zaaitijd": "Apr, Mei, Jun",
+    "oogsttijd": "Jun, Jul, Aug, Sep, Okt",
+    "lastSownYear": null,
+    "ervaringScore": 4,
+    "purchaseYear": 2025,
+    "shopLink": "",
+    "beschrijving": "Calendula officinalis. Zakje: 150 zaden. Volle zon. Zaai circa 1,3 cm diep. Plantafstand circa 30 cm. Kiemtemperatuur: 21 °C. Bloei: juni–oktober.",
+    "voeding": "Bij aanplant: Een lichte toevoeging van rijpe compost kan de bodem verbeteren, maar extra voeding is in de volle grond meestal niet nodig.\nTijdens groei: Geen extra voeding nodig op normale grond.\nWanneer/hoe vaak: Volg het etiket bij eventuele potteelt en geef geen vast weekschema.\nLet op: Voorkom te veel voeding, want te rijk gemaakte grond geeft minder bloemen en meer blad.",
+    "ervaringen": "",
+    "images": [
+      {
+        "url": "assets/starters/examples/goudsbloem-geisha-girl-1.webp",
+        "source": "upload"
+      },
+      {
+        "url": "assets/starters/examples/goudsbloem-geisha-girl-2.webp",
+        "source": "upload"
+      },
+      {
+        "url": "assets/starters/examples/goudsbloem-geisha-girl-3.webp",
+        "source": "upload"
+      }
+    ],
+    "tags": [
+      "Voorzaaien",
+      "Direct zaaien",
+      "Eenjarig",
+      "Eetbaar",
+      "Sierplant",
+      "Bijvriendelijk",
+      "Makkelijk"
+    ],
+    "isPerennial": false,
+    "featuredImageUrl": "assets/starters/examples/goudsbloem-geisha-girl-2.webp",
+    "isFavorite": false
+  }
+]

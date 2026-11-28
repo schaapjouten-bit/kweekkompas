@@ -182,7 +182,7 @@ html:has(#wishlist-detail-modal:not(.hidden)), body:has(#wishlist-detail-modal:n
     background: color-mix(in srgb, var(--error-color) 8%, var(--card-background));
 }
 
-.settings-backup-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+.settings-backup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 18px 0 0; }
 .settings-storage-extra { margin: 12px 0; }
 .settings-storage-extra > summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
 .settings-storage-extra[open] > summary { margin-bottom: 8px; }

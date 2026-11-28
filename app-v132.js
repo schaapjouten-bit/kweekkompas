@@ -1269,7 +1269,7 @@ function getSettingsHTML() {
                         <button type="button" class="theme-choice" data-theme-choice="playful" aria-pressed="false" onclick="window.setAppTheme('playful')"><span class="theme-choice-swatch theme-choice-swatch-playful" aria-hidden="true"></span><span>Warm</span></button>
                     </div>
                     <div class="settings-layout-control"><div><strong>Werkruimtebreedte</strong></div><div class="settings-layout-buttons" role="group" aria-label="Werkruimtebreedte"><button class="layout-toggle-btn" type="button" data-layout-choice="standard" onclick="window.toggleLayoutWidth('standard')">Standaard</button><button class="layout-toggle-btn" type="button" data-layout-choice="wide" onclick="window.toggleLayoutWidth('wide')">Breed</button></div></div>
-                    <label class="settings-layout-control settings-favorites-option"><input id="seed-favorites-separate" type="checkbox" ${gardenStorage.getItem(SEED_FAVORITES_SETTING) !== 'false' ? 'checked' : ''}><strong>Favorieten tonen</strong></label>
+                    <label class="settings-layout-control settings-favorites-option"><input id="seed-favorites-separate" type="checkbox" ${gardenStorage.getItem(SEED_FAVORITES_SETTING) !== 'false' ? 'checked' : ''}><strong>Favorieten tonen in mijn tuin</strong></label>
                 </section>
 
                 ${window.KweekServices?.settingsHTML() || ''}
@@ -1292,8 +1292,6 @@ function getSettingsHTML() {
                     <div class="settings-backup-actions">
                         <button class="settings-primary-button" type="button" onclick="exportData()">Back-up downloaden</button>
                         <button class="settings-secondary-button" type="button" onclick="restoreBackup()">Back-up herstellen</button>
-                    </div>
-                    <div class="settings-reset-action">
                         <button class="settings-danger-button" type="button" onclick="resetApp()">Alles verwijderen</button>
                     </div>
                 </section>
@@ -1313,7 +1311,9 @@ function getSettingsHTML() {
 
                 <section class="settings-page-section" id="settings-section-about" aria-labelledby="settings-about-title" tabindex="-1">
                     <h3 id="settings-about-title" hidden>KweekKompas</h3>
-                    <p>Als tuinliefhebber bouw ik KweekKompas vanuit mijn eigen ervaringen in de tuin. Ik probeer er een praktische, bruikbare app van te maken die helpt bij zaaien, verzorgen en oogsten. KweekKompas is gratis en een hobbyproject dat ik stap voor stap verder ontwikkel.</p>
+                    <p>Als tuinliefhebber bouw ik KweekKompas vanuit mijn eigen ervaringen in de tuin. De app is ontstaan vanuit de behoefte om mijn zaden, planten, planning en alle bijbehorende informatie op één plek te verzamelen.</p>
+                    <p>Ik probeer er een praktische en overzichtelijke app van te maken die helpt bij het zaaien, verzorgen en oogsten, maar ook ruimte biedt om nieuwe dingen te ontdekken en te leren.</p>
+                    <p>KweekKompas is gratis en is een persoonlijk hobbyproject dat ik met veel plezier stap voor stap verder ontwikkel. Vanuit mijn eigen ervaringen en de feedback van andere tuinliefhebbers probeer ik de app steeds een stukje beter te maken.</p>
                     <span class="settings-version">Versie 1.3.2</span>
                 </section>
             </div>
@@ -1323,7 +1323,10 @@ function getSettingsHTML() {
 
 window.setAppTheme = function(theme) {
     saveAppTheme(theme);
-    if (isSettingsOpen) renderSettingsPanel();
+    if (isSettingsOpen) {
+        renderSettingsPanel();
+        if (typeof showToast === 'function') showToast('Weergave automatisch opgeslagen.');
+    }
 };
 
 // Compatibility for older markup/extensions that still call the checkbox API.
@@ -1336,6 +1339,7 @@ window.toggleLayoutWidth = function(type) {
     document.body.classList.add('layout-' + type);
     gardenStorage.setItem('layout_width', type);
     renderSettingsPanel(); // Ververs om actieve staat te tonen
+    if (typeof showToast === 'function') showToast('Weergave automatisch opgeslagen.');
 }
 
 const tagCategories = {
@@ -2141,57 +2145,21 @@ async function startKweekApp() {
         updateProfileUI();
 
         gardenStorage.setItem('onboarding_done', 'true');
-        const starters = [
-            {
-                id: Date.now() + 1,
-                naam: "Cherry Tomaat 'Sweet Million'",
-                type: "Groente",
-                standplaats: onboardingLight || 'Zon',
-                zaaitijd: "Maart - April (Binnen)",
-                oogsttijd: "Juli - September",
-                status: "Voorraad",
-                tags: ["Zoet", "Productief", "Starter"],
-                image: "assets/starters/tomaat.png"
-            },
-            {
-                id: Date.now() + 3,
-                naam: "Courgette 'Black Beauty'",
-                type: "Groente",
-                standplaats: "Zon",
-                zaaitijd: "Mei - Juni",
-                oogsttijd: "Juli - September",
-                status: "Voorraad",
-                tags: ["Groot", "Rijke oogst", "Populair"],
-                image: "assets/starters/courgette.png"
-            },
-            {
-                id: Date.now() + 4,
-                naam: "Pluksla 'Gemengd'",
-                type: "Groente",
-                standplaats: "Halfschaduw",
-                zaaitijd: "Maart - Augustus",
-                oogsttijd: "Mei - Oktober",
-                status: "Voorraad",
-                tags: ["Gezond", "Snel", "Vers"],
-                image: "assets/starters/sla.png"
-            },
-            {
-                id: Date.now() + 5,
-                naam: "Basilicum 'Genovese'",
-                type: "Kruid",
-                standplaats: "Zon",
-                zaaitijd: "Mei - Juli",
-                oogsttijd: "Juli - September",
-                status: "Voorraad",
-                tags: ["Aromatisch", "Keuken", "Pot"],
-                image: "assets/starters/basilicum.png"
-            }
-        ];
         // Add examples only to a genuinely empty garden; restored gardens stay intact.
         const existingSeeds = await getAllSeeds();
         if (existingSeeds.length === 0) {
-            for (const s of starters) {
-                await saveSeed(s);
+            try {
+                const response = await fetch('assets/starters/starter-seeds.json', { cache: 'no-store' });
+                if (!response.ok) throw new Error('Voorbeeldcollectie kon niet worden geladen.');
+                const starters = await response.json();
+                if (Array.isArray(starters)) {
+                    const baseId = Date.now();
+                    for (let i = 0; i < starters.length; i++) {
+                        await saveSeed({ ...starters[i], id: String(baseId + i + 1) });
+                    }
+                }
+            } catch (error) {
+                console.warn('[KweekKompas] Voorbeeldcollectie kon niet worden geladen.');
             }
         }
         seeds = await getAllSeeds();
@@ -3312,8 +3280,12 @@ async function startKweekApp() {
 
     function showToast(message) {
         if (!message) return;
+        const text = String(message);
+        const now = Date.now();
+        if (lastToast.message === text && now - lastToast.time < 800) return;
+        lastToast = { message: text, time: now };
         showToastContent(content => {
-            content.textContent = String(message);
+            content.textContent = text;
         });
     }
 
@@ -4708,6 +4680,7 @@ async function startKweekApp() {
             saveNutrition(readNutrition().filter(product => product.id !== editingNutritionId));
             nutritionDialog.close();
             renderNutrition();
+            showToast('Voedingsproduct verwijderd.');
         } catch (error) { document.getElementById('nutrition-feedback').textContent = 'Verwijderen is niet gelukt.'; }
     });
     nutritionForm.addEventListener('submit', event => {
@@ -4724,6 +4697,7 @@ async function startKweekApp() {
             saveNutrition(products);
             nutritionDialog.close();
             renderNutrition();
+            showToast(existing ? 'Voedingsproduct bijgewerkt.' : 'Voedingsproduct opgeslagen.');
         } catch (error) { document.getElementById('nutrition-feedback').textContent = 'Opslaan is niet gelukt.'; }
     });
     const nutritionFeedback = document.getElementById('nutrition-feedback');
@@ -5080,6 +5054,7 @@ async function startKweekApp() {
             search.value = '';
             showNotes();
             search.focus();
+            showToast(editingId ? 'Notitie bijgewerkt.' : 'Notitie opgeslagen.');
         });
     }
 
@@ -6339,6 +6314,7 @@ async function startKweekApp() {
         seedFavoritesCollapsed = false;
         gardenStorage.setItem(SEED_FAVORITES_SETTING, String(showSeparateSeedFavorites));
         applyFilters();
+        showToast('Weergave automatisch opgeslagen.');
     });
     const latestSeedsButton = document.getElementById('btn-latest-seeds');
     if (latestSeedsButton) latestSeedsButton.onclick = () => {
@@ -7797,6 +7773,7 @@ async function startKweekApp() {
             ['wishlist-quick-input', 'wishlist-empty-input'].forEach(id => { const field = document.getElementById(id); if (field) field.value = ''; });
 
             inputEl.focus();
+            showToast('Toegevoegd aan verlanglijst.');
         };
 
         btnAddWishQuick.onclick = () => handleAdd(wishInputQuick);
@@ -7845,6 +7822,7 @@ async function startKweekApp() {
         saveWish();
         window.KweekDrafts?.drop(wishDraftKey()).catch(draftError);
         closeWishModal();
+        showToast('Verlanglijst bijgewerkt.');
     });
 
     document.getElementById('btn-wish-delete')?.addEventListener('click', (e) => {
@@ -7861,6 +7839,7 @@ async function startKweekApp() {
             globalThis.KweekCloudStatus?.changed();
             renderWishlist();
             closeWishModal();
+            showToast('Item verwijderd.');
         }
     });
 
@@ -8086,6 +8065,7 @@ async function startKweekApp() {
                     reminders = reminders.filter(reminder => reminder !== item);
                     saveReminders();
                     renderCalendar();
+                    showToast('Taak verwijderd.');
                 }
             });
             container.appendChild(row);
@@ -8282,7 +8262,7 @@ async function startKweekApp() {
             list.append(buildReminderRow(item, {
                 onEdit: () => openPlanningForm({ item }),
                 onToggle: () => { item.done = !item.done; saveReminders(); refreshPlanning(); },
-                onDelete: () => { if (!confirm('Deze taak verwijderen?')) return; reminders = reminders.filter(task => task !== item); saveReminders(); refreshPlanning(); }
+                onDelete: () => { if (!confirm('Deze taak verwijderen?')) return; reminders = reminders.filter(task => task !== item); saveReminders(); refreshPlanning(); showToast('Taak verwijderd.'); }
             }));
         }
         if (!tasks.length) { const empty = document.createElement('p'); empty.className = 'calendar-empty-message'; empty.textContent = 'Nog geen taken in dit jaar. Kies + Inplannen om een taak toe te voegen.'; list.append(empty); }

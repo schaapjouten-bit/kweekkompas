@@ -9,9 +9,19 @@ const PATH = 'central-gemini.json';
 const AAD = Buffer.from('kweekkompas:central-gemini:v1');
 function encryptionKey() {
     const raw = env('KWEEK_CENTRAL_AI_ENCRYPTION_KEY')?.trim() || '';
-    if (!/^[A-Za-z0-9+/]{43}=$/.test(raw)) throw new HttpError(503, 'Centrale AI-opslag is nog niet ingesteld.');
+    if (!raw) {
+        console.warn('[KweekKompas] Centrale AI: KWEEK_CENTRAL_AI_ENCRYPTION_KEY ontbreekt.');
+        throw new HttpError(503, 'Centrale AI-opslag is nog niet ingesteld.');
+    }
+    if (!/^[A-Za-z0-9+/]{43}=$/.test(raw)) {
+        console.warn(`[KweekKompas] Centrale AI: KWEEK_CENTRAL_AI_ENCRYPTION_KEY heeft ongeldig formaat (lengte ${raw.length}).`);
+        throw new HttpError(503, 'Centrale AI-opslag is nog niet ingesteld.');
+    }
     const key = Buffer.from(raw, 'base64');
-    if (key.length !== 32 || key.toString('base64') !== raw) throw new HttpError(503, 'Centrale AI-opslag is nog niet ingesteld.');
+    if (key.length !== 32 || key.toString('base64') !== raw) {
+        console.warn(`[KweekKompas] Centrale AI: KWEEK_CENTRAL_AI_ENCRYPTION_KEY heeft ongeldige sleutellengte (${key.length} bytes).`);
+        throw new HttpError(503, 'Centrale AI-opslag is nog niet ingesteld.');
+    }
     return key;
 }
 function encrypt(value, key = encryptionKey()) {
@@ -35,7 +45,11 @@ function decrypt(text, key = encryptionKey()) {
 function storage() {
     const secret = env('SUPABASE_SECRET_KEY')?.trim();
     const url = env('SUPABASE_URL')?.trim();
-    if (!url || !secret) throw new HttpError(503, 'Centrale AI-opslag is nog niet ingesteld.');
+    if (!url || !secret) {
+        const missing = [!url && 'SUPABASE_URL', !secret && 'SUPABASE_SECRET_KEY'].filter(Boolean).join(', ');
+        console.warn(`[KweekKompas] Centrale AI-opslag ontbreekt configuratie: ${missing}.`);
+        throw new HttpError(503, 'Centrale AI-opslag is nog niet ingesteld.');
+    }
     return createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }).storage.from(BUCKET);
 }
 async function readKey() {
@@ -43,6 +57,7 @@ async function readKey() {
     const { data, error } = await storage().download(PATH);
     if (error) {
         if (Number(error.status || error.statusCode) === 404 || error.code === 'NoSuchKey') return null;
+        console.warn('[KweekKompas] Centrale AI-opslag fout:', error.status || error.statusCode || error.code || 'onbekend');
         throw new HttpError(503, 'Centrale AI-opslag is tijdelijk niet bereikbaar.');
     }
     return decrypt(await data.text(), key);
@@ -50,7 +65,10 @@ async function readKey() {
 async function writeKey(value) {
     const encrypted = encrypt(value);
     const { error } = await storage().upload(PATH, Buffer.from(encrypted), { upsert: true, contentType: 'application/json', cacheControl: '0' });
-    if (error) throw new HttpError(503, 'De centrale AI-sleutel kon niet worden opgeslagen.');
+    if (error) {
+        console.warn('[KweekKompas] Centrale AI-opslag fout:', error.status || error.statusCode || error.code || 'onbekend');
+        throw new HttpError(503, 'De centrale AI-sleutel kon niet worden opgeslagen.');
+    }
 }
 async function testKey(apiKey) {
     const answer = await generateGemini({ apiKey, model: MODEL, testing: true, system: 'Geef alleen het gevraagde JSON-object terug.', prompt: 'Antwoord met {"ok":true}.' });

@@ -292,7 +292,7 @@
             </div>
             <p id="account-settings-feedback" class="service-note" role="status" aria-live="polite"></p>
             ${isRegularUser() ? `<form id="account-change-password" class="service-form"><label class="settings-field"><span>Huidig wachtwoord</span><input id="account-current-password" type="password" autocomplete="current-password" required></label><label class="settings-field"><span>Nieuw wachtwoord</span><input id="account-new-password" type="password" autocomplete="new-password" minlength="8" required></label><button class="settings-secondary-button" type="submit">Wachtwoord wijzigen</button><p id="account-password-status" class="service-status" role="status" aria-live="polite"></p></form>` : ''}
-            <p class="service-note">Je tuingegevens worden lokaal op dit apparaat bewaard. Online synchronisatie staat uit.</p>
+            <p class="service-note">Je tuingegevens worden lokaal op dit apparaat bewaard.</p>
         </section>`;
     const centralAISettingsHTML = () => window.KweekScope?.role !== 'admin' ? '' : `
         <section class="settings-page-section" id="settings-section-user-ai" aria-labelledby="user-ai-title" tabindex="-1">
@@ -1277,7 +1277,7 @@
             if (consent) {
                 consent.checked = gardenStorage.getItem(PROFILE_AI_CONSENT_KEY) === 'true';
                 consent.onchange = () => {
-                    try { gardenStorage.setItem(PROFILE_AI_CONSENT_KEY, String(consent.checked)); }
+                    try { gardenStorage.setItem(PROFILE_AI_CONSENT_KEY, String(consent.checked)); say('ai-save-status', 'Automatisch opgeslagen.', panel); }
                     catch { consent.checked = false; say('ai-save-status', 'Deze keuze kon niet worden opgeslagen.', panel); }
                 };
             }
@@ -1329,13 +1329,13 @@
                         const limitRow = document.createElement('div'); limitRow.className = 'user-management-row';
                         const input = document.createElement('input'); input.type = 'number'; input.min = '0'; input.max = '1000000'; input.step = '1'; input.value = account.limit; input.setAttribute('aria-label', `Maandlimiet ${account.email || 'gebruiker'}`);
                         const save = document.createElement('button'); save.type = 'button'; save.className = 'settings-secondary-button'; save.textContent = 'Limiet opslaan';
-                        save.onclick = async () => { try { if (input.value.trim() === '') throw new Error('Vul een limiet in.'); await request('ai-budget', { action: 'set-limit', userId: account.id, limit: Number(input.value) }); await renderBudget(); } catch (error) { budgetStatus.textContent = error.message; } };
+                        save.onclick = async () => { try { if (input.value.trim() === '') throw new Error('Vul een limiet in.'); await request('ai-budget', { action: 'set-limit', userId: account.id, limit: Number(input.value) }); await renderBudget(); budgetStatus.textContent = 'Maandlimiet opgeslagen.'; } catch (error) { budgetStatus.textContent = error.message; } };
                         const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'settings-secondary-button'; reset.textContent = 'Standaard gebruiken';
-                        reset.onclick = async () => { try { await request('ai-budget', { action: 'clear-limit', userId: account.id }); await renderBudget(); } catch (error) { budgetStatus.textContent = error.message; } };
+                        reset.onclick = async () => { try { await request('ai-budget', { action: 'clear-limit', userId: account.id }); await renderBudget(); budgetStatus.textContent = 'Standaardlimiet hersteld.'; } catch (error) { budgetStatus.textContent = error.message; } };
                         limitRow.append(input, save, reset);
                         const accountRow = document.createElement('div'); accountRow.className = 'user-management-row';
                         const active = document.createElement('button'); active.type = 'button'; active.className = 'settings-secondary-button'; active.textContent = account.active === false ? 'Activeren' : 'Deactiveren';
-                        active.onclick = async () => { try { active.disabled = true; await request('user-management', { action: 'set-active', userId: account.id, active: account.active === false }); await renderBudget(); } catch (error) { budgetStatus.textContent = error.message; active.disabled = false; } };
+                        active.onclick = async () => { const activate = account.active === false; try { active.disabled = true; await request('user-management', { action: 'set-active', userId: account.id, active: activate }); await renderBudget(); budgetStatus.textContent = activate ? 'Gebruiker geactiveerd.' : 'Gebruiker geblokkeerd.'; } catch (error) { budgetStatus.textContent = error.message; active.disabled = false; } };
                         const password = document.createElement('input'); password.type = 'password'; password.minLength = 8; password.maxLength = 1024; password.autocomplete = 'new-password'; password.placeholder = 'Nieuw tijdelijk wachtwoord'; password.setAttribute('aria-label', `Nieuw wachtwoord ${account.email || 'gebruiker'}`);
                         const resetPassword = document.createElement('button'); resetPassword.type = 'button'; resetPassword.className = 'settings-secondary-button'; resetPassword.textContent = 'Wachtwoord instellen';
                         resetPassword.onclick = async () => { const value = password.value; password.value = ''; if (value.length < 8) { budgetStatus.textContent = 'Gebruik een wachtwoord van minimaal 8 tekens.'; return; } try { resetPassword.disabled = true; await request('user-management', { action: 'reset-password', userId: account.id, password: value }); budgetStatus.textContent = 'Wachtwoord ingesteld.'; } catch (error) { budgetStatus.textContent = error.message; } finally { resetPassword.disabled = false; } };
@@ -1346,7 +1346,7 @@
                 } catch (error) { if (panel.isConnected) budgetStatus.textContent = error.message; }
             };
             panel.querySelector('#ai-budget-save-default').onclick = async () => {
-                try { if (limitInput.value.trim() === '') throw new Error('Vul een limiet in.'); await request('ai-budget', { action: 'set-default', limit: Number(limitInput.value) }); await renderBudget(); }
+                try { if (limitInput.value.trim() === '') throw new Error('Vul een limiet in.'); await request('ai-budget', { action: 'set-default', limit: Number(limitInput.value) }); await renderBudget(); budgetStatus.textContent = 'Standaard maandlimiet opgeslagen.'; }
                 catch (error) { budgetStatus.textContent = error.message; }
             };
             panel.querySelector('#user-create-form').onsubmit = async event => {
@@ -1384,7 +1384,7 @@
         const profileConsent = panel.querySelector('#ai-profile-consent');
         profileConsent.checked = localStorage.getItem(PROFILE_AI_CONSENT_KEY) === 'true';
         profileConsent.onchange = () => {
-            try { localStorage.setItem(PROFILE_AI_CONSENT_KEY, String(profileConsent.checked)); }
+            try { localStorage.setItem(PROFILE_AI_CONSENT_KEY, String(profileConsent.checked)); say('ai-save-status', 'Automatisch opgeslagen.', panel); }
             catch { profileConsent.checked = false; say('ai-save-status', 'Deze keuze kon niet worden opgeslagen.', panel); }
         };
         panel.querySelector('#ai-model').onchange = () => syncOllamaCommand(panel);

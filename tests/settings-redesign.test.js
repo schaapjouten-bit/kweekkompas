@@ -47,7 +47,7 @@ test('Data & opslag toont back-upacties en een afzonderlijke resetactie', () => 
     assert.match(appSource, /onclick="exportData\(\)"/);
     assert.match(appSource, /onclick="restoreBackup\(\)"/);
     assert.match(appSource, /onclick="importData\(\)"/);
-    assert.match(appSource, /class="settings-reset-action"[\s\S]*class="settings-danger-button"/);
+    assert.match(appSource, /class="settings-backup-actions"[\s\S]*onclick="restoreBackup\(\)"[\s\S]*class="settings-danger-button"[\s\S]*onclick="resetApp\(\)"/);
     assert.match(appSource, /onclick="resetApp\(\)"/);
     assert.match(appSource, /Wat in het bestand staat vervangt de bijbehorende gegevens; de rest blijft bewaard/);
     assert.match(appSource, /Je bevestigt dit eerst/);
