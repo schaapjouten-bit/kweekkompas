@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="nl" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Losstaand ontwerpconcept voor KweekKompas">
+  <title>KweekKompas — ontwerpconcept</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="preview-shell">
+    <header class="preview-toolbar" aria-label="Previewbediening">
+      <div class="preview-brand">
+        <div class="preview-mark" aria-hidden="true" data-icon="sprout"></div>
+        <div>
+          <p class="eyebrow">KweekKompas</p>
+          <h1>Ontwerpconcept</h1>
+        </div>
+      </div>
+
+      <div class="preview-controls">
+        <label class="control-label" for="screen-select">Scherm</label>
+        <select id="screen-select" aria-label="Kies een voorbeeldscherm">
+          <option value="seeds">Mijn zaden</option>
+          <option value="storage">Onboarding — opslag</option>
+          <option value="garden">Onboarding — jouw tuin</option>
+        </select>
+        <label class="control-label" for="theme-select">Thema</label>
+        <select id="theme-select" aria-label="Kies een thema">
+          <option value="light">Licht</option>
+          <option value="dark">Donker</option>
+          <option value="playful">Speels</option>
+        </select>
+      </div>
+    </header>
+
+    <main id="preview-root" tabindex="-1"></main>
+
+    <footer class="preview-footer">
+      <span>Voorbeelddata · niets wordt opgeslagen</span>
+      <span>Losstaand concept · geen verbinding met KweekKompas</span>
+    </footer>
+  </div>
+
+  <script src="preview.js"></script>
+</body>
+</html>

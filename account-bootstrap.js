@@ -14,7 +14,7 @@ try {
             location.reload();
         }
     });
-    const scripts = ['cloud-data.js?v=2','photo-storage.js?v=3','auto-sync.js?v=3','local-backup.js?v=3','local-drafts.js?v=1','plant-lifecycle.js?v=1','ai-contract.js?v=4','browser-ollama.js?v=1','services.js?v=27','app-v132.js?v=90'];
+    const scripts = ['cloud-data.js?v=2','photo-storage.js?v=3','auto-sync.js?v=3','local-backup.js?v=3','local-drafts.js?v=1','plant-lifecycle.js?v=1','ai-contract.js?v=4','browser-ollama.js?v=1','services.js?v=27','app-v132.js?v=91'];
     for (const src of scripts) await new Promise((resolve, reject) => { const script = document.createElement('script'); script.src = src; script.onload = resolve; script.onerror = reject; document.body.append(script); });
     status.remove();
 } catch (error) {

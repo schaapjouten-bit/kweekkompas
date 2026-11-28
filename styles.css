@@ -6973,8 +6973,8 @@ textarea:focus-visible, [tabindex]:focus-visible {
   position: relative;
   display: grid;
   place-items: center;
-  min-height: 178px;
-  aspect-ratio: 16 / 10;
+  min-height: 205px;
+  aspect-ratio: 32 / 23;
   overflow: hidden;
   color: var(--accent-primary);
   background: var(--workspace-background);
@@ -7244,7 +7244,7 @@ textarea:focus-visible, [tabindex]:focus-visible {
   }
 
   .seed-card-media {
-    min-height: 200px;
+    min-height: 230px;
   }
 }
 
@@ -8773,7 +8773,7 @@ body:has(#view-home:not(.hidden)) .toast-container .toast { position: relative; 
 #view-detail .category-badge .plant-detail-icon { width: 16px; height: 16px; color: var(--accent-primary); }
 #view-detail .detail-photo {
   position: relative; display: flex; align-items: center; justify-content: center;
-  min-width: 0; height: 280px; border: 1px solid var(--border-color);
+  min-width: 0; height: 322px; border: 1px solid var(--border-color);
   border-radius: 14px; overflow: hidden; background: var(--workspace-background);
 }
 #view-detail .detail-hero-img { position: absolute; z-index: 1; display: block; object-fit: cover; }
@@ -8789,7 +8789,9 @@ body:has(#view-home:not(.hidden)) .toast-container .toast { position: relative; 
 .detail-crop-dialog button { min-height: 40px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 9px; background: var(--workspace-background); color: var(--primary-text); font: inherit; cursor: pointer; }
 .detail-crop-dialog button:focus-visible, .detail-crop-dialog input:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 .detail-crop-dialog .detail-crop-save { border-color: var(--primary-color); background: var(--primary-color); color: #fff; font-weight: 650; }
-.detail-crop-preview { position: relative; width: 100%; height: min(54vh, 420px); min-height: 220px; overflow: hidden; border: 1px solid var(--border-color); border-radius: 12px; background: var(--workspace-background); cursor: grab; touch-action: none; }
+.detail-crop-preview { position: relative; width: 100%; height: min(62vh, 483px); min-height: 253px; overflow: hidden; border: 1px solid var(--border-color); border-radius: 12px; background: var(--workspace-background); cursor: grab; touch-action: none; }
+.detail-crop-preview-card { aspect-ratio: 32 / 23; height: auto; max-height: min(62vh, 483px); min-height: 205px; }
+.detail-crop-preview-header { height: min(62vh, 483px); min-height: 253px; }
 .detail-crop-preview:active { cursor: grabbing; }
 .detail-crop-preview.is-contained { background: var(--workspace-background); cursor: default; }
 .detail-crop-preview-image { position: absolute; z-index: 1; display: block; width: 100%; height: 100%; object-fit: cover; user-select: none; pointer-events: none; }
@@ -8900,7 +8902,7 @@ body:has(#view-home:not(.hidden)) .toast-container .toast { position: relative; 
 @media (max-width: 640px) {
   #view-detail .detail-page-body { padding: 16px; gap: 18px; border-radius: 14px; }
   #view-detail .detail-grid { grid-template-columns: minmax(0, 1fr); }
-  #view-detail .detail-photo { height: 240px; }
+  #view-detail .detail-photo { height: 276px; }
   #view-detail .detail-item { padding: 13px; }
   #view-detail .detail-page-header { gap: 6px; }
   #view-detail .btn-back, #view-detail .btn-edit-detail { padding: 8px; }

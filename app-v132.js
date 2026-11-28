@@ -3862,7 +3862,7 @@ async function startKweekApp() {
         closeButton.addEventListener('click', () => dialog.close());
         top.append(title, closeButton);
 
-        const preview = make('div', 'detail-crop-preview');
+        const preview = make('div', `detail-crop-preview ${isHeader ? 'detail-crop-preview-header' : 'detail-crop-preview-card'}`);
         preview.setAttribute('role', 'img');
         preview.setAttribute('aria-label', `Voorbeeld van de ${isHeader ? 'headerfoto' : 'zadenkaart'} voor ${plantName || 'de plant'}`);
         const previewBackdrop = make('img', 'detail-crop-preview-backdrop');
