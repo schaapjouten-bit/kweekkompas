@@ -29,6 +29,21 @@ function readCookies(event) {
     }
     return result;
 }
+function tokenIssuedAt(token) {
+    if (typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    try {
+        const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+        return Number.isSafeInteger(claims?.iat) ? claims.iat : null;
+    } catch { return null; }
+}
+function isSessionRevoked(user, token) {
+    const notBefore = user?.app_metadata?.kweek_session_not_before;
+    if (typeof notBefore !== 'number' || !Number.isFinite(notBefore)) return false;
+    const iat = tokenIssuedAt(token);
+    return iat !== null && iat < notBefore;
+}
 async function authenticate(event) {
     const stored = readCookies(event);
     let token = stored.kk_access;
@@ -37,7 +52,7 @@ async function authenticate(event) {
     let user;
     if (token) {
         const result = await authClient.auth.getUser(token);
-        if (!result.error) user = result.data.user;
+        if (!result.error && !isSessionRevoked(result.data.user, token)) user = result.data.user;
         else if (authUnavailable(result.error)) throw new HttpError(503, 'Inloggen kan nu niet worden gecontroleerd. Probeer later opnieuw.');
     }
     if (!user && stored.kk_refresh) {
@@ -48,10 +63,10 @@ async function authenticate(event) {
             // Verify against Auth, rather than trusting decoded JWT claims.
             const verified = await authClient.auth.getUser(token);
             if (authUnavailable(verified.error)) throw new HttpError(503, 'Inloggen kan nu niet worden gecontroleerd. Probeer later opnieuw.');
-            if (!verified.error) { user = verified.data.user; updatedCookies = cookies(result.data.session); }
+            if (!verified.error && !isSessionRevoked(verified.data.user, token)) { user = verified.data.user; updatedCookies = cookies(result.data.session); }
         }
     }
-    if (!user || user.is_anonymous) throw new HttpError(401, 'Log in om deze functie te gebruiken.');
+    if (!user || user.is_anonymous || (user.banned_until && Date.parse(user.banned_until) > Date.now())) throw new HttpError(401, 'Log in om deze functie te gebruiken.');
     event.responseCookies = updatedCookies;
     return { user, db: client(token), cookies: updatedCookies, token };
 }

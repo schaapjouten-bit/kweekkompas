@@ -352,9 +352,9 @@ test('auth recovery: requires verifyOtp, signs/binds kk_recovery to session, rej
     }));
 
     try {
-        // 1. Normal login & signup keep working
+        // 1. Normal login works; self-registration is denied.
         const signup = await auth(postEvent({ action: 'signup', email: 'a@example.test', password: 'test-password' }));
-        assert.equal(signup.statusCode, 200);
+        assert.equal(signup.statusCode, 403);
         const login = await auth(postEvent({ action: 'login', email: 'a@example.test', password: 'test-password' }));
         assert.equal(login.statusCode, 200);
         const loginJar = jar(login);

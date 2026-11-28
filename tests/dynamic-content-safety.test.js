@@ -81,7 +81,7 @@ function loadSafeBuilders() {
             }
         }
     };
-    const source = sourceBetween('// --- SAFE DYNAMIC CONTENT ---', 'document.addEventListener(\'DOMContentLoaded\'');
+    const source = sourceBetween('// --- SAFE DYNAMIC CONTENT ---', 'async function startKweekApp()');
     vm.runInNewContext(`${source}\nglobalThis.__hooks = { buildWishlistCard, buildAISuggestionRow, buildReminderRow, buildCalendarReminderPills, filterWishlistItems, safeHttpUrl, safeWishlistImageUrl, safeProfileImageUrl, normalizeExternalImageResult, buildImageSearchCard, setSafeText, safeClassToken, appendHighlightedText };`, context);
     return context.__hooks;
 }

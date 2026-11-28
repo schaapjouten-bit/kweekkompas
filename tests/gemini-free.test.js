@@ -8,7 +8,7 @@ const { startFixtures, configureFixtures } = require('./service-fixtures.cjs');
 
 test('Gemini Free tier: session, fixed shared model, account limits, sanitized errors and independent legacy key', async () => {
     const { createServer } = require('../scripts/dev-server.cjs');
-    const fixture = await startFixtures();
+    const fixture = await startFixtures({ admins: ['a', 'b'] });
     configureFixtures(fixture);
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'kweek-shared-gemini-'));
     const legacyFile = path.join(directory, '.kweek-gemini-free.json');

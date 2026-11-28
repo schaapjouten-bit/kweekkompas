@@ -5,7 +5,7 @@ const { startFixtures, configureFixtures } = require('./service-fixtures.cjs');
 
 test('hosted settings use shared credentials, while an old tab key can still be used under Gemini – eigen sleutel', async () => {
     const { createServer } = require('../scripts/dev-server.cjs');
-    const fixture = await startFixtures();
+    const fixture = await startFixtures({ admins: ['a'] });
     configureFixtures(fixture);
     process.env.KWEEK_LOCAL_DEV = 'false';
     process.env.GEMINI_FREE_API_KEY = 'hosted-shared-fixture-key';
@@ -40,7 +40,10 @@ test('hosted settings use shared credentials, while an old tab key can still be 
                     httpMethod: request.method(), headers: { ...await request.allHeaders(), host: url.host, origin },
                     body: request.postData() || ''
                 });
-                return route.fulfill({ status: result.statusCode, headers: result.headers, body: result.body });
+                const body = JSON.parse(result.body);
+                // This regression exercises the administrator's unchanged AI controls.
+                if (url.pathname === '/api/auth' && body.user) body.user.role = 'admin';
+                return route.fulfill({ status: result.statusCode, headers: result.headers, body: JSON.stringify(body) });
             }
             if (url.pathname.startsWith('/api/')) return route.fulfill({ status: 404 });
             const result = await originalFetch(local + url.pathname);
@@ -48,7 +51,7 @@ test('hosted settings use shared credentials, while an old tab key can still be 
         });
         const page = await context.newPage();
         await page.goto(origin);
-        await page.waitForFunction(() => window.KweekServices);
+        await page.waitForFunction(() => window.KweekServices && window.openSettingsSection);
         await page.evaluate(() => window.openSettingsSection('ai'));
         await page.waitForFunction(() => document.querySelector('#ai-provider-status')?.textContent.includes('Beschikbaar'));
         assert.equal(await page.locator('#gemini-free-key').isVisible(), false);

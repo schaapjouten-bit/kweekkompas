@@ -5,7 +5,7 @@ const { startFixtures } = require('./service-fixtures.cjs');
 const { handler } = require('../netlify/functions/_shared/auth');
 const event = (body, cookie = '', local = true) => ({ httpMethod: 'POST', headers: { host: local ? '127.0.0.1:4173' : 'kweekkompas.netlify.app', origin: local ? 'http://127.0.0.1:4173' : 'https://kweekkompas.netlify.app', cookie }, body: JSON.stringify(body) });
 const jar = result => result.multiValueHeaders['Set-Cookie'].map(v => v.split(';')[0]).join('; ');
-test('registration, confirmation, reset, recovery and error distinctions', async () => {
+test('self-registration denied; confirmation, reset and recovery remain available', async () => {
     const fixture = await startFixtures();
     const originalFetch = global.fetch;
     const calls = [];
@@ -30,8 +30,8 @@ test('registration, confirmation, reset, recovery and error distinctions', async
     };
     try {
         const signup = await handler(event({ action: 'signup', email: 'a@example.test', password: 'test-password' }));
-        assert.equal(signup.statusCode, 200); assert.match(signup.body, /bevestigingsmail/); assert.equal(signup.multiValueHeaders, undefined);
-        assert.equal(calls.find(c => c.path.endsWith('/signup')).redirect, 'http://127.0.0.1:4173/');
+        assert.equal(signup.statusCode, 403); assert.match(signup.body, /beheerder/); assert.equal(signup.multiValueHeaders, undefined);
+        assert.equal(calls.some(c => c.path.endsWith('/signup')), false);
         const unconfirmed = await handler(event({ action: 'login', email: 'a@example.test', password: 'unconfirmed-password' }));
         assert.match(unconfirmed.body, /Bevestig eerst/);
         const resend = await handler(event({ action: 'resend', email: 'a@example.test' })); assert.equal(resend.statusCode, 200);
@@ -51,9 +51,9 @@ test('registration, confirmation, reset, recovery and error distinctions', async
         const changed = await handler(event({ action: 'password', password: 'new-password' }, jar(recovery))); assert.equal(changed.statusCode, 200);
         assert.ok(changed.multiValueHeaders['Set-Cookie'].some(c => c.startsWith('kk_recovery=;') && c.includes('Max-Age=0')));
         assert.equal(calls.find(c => c.path.endsWith('/user') && c.body.password).body.password, 'new-password');
-        for (const [code, message] of [['signup_disabled', /staat nog uit/], ['weak_password', /sterker wachtwoord/], ['same_password', /ander wachtwoord/], ['over_email_send_rate_limit', /te snel/]]) {
+        for (const [code, message] of [['over_email_send_rate_limit', /te snel/]]) {
             failure = code;
-            const result = await handler(event({ action: 'signup', email: 'a@example.test', password: 'test-password' })); assert.match(result.body, message); assert.doesNotMatch(result.body, /private detail/);
+            const result = await handler(event({ action: 'reset', email: 'a@example.test' })); assert.match(result.body, message); assert.doesNotMatch(result.body, /private detail/);
         }
         failure = undefined;
         assert.equal(fixture.snapshots.size, 0);

@@ -2,7 +2,7 @@ const http = require('node:http');
 const ids = { a: '11111111-1111-4111-8111-111111111111', b: '22222222-2222-4222-8222-222222222222' };
 const jwt = name => [Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url'), Buffer.from(JSON.stringify({ sub: ids[name], exp: Math.floor(Date.now() / 1000) + 3600, aud: 'authenticated', role: 'authenticated' })).toString('base64url'), 'test-signature'].join('.');
 const tokens = { a: jwt('a'), b: jwt('b') };
-async function startFixtures() {
+async function startFixtures({ admins = [] } = {}) {
     const snapshots = new Map();
     const objects = new Map(), capabilities = new Map();
     const storage = { uploads: 0, failUpload: false, expireDownloadOnce: false };
@@ -53,9 +53,9 @@ async function startFixtures() {
         if (url.pathname === '/auth/v1/token') {
             const who = url.searchParams.get('grant_type') === 'refresh_token' ? body.refresh_token?.replace('refresh-', '') : body.email?.split('@')[0];
             if (!ids[who] || (body.password !== 'test-password' && body.refresh_token !== `refresh-${who}`)) return send(400, { msg: 'Invalid login credentials', error_code: 'invalid_credentials' });
-            return send(200, { access_token: tokens[who], refresh_token: `refresh-${who}`, expires_in: 3600, token_type: 'bearer', user: { id: ids[who], email: `${who}@example.test`, is_anonymous: false } });
+            return send(200, { access_token: tokens[who], refresh_token: `refresh-${who}`, expires_in: 3600, token_type: 'bearer', user: { id: ids[who], email: `${who}@example.test`, is_anonymous: false, app_metadata: { kweek_role: admins.includes(who) ? 'admin' : 'user' } } });
         }
-        if (url.pathname === '/auth/v1/user') return name ? send(200, { id: ids[name], email: `${name}@example.test`, is_anonymous: false }) : send(401, { msg: 'Invalid token' });
+        if (url.pathname === '/auth/v1/user') return name ? send(200, { id: ids[name], email: `${name}@example.test`, is_anonymous: false, app_metadata: { kweek_role: admins.includes(name) ? 'admin' : 'user' } }) : send(401, { msg: 'Invalid token' });
         if (url.pathname === '/auth/v1/logout') return send(204, null);
         if (url.pathname === '/rest/v1/rpc/reserve_gemini_free_request') {
             if (!name) return send(401, { message: 'Unauthorized' });

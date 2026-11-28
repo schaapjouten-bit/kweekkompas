@@ -18,11 +18,11 @@ function sourceBetween(startMarker, endMarker) {
 
 test('Mijn zaden heeft header, samenvatting, zoekveld, filters en toevoegactie', () => {
     assert.match(indexSource, /<h2>Mijn zaden<\/h2>/);
-    assert.match(indexSource, /id="btn-add-zaden-top"[^>]*>Zaad toevoegen<\/button>/);
+    assert.match(indexSource, /id="btn-add-zaden-top"[^>]*>Toevoegen\s*<\/button>/);
     assert.match(indexSource, /id="seed-summary-total"/);
     assert.match(indexSource, /id="seed-summary-favorites"/);
     assert.match(indexSource, /id="seed-summary-season"/);
-    assert.match(indexSource, /id="search-input"[^>]*placeholder="Zoek op plantnaam/);
+    assert.match(indexSource, /id="search-input"[^>]*placeholder="Zoek in zaden en notities/);
     assert.match(indexSource, /id="category-filters"/);
 });
 
@@ -42,7 +42,7 @@ test('seedkaarten behouden veilige afbeelding, tekst, favoriet en detailactie', 
 test('zoeken, filters en favorieten blijven aan de bestaande koppelingen hangen', () => {
     assert.match(appSource, /searchInput\.oninput = applyFilters/);
     assert.match(appSource, /chip\.addEventListener\('click'/);
-    assert.match(appSource, /document\.querySelectorAll\('\.filter-chip'\)/);
+    assert.match(appSource, /chip\.className = 'filter-chip'/);
     assert.match(appSource, /window\._toggleFavContent = async/);
 });
 

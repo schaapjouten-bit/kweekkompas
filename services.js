@@ -1,5 +1,7 @@
 /* Optional services. Local data stays under the existing app's storage/backup logic. */
 (() => {
+    const gardenStorage = window.KweekScope?.storage || localStorage;
+    const isRegularUser = () => window.KweekScope?.role === 'user';
     const PREFS_KEY = 'kweekkompas_ai';
     const PROVIDER_MODELS_KEY = 'kweekkompas_ai_provider_models';
     const OPENAI_MODEL = 'gpt-5-mini';
@@ -100,6 +102,11 @@
     }
     readPreferences();
     function applyAccountSession(data) {
+        if (window.KweekScope && ((data.user?.id || 'guest') !== window.KweekScope.id || (data.user?.role || null) !== window.KweekScope.role)) {
+            window.KweekScope.signal();
+            location.reload();
+            return;
+        }
         const previousProvider = readPreferences().provider;
         const previousAccount = user?.id;
         const wasRecovering = recovery;
@@ -155,6 +162,8 @@
         readPreferences();
         const button = document.getElementById('home-ai-provider');
         if (!button) return;
+        button.hidden = isRegularUser();
+        if (isRegularUser()) return;
         button.onclick = () => {
             window.toggleSettingsPanel_REPAIR_V131();
             requestAnimationFrame(() => {
@@ -255,6 +264,7 @@
         requestAnimationFrame(() => { const help = document.getElementById('local-ai-help'); if (help) { help.open = true; help.scrollIntoView({ block: 'start' }); help.querySelector('summary').focus(); } });
     }
     function appendOllamaHelp(container, error) {
+        if (isRegularUser()) return;
         if (!/^OLLAMA_/.test(error?.code || '')) return;
         const link = document.createElement('button'); link.type = 'button'; link.className = 'ollama-help-link'; link.textContent = 'Lees de installatiehulp'; link.onclick = openLocalHelp;
         container.append(document.createTextNode(' '), link);
@@ -262,7 +272,7 @@
     const cloudSettingsHTML = () => `
         <section class="settings-page-section compact-account" id="settings-section-cloud" aria-labelledby="settings-cloud-title" tabindex="-1">
 <h3 id="settings-cloud-title">Account & synchronisatie</h3><p id="cloud-account-name">Je werkt lokaal</p>
-<button class="settings-primary-button" id="cloud-open-account" type="button">Inloggen / Registreren</button>
+<button class="settings-primary-button" id="cloud-open-account" type="button">Inloggen</button>
 <label class="auto-sync-switch"><input id="cloud-auto-sync" type="checkbox" role="switch" disabled><span>Automatisch synchroniseren</span></label>
 <p id="cloud-status" class="service-status" role="status" aria-live="polite">Opgeslagen op dit apparaat</p>
 <p id="cloud-auto-note" class="service-note"></p>
@@ -276,14 +286,48 @@
             <div class="settings-section-heading"><div><p class="settings-section-eyebrow">Account</p><h3 id="settings-account-title">Account</h3></div></div>
             <p id="account-session-status" class="service-status" role="status" aria-live="polite">Loginstatus controleren…</p>
             <div class="service-actions">
-                <button id="account-settings-login" class="settings-primary-button" type="button" disabled>Inloggen / Registreren</button>
+                <button id="account-settings-login" class="settings-primary-button" type="button" disabled>Inloggen</button>
                 <button id="account-settings-logout" class="settings-secondary-button" type="button" hidden>Uitloggen</button>
             </div>
             <p id="account-settings-feedback" class="service-note" role="status" aria-live="polite"></p>
-            <p class="service-note">Je tuingegevens blijven op dit apparaat. Cloudsync staat uit.</p>
+            ${isRegularUser() ? `<form id="account-change-password" class="service-form"><label class="settings-field"><span>Huidig wachtwoord</span><input id="account-current-password" type="password" autocomplete="current-password" required></label><label class="settings-field"><span>Nieuw wachtwoord</span><input id="account-new-password" type="password" autocomplete="new-password" minlength="8" required></label><button class="settings-secondary-button" type="submit">Wachtwoord wijzigen</button><p id="account-password-status" class="service-status" role="status" aria-live="polite"></p></form>` : ''}
+            <p class="service-note">Je tuingegevens worden lokaal op dit apparaat bewaard. Online synchronisatie staat uit.</p>
+        </section>`;
+    const centralAISettingsHTML = () => window.KweekScope?.role !== 'admin' ? '' : `
+        <section class="settings-page-section" id="settings-section-user-ai" aria-labelledby="user-ai-title" tabindex="-1">
+            <div class="settings-section-heading"><div><p class="settings-section-eyebrow">AI voor gebruikers</p><h3 id="user-ai-title">Centrale Gemini</h3></div></div>
+            <p>Model: Gemini 3.5 Flash-Lite</p>
+            <label class="settings-field"><span>Gemini API-sleutel</span><input id="central-ai-key" type="password" maxlength="8192" autocomplete="off" spellcheck="false"></label>
+            <div class="service-actions"><button id="central-ai-save" class="settings-primary-button" type="button">Sleutel opslaan en testen</button><button id="central-ai-test" class="settings-secondary-button" type="button">Opgeslagen sleutel testen</button></div>
+            <p id="central-ai-status" class="service-status" role="status" aria-live="polite">Status ophalen…</p>
+            <label class="settings-field"><span>Standaard maandlimiet</span><input id="ai-budget-default" type="number" min="0" max="1000000" step="1"></label>
+            <button id="ai-budget-save-default" class="settings-secondary-button" type="button">Standaardlimiet opslaan</button>
+            <p id="ai-budget-total" class="service-note"></p>
+        </section>`;
+    const userManagementHTML = () => window.KweekScope?.role !== 'admin' ? '' : `
+        <section class="settings-page-section" id="settings-section-users" aria-label="Gebruikersbeheer" tabindex="-1">
+            <p class="service-note">Maak accounts aan en beheer maandlimieten.</p>
+            <form id="user-create-form" class="service-form">
+                <label class="settings-field"><span>Naam</span><input id="user-create-name" maxlength="120" required autocomplete="off"></label>
+                <label class="settings-field"><span>E-mailadres</span><input id="user-create-email" type="email" maxlength="320" required autocomplete="off"></label>
+                <label class="settings-field"><span>Tijdelijk wachtwoord</span><input id="user-create-password" type="password" minlength="8" maxlength="1024" required autocomplete="new-password"></label>
+                <button class="settings-primary-button" type="submit">Gebruiker aanmaken</button>
+            </form>
+            <p id="user-management-status" class="service-status" role="status" aria-live="polite"></p>
+            <div id="ai-budget-users"></div>
+            <p id="ai-budget-admin-status" class="service-status" role="status" aria-live="polite"></p>
         </section>`;
     const geminiLegacyKeyHTML = () => `<label id="gemini-legacy-key-field" class="${isLoopback ? 'gemini-legacy-key-option' : 'ai-profile-consent'}" hidden><input id="gemini-use-legacy-key" type="checkbox"><span>Mijn eerder opgeslagen Gemini-sleutel gebruiken</span></label>`;
-    const settingsHTML = () => `
+    const settingsHTML = () => isRegularUser() ? `
+        <section class="settings-page-section" id="settings-section-ai" aria-labelledby="settings-ai-title" tabindex="-1">
+            <h3 id="settings-ai-title">AI-advies</h3>
+            <p id="ai-budget-remaining" class="service-note" role="status">AI-budget ophalen…</p>
+            <label class="ai-profile-consent"><input id="ai-profile-consent" type="checkbox"><span>Mijn tuinprofiel gebruiken voor AI-advies</span></label>
+            <p class="service-note ai-profile-note">Als je dit aanzet, worden klimaat, licht, tuinplek en ervaring meegestuurd voor advies. Je naam en foto blijven achterwege.</p>
+            <p id="ai-save-status" class="service-status" role="status"></p>
+        </section>
+        ${accountSettingsHTML()}
+        ${CLOUD_SYNC_ENABLED ? cloudSettingsHTML() : ''}` : `
         <section class="settings-page-section" id="settings-section-ai" aria-labelledby="settings-ai-title" tabindex="-1">
             <div class="settings-section-heading"><div><p class="settings-section-eyebrow">AI</p><h3 id="settings-ai-title">Provider en model</h3></div></div>
             <form id="ai-settings-form" class="service-form">
@@ -341,6 +385,8 @@
             <label class="ai-profile-consent"><input id="ai-profile-consent" type="checkbox"><span>Mijn tuinprofiel gebruiken voor AI-advies</span></label>
             <p class="service-note ai-profile-note">(Bij AI-advies worden alleen klimaat, licht, tuinplek en ervaring meegestuurd. Naam en foto niet. Deze keuze geldt alleen op dit apparaat.)</p>
         </section>
+        ${centralAISettingsHTML()}
+        ${userManagementHTML()}
         ${accountSettingsHTML()}
         ${CLOUD_SYNC_ENABLED ? cloudSettingsHTML() : ''}`;
     function say(id, message, panel = document) {
@@ -353,10 +399,10 @@
     const syncKey = id => `kweekkompas_sync_${id}`;
     const conflictKey = id => `kweekkompas_sync_conflict_${id}`;
     function hasConflict(id = user?.id) {
-        return !!id && (conflictAccount === id || localStorage.getItem(conflictKey(id)) === 'true');
+        return !!id && (conflictAccount === id || gardenStorage.getItem(conflictKey(id)) === 'true');
     }
     function lastSync(id = user?.id) {
-        try { return id ? JSON.parse(localStorage.getItem(syncKey(id)) || 'null') : null; }
+        try { return id ? JSON.parse(gardenStorage.getItem(syncKey(id)) || 'null') : null; }
         catch { return null; }
     }
     async function fingerprint(payload) {
@@ -370,13 +416,13 @@
         guard();
         // This is device bookkeeping, never part of a garden backup/cloud payload.
         try {
-            localStorage.setItem(syncKey(accountId), JSON.stringify(saved));
-            localStorage.removeItem(conflictKey(accountId));
+            gardenStorage.setItem(syncKey(accountId), JSON.stringify(saved));
+            gardenStorage.removeItem(conflictKey(accountId));
         } catch { throw new Error('De cloudactie is geslaagd, maar de synchronisatiestatus kon niet op dit apparaat worden bewaard. Controleer vrije opslagruimte en lees daarna de cloudstatus opnieuw.'); }
     }
     function showConflict(panel) {
         conflictAccount = user?.id;
-        try { localStorage.setItem(conflictKey(user.id), 'true'); } catch { /* Still block in memory. */ }
+        try { gardenStorage.setItem(conflictKey(user.id), 'true'); } catch { /* Still block in memory. */ }
         auto.pause('conflict');
         say('cloud-status', 'De cloudkopie is gewijzigd op een ander apparaat. Er is niets overschreven. Kies de cloudkopie of stuur je lokale tuin bewust naar de cloud; je lokale gegevens blijven intussen bewaard.', panel);
         renderAutoUI(panel);
@@ -433,14 +479,14 @@
     }
     const cloudLock = async fn => navigator.locks ? navigator.locks.request('kweekkompas-cloud-sync', { ifAvailable: true }, lock => lock ? fn() : false) : fn();
     const auto = window.KweekAutoSync.create({
-        storage: localStorage, nonce: () => crypto.randomUUID(), owner: () => localStorage.getItem(OWNER_KEY), claim: id => localStorage.setItem(OWNER_KEY, id),
+        storage: gardenStorage, nonce: () => crypto.randomUUID(), owner: () => gardenStorage.getItem(OWNER_KEY), claim: id => gardenStorage.setItem(OWNER_KEY, id),
         visible: () => document.visibilityState === 'visible', online: () => navigator.onLine, manualBusy: () => busy, lock: cloudLock,
         canRestore: () => !document.querySelector('#view-add:not(.hidden), #wishlist-detail-modal:not(.hidden), #settings-generic-modal') && !document.activeElement?.matches('input:not([type="checkbox"]):not([type="button"]), textarea, [contenteditable="true"]'),
         capture: () => window.KweekLocalData.captureCloud(), hash: fingerprint,
         remote: async (id, signal) => { const data = await request('cloud-sync', undefined, { signal }); if (data.userId !== id) throw Object.assign(new Error('Account gewijzigd.'), { status: 409 }); cloud = data.snapshot || { revision: 0 }; return cloud; },
         equal: async (local, remote, id) => fingerprint((await window.KweekPhotoStorage.prepare(local, id)).payload).then(async hash => hash === await fingerprint(window.KweekLocalData.validateCloud(remote))),
         hydrate: async (payload, id, signal) => window.KweekLocalData.validateCloud(await window.KweekPhotoStorage.hydrate(payload, id, (route, body) => request(route, body, { signal }), () => {}, { signal })),
-        safety: async () => safetyBackup({ payload: await window.KweekLocalData.capture(), owner: localStorage.getItem(OWNER_KEY), savedAt: new Date().toISOString() }),
+        safety: async () => safetyBackup({ payload: await window.KweekLocalData.capture(), owner: gardenStorage.getItem(OWNER_KEY), savedAt: new Date().toISOString() }),
         restore: async (payload, check, signal) => { await window.KweekLocalData.restoreCloud(payload, { managed: true, check, signal }); autoRefresh = true; },
         record: recordSync,
         upload: async (payload, revision, id, signal, check, beforeSnapshot) => {
@@ -456,7 +502,8 @@
             window.KweekCloudData.assertSize(cloudPayload);
             await beforeSnapshot(cloudPayload); check();
             const result = await guarded('cloud-sync', { payload: cloudPayload, revision, expectedUserId: id }); check();
-            if (result.userId !== id) throw Object.assign(new Error('Account gewijzigd.'), { status: 409 }); cloud = result; return result;
+            if (result.userId !== id) throw Object.assign(new Error('Account gewijzigd.'), { status: 409 });
+            window.KweekScope?.confirmCloudUpload(); cloud = result; return result;
         },
         confirm: (direction, exists) => confirm(direction === 'cloud' ? 'De cloudtuin als uitgangspunt gebruiken? Dit vervangt de lokale tuin, inclusief eventuele wachtende wijzigingen. Eerst wordt een veiligheidskopie gemaakt.' : 'Deze volledige lokale tuin als uitgangspunt gebruiken en automatisch opslaan? Ook geïmporteerde planten en voorbeelden gaan dan bewust mee.' + (exists ? ' De cloudtuin wordt vervangen na revisiecontrole.' : ' Er wordt een nieuwe cloudkopie gemaakt.')),
         choice: (show, exists) => { autoChoice = show; autoRemote = exists; renderAutoUI(); },
@@ -919,7 +966,7 @@
     }
     async function safetyStore() {
         return new Promise((resolve, reject) => {
-            const req = indexedDB.open('KweekKompasSafety', 1);
+            const req = indexedDB.open(window.KweekScope?.database('KweekKompasSafety') || 'KweekKompasSafety', 1);
             req.onupgradeneeded = () => req.result.createObjectStore('backups');
             req.onsuccess = () => resolve(req.result);
             req.onerror = () => reject(new Error('De veiligheidskopie is niet beschikbaar.'));
@@ -963,7 +1010,7 @@
                 if (!saved) throw new Error('Er is nog geen veiligheidskopie van een cloudherstel.');
                 if (!confirm('De vorige lokale tuin terugzetten? Dit vervangt je huidige lokale gegevens.')) return;
                 await window.KweekLocalData.restore(saved.payload);
-                if (saved.owner) localStorage.setItem(OWNER_KEY, saved.owner); else localStorage.removeItem(OWNER_KEY);
+                if (saved.owner) gardenStorage.setItem(OWNER_KEY, saved.owner); else gardenStorage.removeItem(OWNER_KEY);
                 location.reload();
             } else if (kind === 'logout') {
                 accountVersion++;
@@ -979,7 +1026,7 @@
                     if (!hasConflict(accountId)) throw new Error('Lees eerst de cloudstatus en kies bij een conflict welke tuin je wilt bewaren.');
                     await readCloud(panel); // Read before explicit destructive choice; CAS still protects this revision.
                 }
-                const owner = localStorage.getItem(OWNER_KEY);
+                const owner = gardenStorage.getItem(OWNER_KEY);
                 const warning = (['example', 'import'].includes(auto.state()?.paused) ? 'Ook geïmporteerde gegevens en voorbeelden in deze lokale tuin gaan bewust mee.\n\n' : '') + (owner && owner !== user.id ? 'Deze lokale tuin is aan een ander account gekoppeld. Kopieer deze tuin bewust naar dit account?\n\n' : '');
                 const payload = window.KweekLocalData.validateCloud(await window.KweekLocalData.captureCloud());
                 window.KweekCloudData.assertSize(window.KweekPhotoStorage.estimate(payload, accountId).payload);
@@ -992,7 +1039,8 @@
                 say('cloud-status', 'Foto’s beschikbaar. Cloudkopie opslaan…', panel);
                 const result = await request('cloud-sync', { payload: cloudPayload, revision, expectedUserId: accountId });
                 if (result.userId !== accountId || user?.id !== accountId) throw new Error('Het account is gewijzigd.');
-                localStorage.setItem(OWNER_KEY, accountId); cloud = result;
+                window.KweekScope?.confirmCloudUpload();
+                gardenStorage.setItem(OWNER_KEY, accountId); cloud = result;
                 await recordSync(result, payload, 'upload', accountId); await auto.manualBaseline(result, payload, 'upload', accountId);
                 conflictAccount = null; panel.querySelector('#cloud-conflict-actions').hidden = true;
                 say('cloud-status', `Cloudkopie versie ${result.revision} opgeslagen voor ${user.email}.`, panel);
@@ -1007,11 +1055,11 @@
                 const before = await window.KweekLocalData.capture();
                 const beforeHash = await fingerprint(window.KweekCloudData.select(before));
                 selected = window.KweekLocalData.validateCloud(await window.KweekPhotoStorage.hydrate(selected, accountId, request, message => say('cloud-status', message, panel)));
-                await safetyBackup({ payload: before, owner: localStorage.getItem(OWNER_KEY), savedAt: new Date().toISOString() });
+                await safetyBackup({ payload: before, owner: gardenStorage.getItem(OWNER_KEY), savedAt: new Date().toISOString() });
                 if (beforeHash !== await fingerprint(await window.KweekLocalData.captureCloud())) throw new Error('De lokale tuin is intussen gewijzigd. Er is niets vervangen. Probeer het terughalen opnieuw.');
                 if (user?.id !== accountId) throw new Error('Het account is gewijzigd. Er is niets vervangen.');
                 await window.KweekLocalData.restoreCloud(selected);
-                localStorage.setItem(OWNER_KEY, user.id);
+                gardenStorage.setItem(OWNER_KEY, user.id);
                 const restoredPayload = await window.KweekLocalData.captureCloud();
                 await recordSync(cloud, restoredPayload, 'download', accountId); await auto.manualBaseline(cloud, restoredPayload, 'download', accountId);
                 conflictAccount = null;
@@ -1044,8 +1092,8 @@
         const panel = document.createElement('dialog');
         panel.id = 'account-popup'; panel.setAttribute('aria-labelledby', 'account-title');
         panel.innerHTML = `<div class="account-popup-header"><h2 id="account-title">KweekKompas account</h2><button type="button" id="account-close" aria-label="Accountpopup sluiten">×</button></div>
-<div id="account-choice"><p>Hoe wil je beginnen?</p><div class="account-choice-actions"><button class="settings-primary-button" type="button" data-start-mode="login">Inloggen</button><button class="settings-secondary-button" type="button" data-start-mode="signup">Account aanmaken</button><button class="account-link" type="button" id="account-local">Lokaal doorgaan</button></div></div>
-<div id="account-form-area" hidden><div id="account-tabs" role="tablist" aria-label="Account"><button type="button" role="tab" aria-controls="account-form-content" data-auth-mode="login">Inloggen</button><button type="button" role="tab" aria-controls="account-form-content" data-auth-mode="signup">Registreren</button></div>
+<div id="account-choice"><p>Hoe wil je beginnen?</p><div class="account-choice-actions"><button class="settings-primary-button" type="button" data-start-mode="login">Inloggen</button><button class="account-link" type="button" id="account-local">Lokaal doorgaan</button></div></div>
+<div id="account-form-area" hidden><div id="account-tabs" role="tablist" aria-label="Account"><button type="button" role="tab" aria-controls="account-form-content" data-auth-mode="login">Inloggen</button></div>
 <div id="account-form-content"><h3 id="cloud-form-title">Inloggen</h3><p id="cloud-form-description" class="service-note"></p>
 <form id="cloud-login-form" class="service-form" novalidate aria-labelledby="cloud-form-title" aria-describedby="cloud-auth-status"><label class="settings-field"><span>E-mailadres</span><input id="cloud-email" type="email" required autocomplete="username"></label><label class="settings-field"><span>Wachtwoord</span><input id="cloud-password" type="password" required autocomplete="current-password"></label><label class="settings-field" id="cloud-password-confirm-field" hidden><span>Herhaal nieuw wachtwoord</span><input id="cloud-password-confirm" type="password" autocomplete="new-password" disabled></label><p id="cloud-auth-status" class="service-status" role="status" aria-live="polite"></p><button class="settings-primary-button" type="submit" id="cloud-auth-submit">Inloggen</button></form></div>
 <div class="account-links"><button type="button" id="account-forgot" class="account-link" data-auth-mode="reset">Wachtwoord vergeten</button><button type="button" id="account-resend" class="account-link" data-auth-mode="resend" hidden>Bevestigingsmail opnieuw sturen</button></div><button class="account-link account-return" type="button" id="cloud-return">Terug naar KweekKompas</button></div>`;
@@ -1065,6 +1113,7 @@
             if (button.getAttribute('role') === 'tab') button.onkeydown = event => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
                 event.preventDefault(); const tabs = [...panel.querySelectorAll('[role="tab"]')];
+                if (tabs.length < 2) return;
                 const next = event.key === 'Home' ? tabs[0] : event.key === 'End' ? tabs[1] : tabs.find(tab => tab !== button);
                 next.click(); next.focus();
             };
@@ -1134,7 +1183,7 @@
             : user ? `Ingelogd als ${user.email}`
             : accountConfigured === null ? 'Loginstatus controleren…' : 'Niet ingelogd';
         login.hidden = Boolean(user) && !recovery;
-        login.textContent = recovery ? 'Nieuw wachtwoord instellen' : 'Inloggen / Registreren';
+        login.textContent = recovery ? 'Nieuw wachtwoord instellen' : 'Inloggen';
         login.disabled = busy || accountConfigured !== true;
         logout.hidden = !user;
         logout.disabled = busy;
@@ -1184,8 +1233,128 @@
     }
     async function mount(panel) {
         readPreferences();
+        if (isRegularUser()) {
+            const changePassword = panel.querySelector('#account-change-password');
+            if (changePassword) changePassword.onsubmit = async event => {
+                event.preventDefault();
+                const current = panel.querySelector('#account-current-password'), next = panel.querySelector('#account-new-password');
+                const currentPassword = current.value, password = next.value; current.value = ''; next.value = '';
+                const button = changePassword.querySelector('button'); button.disabled = true;
+                try { await request('auth', { action: 'change-password', currentPassword, password }); say('account-password-status', 'Je wachtwoord is gewijzigd.', panel); }
+                catch (error) { say('account-password-status', error.message, panel); }
+                finally { button.disabled = false; }
+            };
+            void request('ai-budget', { action: 'status' }).then(data => {
+                if (panel.isConnected) say('ai-budget-remaining', `AI-budget deze maand: ${data.remaining} van ${data.limit} aanvragen over.`, panel);
+            }).catch(() => { if (panel.isConnected) say('ai-budget-remaining', 'AI-budget is tijdelijk niet beschikbaar.', panel); });
+            const consent = panel.querySelector('#ai-profile-consent');
+            if (consent) {
+                consent.checked = gardenStorage.getItem(PROFILE_AI_CONSENT_KEY) === 'true';
+                consent.onchange = () => {
+                    try { gardenStorage.setItem(PROFILE_AI_CONSENT_KEY, String(consent.checked)); }
+                    catch { consent.checked = false; say('ai-save-status', 'Deze keuze kon niet worden opgeslagen.', panel); }
+                };
+            }
+            const login = panel.querySelector('#account-settings-login');
+            const logout = panel.querySelector('#account-settings-logout');
+            if (login && logout) {
+                login.onclick = () => openAccountPopup(recovery ? 'password' : 'login', { section: 'account' });
+                logout.onclick = () => void logoutAccount(panel);
+                renderAccountSettings(panel);
+                void refreshAccountSettings(panel);
+            }
+            if (CLOUD_SYNC_ENABLED) {
+                panel.querySelector('#cloud-auto-sync').onchange = event => { if (event.target.checked) auto.enable(); else auto.disable(); };
+                panel.querySelectorAll('[data-auto-choice]').forEach(button => button.onclick = () => auto.choose(button.dataset.autoChoice));
+                panel.querySelector('#cloud-open-account').onclick = () => openAccountPopup(recovery ? 'password' : 'login', { section: 'cloud' });
+                panel.querySelectorAll('[data-cloud-action]').forEach(button => { button.onclick = () => action(button.dataset.cloudAction, panel); });
+                auto.status();
+                try {
+                    await refreshAccountSession();
+                    auto.setAccount(recovery ? null : user?.id);
+                    displayAccount(panel, accountConfigured);
+                    if (user && !recovery) await readCloud(panel);
+                } catch (error) { say('cloud-status', error.message, panel); }
+            }
+            return;
+        }
         const providerInput = panel.querySelector('#ai-provider');
         if (!providerInput) return;
+        const centralKey = panel.querySelector('#central-ai-key');
+        if (centralKey) {
+            const limitInput = panel.querySelector('#ai-budget-default');
+            const budgetStatus = panel.querySelector('#ai-budget-admin-status');
+            const renderBudget = async () => {
+                try {
+                    const data = await request('ai-budget', { action: 'list' });
+                    if (!panel.isConnected) return;
+                    const fmt = value => Number(value || 0).toLocaleString('nl-NL');
+                    limitInput.value = data.defaultLimit;
+                    panel.querySelector('#ai-budget-total').textContent = `Deze maand: ${fmt(data.totalRequests)} aanvragen · ${fmt(data.totalInputTokens)} invoertokens · ${fmt(data.totalOutputTokens)} uitvoertokens.`;
+                    const list = panel.querySelector('#ai-budget-users'); list.replaceChildren();
+                    for (const account of data.users) {
+                        const row = document.createElement('div'); row.className = 'user-management-card';
+                        const head = document.createElement('div'); head.className = 'user-management-head';
+                        const title = document.createElement('strong'); title.textContent = `${account.name || 'Gebruiker'} (${account.email || 'geen e-mailadres'})`;
+                        const badge = document.createElement('span'); badge.className = `user-status-badge ${account.active === false ? 'is-inactive' : 'is-active'}`; badge.textContent = account.active === false ? 'Inactief' : 'Actief';
+                        head.append(title, badge);
+                        const meta = document.createElement('p'); meta.className = 'user-management-meta service-note';
+                        meta.textContent = `${fmt(account.used)} gebruikt, ${fmt(account.remaining)} over · ${fmt(account.inputTokens)} invoertokens · ${fmt(account.outputTokens)} uitvoertokens`;
+                        const limitRow = document.createElement('div'); limitRow.className = 'user-management-row';
+                        const input = document.createElement('input'); input.type = 'number'; input.min = '0'; input.max = '1000000'; input.step = '1'; input.value = account.limit; input.setAttribute('aria-label', `Maandlimiet ${account.email || 'gebruiker'}`);
+                        const save = document.createElement('button'); save.type = 'button'; save.className = 'settings-secondary-button'; save.textContent = 'Limiet opslaan';
+                        save.onclick = async () => { try { if (input.value.trim() === '') throw new Error('Vul een limiet in.'); await request('ai-budget', { action: 'set-limit', userId: account.id, limit: Number(input.value) }); await renderBudget(); } catch (error) { budgetStatus.textContent = error.message; } };
+                        const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'settings-secondary-button'; reset.textContent = 'Standaard gebruiken';
+                        reset.onclick = async () => { try { await request('ai-budget', { action: 'clear-limit', userId: account.id }); await renderBudget(); } catch (error) { budgetStatus.textContent = error.message; } };
+                        limitRow.append(input, save, reset);
+                        const accountRow = document.createElement('div'); accountRow.className = 'user-management-row';
+                        const active = document.createElement('button'); active.type = 'button'; active.className = 'settings-secondary-button'; active.textContent = account.active === false ? 'Activeren' : 'Deactiveren';
+                        active.onclick = async () => { try { active.disabled = true; await request('user-management', { action: 'set-active', userId: account.id, active: account.active === false }); await renderBudget(); } catch (error) { budgetStatus.textContent = error.message; active.disabled = false; } };
+                        const password = document.createElement('input'); password.type = 'password'; password.minLength = 8; password.maxLength = 1024; password.autocomplete = 'new-password'; password.placeholder = 'Nieuw tijdelijk wachtwoord'; password.setAttribute('aria-label', `Nieuw wachtwoord ${account.email || 'gebruiker'}`);
+                        const resetPassword = document.createElement('button'); resetPassword.type = 'button'; resetPassword.className = 'settings-secondary-button'; resetPassword.textContent = 'Wachtwoord instellen';
+                        resetPassword.onclick = async () => { const value = password.value; password.value = ''; if (value.length < 8) { budgetStatus.textContent = 'Gebruik een wachtwoord van minimaal 8 tekens.'; return; } try { resetPassword.disabled = true; await request('user-management', { action: 'reset-password', userId: account.id, password: value }); budgetStatus.textContent = 'Wachtwoord ingesteld.'; } catch (error) { budgetStatus.textContent = error.message; } finally { resetPassword.disabled = false; } };
+                        accountRow.append(password, resetPassword, active);
+                        row.append(head, meta, limitRow, accountRow); list.append(row);
+                    }
+                    budgetStatus.textContent = '';
+                } catch (error) { if (panel.isConnected) budgetStatus.textContent = error.message; }
+            };
+            panel.querySelector('#ai-budget-save-default').onclick = async () => {
+                try { if (limitInput.value.trim() === '') throw new Error('Vul een limiet in.'); await request('ai-budget', { action: 'set-default', limit: Number(limitInput.value) }); await renderBudget(); }
+                catch (error) { budgetStatus.textContent = error.message; }
+            };
+            panel.querySelector('#user-create-form').onsubmit = async event => {
+                event.preventDefault();
+                const password = panel.querySelector('#user-create-password'); const value = password.value; password.value = '';
+                const button = event.currentTarget.querySelector('button'); button.disabled = true;
+                try {
+                    await request('user-management', { action: 'create', name: panel.querySelector('#user-create-name').value.trim(), email: panel.querySelector('#user-create-email').value.trim(), password: value });
+                    panel.querySelector('#user-create-name').value = ''; panel.querySelector('#user-create-email').value = '';
+                    say('user-management-status', 'Gebruiker aangemaakt.', panel); await renderBudget();
+                } catch (error) { say('user-management-status', error.message, panel); }
+                finally { button.disabled = false; }
+            };
+            void renderBudget();
+            const save = panel.querySelector('#central-ai-save');
+            const test = panel.querySelector('#central-ai-test');
+            const update = async (action, apiKey) => {
+                save.disabled = test.disabled = true;
+                if (action !== 'status') say('central-ai-status', 'Verbinding controleren…', panel);
+                try {
+                    const result = await request('central-ai-config', { action, ...(apiKey ? { apiKey } : {}) });
+                    if (!panel.isConnected) return;
+                    say('central-ai-status', action === 'status' ? (result.configured ? 'Sleutel opgeslagen; verbinding nog niet getest.' : 'Nog geen sleutel opgeslagen.') : 'Verbinding met Gemini geslaagd.', panel);
+                } catch (error) { if (panel.isConnected) say('central-ai-status', error.message, panel); }
+                finally { save.disabled = test.disabled = false; }
+            };
+            save.onclick = () => {
+                const value = centralKey.value.trim(); centralKey.value = '';
+                if (!value) { say('central-ai-status', 'Vul eerst een sleutel in.', panel); return; }
+                void update('save-test', value);
+            };
+            test.onclick = () => { centralKey.value = ''; void update('test'); };
+            void update('status');
+        }
         const profileConsent = panel.querySelector('#ai-profile-consent');
         profileConsent.checked = localStorage.getItem(PROFILE_AI_CONSENT_KEY) === 'true';
         profileConsent.onchange = () => {
@@ -1281,7 +1450,7 @@
         await accountPromise;
     }
     const removeSafetyBackup = () => new Promise((resolve, reject) => {
-        const req = indexedDB.deleteDatabase('KweekKompasSafety');
+        const req = indexedDB.deleteDatabase(window.KweekScope?.database('KweekKompasSafety') || 'KweekKompasSafety');
         req.onsuccess = resolve;
         req.onerror = req.onblocked = () => reject(new Error('Sluit andere KweekKompas-tabbladen om de veiligheidskopie te wissen.'));
     });
@@ -1310,8 +1479,8 @@
         if (!savedPreferences() && !accountSessionKnown) {
             await refreshAccountSession().catch(() => {});
         }
-        const choice = readPreferences();
-        const useProfile = localStorage.getItem(PROFILE_AI_CONSENT_KEY) === 'true' &&
+        const choice = isRegularUser() ? { provider: 'central', model: 'gemini-3.5-flash-lite' } : readPreferences();
+        const useProfile = (isRegularUser() ? gardenStorage : localStorage).getItem(PROFILE_AI_CONSENT_KEY) === 'true' &&
             (route === 'seed-info' || route === 'tuinassistent' || route === 'gemini-ai' && ['fill_seed_info', 'garden_assistant'].includes(body?.mode));
         const profile = useProfile ? window.userProfile : null;
         const shortText = value => typeof value === 'string' ? value.trim().slice(0, 120) : '';
@@ -1322,7 +1491,7 @@
             gardenPlaces: Array.isArray(profile.gardenPlaces) ? profile.gardenPlaces.filter(value => typeof value === 'string').slice(0, 5).map(shortText) : [],
             experience: shortText(profile.experience)
         } : null;
-        const aiBody = gardenContext ? { ...body, gardenContext } : body;
+        const aiBody = { ...body, ...(gardenContext ? { gardenContext } : {}), ...(isRegularUser() ? { requestId: crypto.randomUUID() } : {}) };
         try {
             if (choice.provider === 'ollama' && window.KweekBrowserOllama?.direct) {
                 try { return await window.KweekBrowserOllama.generate(route, aiBody, choice.model || 'gemma4:latest'); }

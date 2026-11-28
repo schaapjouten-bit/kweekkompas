@@ -3852,8 +3852,8 @@ input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--pri
 
 .unified-image-gallery {
   display: grid !important;
-  grid-template-columns: repeat(4, 1fr) !important;
-  gap: 10px !important;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important;
+  gap: 12px !important;
   width: 100% !important;
   margin-bottom: 12px;
 }
@@ -3865,6 +3865,34 @@ input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--pri
 }
 
 /* Unified Photo Gallery Styles */
+.photo-search-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 12px 0; }
+.photo-search-controls label { display: grid; gap: 4px; color: var(--secondary-text); font-size: 12px; }
+.photo-search-controls label:first-child { flex: 1 1 160px; }
+.photo-search-controls input, .photo-search-controls select { min-height: 42px; min-width: 0; max-width: 100%; border: 1px solid var(--border-color); border-radius: 9px; padding: 8px; background: var(--card-background); color: var(--primary-text); font: inherit; }
+.photo-search-controls button { min-height: 42px; white-space: nowrap; }
+.photo-scientific-label { display: block; margin-top: 10px; font-size: 12px; color: var(--secondary-text); }
+.unified-gallery-media { position: relative; width: 100%; aspect-ratio: 1 / 1; overflow: hidden; background: var(--bg-alt); }
+.photo-preview-button { position: absolute; z-index: 5; bottom: 6px; right: 6px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; line-height: 1; background: rgba(0,0,0,.72); color: white; cursor: pointer; }
+.photo-preview-button:hover { background: rgba(0,0,0,.9); }
+.image-source-link { display: block; padding: 5px 7px; background: var(--card-background); color: var(--secondary-text); font-size: 11px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-top: 1px solid var(--border-color); }
+.image-source-link a { color: inherit; text-decoration: underline; }
+.lightbox-credit a { color: white; text-decoration: underline; }
+.unified-gallery-card .card-overlay, .unified-gallery-card .card-select-btn { z-index: 6; }
+.photo-credit { display: inline-block; font-size: 10px; line-height: 1.3; }
+.seed-card-media > .photo-credit, .detail-header > .photo-credit { position: absolute; bottom: 0; left: 0; z-index: 3; color: white; background: rgba(0,0,0,.8); padding: 3px 5px; }
+.seed-card-media > .photo-credit a, .detail-header > .photo-credit a { color: white; }
+.photo-gallery-credits { display: grid; gap: 4px; margin-top: 6px; }
+.lightbox-credit { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); z-index: 2; max-width: 85%; padding: 5px 8px; background: rgba(0,0,0,.85); color: white; text-align: center; }
+#ai-budget-users { display: grid; gap: 12px; margin-top: 16px; }
+.user-management-card { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-alt); }
+.user-management-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; color: var(--primary-text); }
+.user-status-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.user-status-badge.is-active { background: rgba(45, 106, 79, 0.14); color: var(--primary-color); }
+.user-status-badge.is-inactive { background: rgba(180, 35, 24, 0.12); color: #b42318; }
+.user-management-meta { margin: 0; font-size: 12px; }
+.user-management-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.user-management-row input { flex: 1 1 130px; min-width: 0; min-height: 38px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-background); color: var(--primary-text); font: inherit; }
+.user-management-row button { flex: 0 0 auto; width: auto !important; }
 .form-photo-focus {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   margin: 12px 0; padding: 11px 12px; border: 1px solid var(--border-color);
@@ -3878,14 +3906,15 @@ input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--pri
 #btn-form-photo-focus:focus-visible, #btn-form-header-photo-focus:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 .unified-gallery-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  aspect-ratio: 1 / 1;
   border-radius: 12px;
   overflow: hidden;
   cursor: pointer;
-  border: 2.5px solid transparent;
+  border: 2.5px solid var(--border-color);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  background: var(--bg-alt);
+  background: var(--card-background);
 }
 
 .unified-gallery-card:hover {
@@ -4018,7 +4047,7 @@ input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--pri
   filter: saturate(1.2);
 }
 
-.unified-gallery-card.pending-removal > img {
+.unified-gallery-card.pending-removal img {
   filter: grayscale(1);
   opacity: .55;
 }

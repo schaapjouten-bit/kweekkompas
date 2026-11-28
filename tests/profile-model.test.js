@@ -38,7 +38,7 @@ function createStorage(initialValues = {}) {
 function loadProfileHooks(storage = createStorage()) {
     const warnings = [];
     const context = {
-        localStorage: storage,
+        localStorage: storage, gardenStorage: storage,
         window: {},
         console: { warn: message => warnings.push(message) }
     };
@@ -59,7 +59,7 @@ globalThis.__hooks = {
 
 function loadBackupHooks(storage = createStorage()) {
     const context = {
-        localStorage: storage,
+        localStorage: storage, gardenStorage: storage,
         window: {},
         console: { warn: () => {} }
     };

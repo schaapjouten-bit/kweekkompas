@@ -16,6 +16,7 @@ const { createServer } = require('../scripts/dev-server.cjs');
             });
             await context.route('**/*', route => {
                 const url = new URL(route.request().url());
+                if (url.origin === base && url.pathname === '/api/auth') return route.fulfill({ status: 200, json: { configured: false, user: null } });
                 return url.origin === base && !url.pathname.startsWith('/api/') ? route.continue() : route.abort();
             });
             const page = await context.newPage(); page.on('pageerror', error => report.errors.push(error.message));

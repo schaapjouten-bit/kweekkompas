@@ -1,0 +1,43 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { PGlite } = require('@electric-sql/pglite');
+test('deactivated and revoked users cannot read snapshots or photo objects through RLS and sessions are revoked', async () => {
+    const db = new PGlite();
+    try {
+        await db.exec(`create role anon; create role authenticated; create role service_role; create schema auth; create schema storage;
+            create table auth.users(id uuid primary key,is_anonymous boolean default false,banned_until timestamptz,raw_app_meta_data jsonb default '{}'::jsonb);
+            create table auth.sessions(id uuid primary key, user_id uuid);
+            create table auth.refresh_tokens(id bigserial primary key, user_id varchar);
+            create function auth.uid() returns uuid language sql stable as $$ select current_setting('test.uid',true)::uuid $$;
+            create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('test.jwt',true),''), '{"iat":1000}')::jsonb $$;
+            create table public.kweekkompas_snapshots(user_id uuid); alter table public.kweekkompas_snapshots enable row level security;
+            create table storage.objects(bucket_id text); alter table storage.objects enable row level security;
+            grant usage on schema public,storage to authenticated; grant select on public.kweekkompas_snapshots,storage.objects to authenticated;
+            create policy allow_garden on public.kweekkompas_snapshots for select to authenticated using(true);
+            create policy allow_photo on storage.objects for select to authenticated using(true);
+            insert into auth.users(id) values ('11111111-1111-4111-8111-111111111111');
+            insert into auth.sessions values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111');
+            insert into auth.refresh_tokens(user_id) values ('11111111-1111-4111-8111-111111111111');
+            insert into public.kweekkompas_snapshots values ('11111111-1111-4111-8111-111111111111');
+            insert into storage.objects values ('kweekkompas-photos'); set test.uid = '11111111-1111-4111-8111-111111111111'; set test.jwt = '{"iat":1000}';`);
+        await db.exec(fs.readFileSync(path.join(__dirname, '../supabase/migrations/20261127215503_user_active_guard.sql'), 'utf8'));
+        await db.exec('set role authenticated');
+        assert.equal((await db.query('select * from public.kweekkompas_snapshots')).rows.length, 1);
+        assert.equal((await db.query('select * from storage.objects')).rows.length, 1);
+        await db.exec("reset role; update auth.users set banned_until = now() + interval '1 year'; set role authenticated;");
+        assert.equal((await db.query('select * from public.kweekkompas_snapshots')).rows.length, 0);
+        assert.equal((await db.query('select * from storage.objects')).rows.length, 0);
+        await db.exec("reset role; update auth.users set banned_until = null, raw_app_meta_data = '{\"kweek_session_not_before\": 2000}'::jsonb; set role authenticated;");
+        assert.equal((await db.query('select * from public.kweekkompas_snapshots')).rows.length, 0);
+        assert.equal((await db.query('select * from storage.objects')).rows.length, 0);
+        await db.exec(`set test.jwt = '{"iat":2000}';`);
+        assert.equal((await db.query('select * from public.kweekkompas_snapshots')).rows.length, 1);
+        await assert.rejects(db.query("select public.kweek_revoke_user_sessions('11111111-1111-4111-8111-111111111111')"), /permission denied/);
+        await db.exec('reset role');
+        await db.query("select public.kweek_revoke_user_sessions('11111111-1111-4111-8111-111111111111')");
+        assert.equal((await db.query('select * from auth.sessions')).rows.length, 0);
+        assert.equal((await db.query('select * from auth.refresh_tokens')).rows.length, 0);
+    } finally { await db.close(); }
+});

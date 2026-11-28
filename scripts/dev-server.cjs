@@ -6,8 +6,8 @@ const { pathToFileURL } = require('node:url');
 const root = path.resolve(__dirname, '..');
 if (fs.existsSync(path.join(root, '.env'))) process.loadEnvFile(path.join(root, '.env'));
 process.env.KWEEK_LOCAL_DEV = 'true';
-const pages = new Set(['index.html', 'app-v132.js', 'plant-lifecycle.js', 'ai-contract.js', 'browser-ollama.js', 'cloud-data.js', 'photo-storage.js', 'auto-sync.js', 'local-backup.js', 'local-drafts.js', 'services.js', 'services.css', 'styles.css', 'calendar.css', 'onboarding.css', 'planner.css', 'wishlist.css']);
-const routes = new Set(['auth', 'cloud-sync', 'photo-access', 'ai-config', 'ai-models', 'seed-info', 'tuinassistent', 'gemini-ai', 'gemini-free', 'product-search']);
+const pages = new Set(['index.html', 'account-storage.js', 'account-bootstrap.js', 'app-v132.js', 'plant-lifecycle.js', 'ai-contract.js', 'browser-ollama.js', 'cloud-data.js', 'photo-storage.js', 'auto-sync.js', 'local-backup.js', 'local-drafts.js', 'services.js', 'services.css', 'styles.css', 'calendar.css', 'onboarding.css', 'planner.css', 'wishlist.css']);
+const routes = new Set(['auth', 'cloud-sync', 'photo-access', 'photo-search', 'ai-config', 'ai-models', 'seed-info', 'tuinassistent', 'gemini-ai', 'gemini-free', 'central-ai-config', 'ai-budget', 'user-management', 'product-search']);
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
 function createServer({ localAPIFile = path.join(root, '.kweek-local-api.json'), geminiFreeFile = path.join(root, '.kweek-gemini-free.json'), geminiPersonalFile = path.join(root, '.kweek-gemini.json'), chatGPTFile = path.join(root, '.kweek-chatgpt.json'), chatGPTOptions } = {}) {
     const localAPI = require('./local-api.cjs').createLocalAPI(localAPIFile);
@@ -74,6 +74,10 @@ function createServer({ localAPIFile = path.join(root, '.kweek-local-api.json'),
                 }
                 if (local) {
                     try {
+                        if (req.headers.cookie && /(?:^|;\s*)kk_(?:access|refresh)=/.test(req.headers.cookie)) {
+                            const session = await require('../netlify/functions/_shared/lib/supabase').authenticate({ headers: req.headers });
+                            if (session.user.app_metadata?.kweek_role !== 'admin') { res.writeHead(403).end(JSON.stringify({ error: 'Alleen voor de beheerder.' })); return; }
+                        }
                         const result = await local.handle(req, body);
                         res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(result));
                     } catch (error) {

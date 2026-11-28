@@ -68,7 +68,7 @@ function createFailOnceStorage(initialValues = {}, failingKey) {
 function loadStorageHooks(storage) {
     const warnings = [];
     const context = {
-        localStorage: storage,
+        localStorage: storage, gardenStorage: storage,
         window: {},
         console: { warn: message => warnings.push(message) }
     };
@@ -81,7 +81,7 @@ function loadStorageHooks(storage) {
 function loadImportHooks(storage = createStorage()) {
     const warnings = [];
     const context = {
-        localStorage: storage,
+        localStorage: storage, gardenStorage: storage,
         window: {},
         console: { warn: message => warnings.push(message) }
     };
@@ -197,7 +197,7 @@ async function loadAtomicDatabaseHook(database) {
         },
         console: { warn: () => {} }
     };
-    const dbSource = sourceBetween('// --- INDEXED DB WRAPPER ---', "document.addEventListener('DOMContentLoaded'");
+    const dbSource = sourceBetween('// --- INDEXED DB WRAPPER ---', 'async function startKweekApp()');
     vm.runInNewContext(`${dbSource}\nglobalThis.__hooks = { initDB, replaceAllSeedsAtomic };`, context);
     await context.__hooks.initDB();
     return context.__hooks.replaceAllSeedsAtomic;
@@ -254,7 +254,7 @@ test('normaliseert onboardingwaarde Volle zon naar de canonieke standplaats Zon'
 });
 
 test('IndexedDB-falen laat getAllSeeds veilig falen', async () => {
-    const dbSource = sourceBetween('// --- INDEXED DB WRAPPER ---', "document.addEventListener('DOMContentLoaded'");
+    const dbSource = sourceBetween('// --- INDEXED DB WRAPPER ---', 'async function startKweekApp()');
     const context = {
         indexedDB: { open: () => { throw new Error('IndexedDB unavailable'); } },
         console: { warn: () => {} }

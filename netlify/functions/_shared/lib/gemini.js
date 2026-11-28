@@ -6,7 +6,7 @@ function geminiModelId(value) {
     return model;
 }
 
-async function generateGemini({ apiKey, model, system, prompt, testing = false, timeoutMs = 45_000 }) {
+async function generateGemini({ apiKey, model, system, prompt, testing = false, timeoutMs = 45_000, includeUsage = false }) {
     const id = geminiModelId(model);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${id}:generateContent`;
     const generationConfig = { responseMimeType: 'application/json' };
@@ -31,17 +31,20 @@ async function generateGemini({ apiKey, model, system, prompt, testing = false, 
     }
     const data = await response.json().catch(() => null);
     if (!response.ok) {
+        const rejected = (status, message) => Object.assign(new HttpError(status, message), { providerRejected: response.status >= 400 && response.status < 500 && response.status !== 408 });
         const details = data?.error?.details;
         const invalidKey = Array.isArray(details) && details.some(detail => ['API_KEY_INVALID', 'API_KEY_EXPIRED'].includes(detail?.reason));
-        if (invalidKey || response.status === 401) throw new HttpError(401, 'Ongeldige of verlopen Gemini API-sleutel (API_KEY_INVALID). Controleer je sleutel in Instellingen → AI of in de backend.');
-        if (response.status === 403 || response.status === 404) throw new HttpError(response.status, 'Je Google-project heeft geen toegang tot het gekozen Gemini-model. Controleer modeltoegang en facturering in Google AI Studio.');
-        if (response.status === 429) throw new HttpError(429, 'Het quotum voor dit Gemini-model is bereikt. Controleer je limieten in Google AI Studio of probeer het later opnieuw.');
-        throw new HttpError(502, `Gemini weigerde de aanvraag (${response.status}). Controleer of het gekozen model JSON-antwoorden ondersteunt.`);
+        if (invalidKey || response.status === 401) throw rejected(401, 'Ongeldige of verlopen Gemini API-sleutel (API_KEY_INVALID). Controleer je sleutel in Instellingen → AI of in de backend.');
+        if (response.status === 403 || response.status === 404) throw rejected(response.status, 'Je Google-project heeft geen toegang tot het gekozen Gemini-model. Controleer modeltoegang en facturering in Google AI Studio.');
+        if (response.status === 429) throw rejected(429, 'Het quotum voor dit Gemini-model is bereikt. Controleer je limieten in Google AI Studio of probeer het later opnieuw.');
+        throw rejected(502, `Gemini weigerde de aanvraag (${response.status}). Controleer of het gekozen model JSON-antwoorden ondersteunt.`);
     }
     const parts = data?.candidates?.[0]?.content?.parts;
     const text = Array.isArray(parts) && parts.filter(part => !part?.thought).map(part => part?.text || '').join('');
-    if (!text) throw new HttpError(502, 'Gemini gaf geen bruikbaar antwoord. Probeer opnieuw.');
-    return text;
+    const count = value => Number.isSafeInteger(value) && value >= 0 && value <= 2147483647 ? value : 0;
+    const usage = { inputTokens: count(data?.usageMetadata?.promptTokenCount), outputTokens: Math.min(2147483647, count(data?.usageMetadata?.candidatesTokenCount) + count(data?.usageMetadata?.thoughtsTokenCount)) };
+    if (!text) throw Object.assign(new HttpError(502, 'Gemini gaf geen bruikbaar antwoord. Probeer opnieuw.'), includeUsage ? { providerUsage: usage } : {});
+    return includeUsage ? { text, ...usage } : text;
 }
 
 module.exports = { geminiModelId, generateGemini };

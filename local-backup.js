@@ -42,7 +42,7 @@
             if (!io.indexedDB) return Promise.reject(new Error('Lokale opslag is niet beschikbaar.'));
             if (databasePromise) return databasePromise;
             databasePromise = new Promise((resolve, reject) => {
-                const request = io.indexedDB.open(DATABASE, 1);
+                const request = io.indexedDB.open(globalThis.KweekScope?.database(DATABASE) || DATABASE, 1);
                 request.onupgradeneeded = event => {
                     const db = event.target.result;
                     if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'key' });

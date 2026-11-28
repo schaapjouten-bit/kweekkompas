@@ -1,10 +1,11 @@
 /* Device-only concepts. Text is saved synchronously; photos use IndexedDB. */
 (function(root) {
+    const localStorage = root.KweekScope?.storage || root.localStorage;
     const PREFIX = 'kweekkompas_draft_', LAST = PREFIX + 'last';
     const pending = new Map();
     let database;
     const open = () => database ||= new Promise((resolve, reject) => {
-        const request = indexedDB.open('KweekKompasDrafts', 1);
+        const request = indexedDB.open(root.KweekScope?.database('KweekKompasDrafts') || 'KweekKompasDrafts', 1);
         request.onupgradeneeded = () => request.result.createObjectStore('media');
         request.onsuccess = () => {
             const db = request.result;

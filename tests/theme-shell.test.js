@@ -30,6 +30,7 @@ function loadThemeHelpers() {
             setItem: (key, value) => storage.set(key, String(value))
         }
     };
+    context.gardenStorage = context.localStorage;
     vm.runInNewContext(`${appSource.slice(start, end)}\nglobalThis.hooks = { normalizeAppTheme, getStoredAppTheme, applyAppTheme, saveAppTheme };`, context);
     return { ...context.hooks, storage, document };
 }

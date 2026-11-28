@@ -65,7 +65,7 @@ function checkAuth(error) {
     const messages = {
         email_not_confirmed: 'Bevestig eerst je e-mailadres via de bevestigingsmail. Kijk ook in je spammap.',
         invalid_credentials: 'Inloggen mislukt. Je e-mailadres of wachtwoord klopt niet. Gebruik zo nodig Wachtwoord vergeten.',
-        signup_disabled: 'Account aanmaken staat nog uit in de accountdienst. De beheerder moet Allow new users to sign up inschakelen.',
+        signup_disabled: 'Accounts worden uitsluitend door de beheerder aangemaakt.',
         email_provider_disabled: 'Inloggen met e-mail staat nog uit in de accountdienst.',
         weak_password: 'Kies een sterker wachtwoord van minimaal 8 tekens.',
         same_password: 'Kies een ander wachtwoord dan je huidige wachtwoord.',
@@ -76,15 +76,18 @@ function checkAuth(error) {
     throw new HttpError(error.status === 429 ? 429 : 400, messages[error.code] || (error.status === 429 ? 'Te veel pogingen. Wacht even en probeer opnieuw.' : 'De accountaanvraag is mislukt. Controleer je gegevens of vraag een nieuwe link aan.'));
 }
 const recoveryCookie = value => `kk_recovery=${value || ''}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${value ? RECOVERY_TTL_SECONDS : 0}${env('KWEEK_LOCAL_DEV') === 'true' ? '' : '; Secure'}`;
-const account = data => ({ configured: true, user: { id: data.user.id, email: data.user.email } });
+const roleOf = user => user?.app_metadata?.kweek_role === 'admin' ? 'admin' : 'user';
+const publicUser = user => ({ id: user.id, email: user.email, role: roleOf(user) });
+const account = data => ({ configured: true, user: publicUser(data.user) });
 exports.handler = endpoint(async event => {
     if (event.httpMethod === 'GET') {
         if (!configured()) return reply(200, { configured: false, user: null });
+        client(); // Validate the public key even when no session cookie is present.
         const stored = readCookies(event);
         if (!stored.kk_access && !stored.kk_refresh) return reply(200, { configured: true, user: null });
         try {
             const session = await authenticate(event);
-            return reply(200, { configured: true, user: { id: session.user.id, email: session.user.email }, recovery: validRecoveryCookie(stored.kk_recovery, session.user.id, session.token) }, session.cookies);
+            return reply(200, { configured: true, user: publicUser(session.user), recovery: validRecoveryCookie(stored.kk_recovery, session.user.id, session.token) }, session.cookies);
         } catch (error) {
             if (error.status !== 401) throw error;
             // A session read can arrive after a successful login. Only logout clears cookies.
@@ -93,6 +96,7 @@ exports.handler = endpoint(async event => {
     }
     if (event.httpMethod !== 'POST') throw new HttpError(405, 'Gebruik GET of POST.');
     const body = readBody(event);
+    if (body.action === 'signup' || body.action === 'invite') throw new HttpError(403, 'Accounts worden uitsluitend door de beheerder aangemaakt.');
     if (body.action === 'logout') {
         const stored = readCookies(event);
         let token;
@@ -107,13 +111,13 @@ exports.handler = endpoint(async event => {
         return reply(200, { user: null }, [...cookies(null), recoveryCookie(null)]);
     }
     if (body.action === 'callback') {
-        if (!['signup', 'email', 'recovery'].includes(body.type)) throw new HttpError(400, 'Ongeldige accountlink. Vraag een nieuwe mail aan.');
+        if (!['signup', 'email', 'recovery', 'invite'].includes(body.type)) throw new HttpError(400, 'Ongeldige accountlink. Vraag een nieuwe mail aan.');
         const auth = client();
         let result;
         let verifiedRecovery = false;
-        if (body.type === 'recovery') {
+        if (body.type === 'recovery' || body.type === 'invite') {
             if (typeof body.token_hash !== 'string' || !body.token_hash || body.token_hash.length > 2048) throw new HttpError(400, 'Deze herstel-link is niet geldig of verouderd. Vraag een nieuwe herstelmail aan.');
-            result = await auth.auth.verifyOtp({ token_hash: body.token_hash, type: 'recovery' });
+            result = await auth.auth.verifyOtp({ token_hash: body.token_hash, type: body.type });
             verifiedRecovery = true;
         } else if (typeof body.token_hash === 'string' && body.token_hash.length <= 2048) result = await auth.auth.verifyOtp({ token_hash: body.token_hash, type: body.type });
         else if (typeof body.access_token === 'string' && typeof body.refresh_token === 'string' && body.access_token.length <= 16000 && body.refresh_token.length <= 4096) result = await auth.auth.setSession({ access_token: body.access_token, refresh_token: body.refresh_token });
@@ -134,24 +138,34 @@ exports.handler = endpoint(async event => {
         checkAuth(restored.error);
         const result = await auth.auth.updateUser({ password: body.password });
         checkAuth(result.error);
+        await auth.auth.signOut({ scope: 'others' }).catch(() => {});
         const current = await auth.auth.getSession();
         return reply(200, { ...account(result.data), recovery: false }, [...cookies(current.data.session), recoveryCookie(null)]);
     }
-    if (!['login', 'signup', 'reset', 'resend'].includes(body.action) || typeof body.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email) || body.email.length > 320) throw new HttpError(400, 'Vul een geldig e-mailadres in.');
+    if (body.action === 'change-password') {
+        if (typeof body.currentPassword !== 'string' || !body.currentPassword || body.currentPassword.length > 1024 || typeof body.password !== 'string' || body.password.length < 8 || body.password.length > 1024) throw new HttpError(400, 'Vul je huidige wachtwoord en een nieuw wachtwoord van minimaal 8 tekens in.');
+        const session = await authenticate(event);
+        if (!session.user.email) throw new HttpError(400, 'Dit account heeft geen e-mailadres.');
+        const auth = client();
+        const verified = await auth.auth.signInWithPassword({ email: session.user.email, password: body.currentPassword });
+        if (verified.error || verified.data.user?.id !== session.user.id || !verified.data.session) throw new HttpError(401, 'Je huidige wachtwoord klopt niet.');
+        const result = await auth.auth.updateUser({ password: body.password });
+        checkAuth(result.error);
+        await auth.auth.signOut({ scope: 'others' }).catch(() => {});
+        const current = await auth.auth.getSession();
+        return reply(200, { ...account(result.data), recovery: false }, [...cookies(current.data.session), recoveryCookie(null)]);
+    }
+    if (!['login', 'reset', 'resend'].includes(body.action) || typeof body.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email) || body.email.length > 320) throw new HttpError(400, 'Vul een geldig e-mailadres in.');
     if (body.action === 'reset' || body.action === 'resend') {
         const auth = client();
         const result = body.action === 'reset' ? await auth.auth.resetPasswordForEmail(body.email, { redirectTo: redirectURL(event) }) : await auth.auth.resend({ type: 'signup', email: body.email, options: { emailRedirectTo: redirectURL(event) } });
         checkAuth(result.error);
         return reply(200, { message: body.action === 'reset' ? 'Als er een KweekKompas-account bestaat voor dit adres, ontvang je een herstelmail. Open de link om een nieuw wachtwoord in te stellen. Kijk ook in je spammap.' : 'Als je account nog bevestigd moet worden, ontvang je een bevestigingsmail. Open de link en keer terug naar KweekKompas. Kijk ook in je spammap.' });
     }
-    if (typeof body.password !== 'string' || !body.password || body.password.length > 1024 || (body.action === 'signup' && body.password.length < 8)) throw new HttpError(400, 'Vul een wachtwoord in (bij een nieuw account minimaal 8 tekens).');
-    if (body.action === 'signup') {
-        const result = await client().auth.signUp({ email: body.email, password: body.password, options: { emailRedirectTo: redirectURL(event) } });
-        checkAuth(result.error);
-        return reply(200, { message: 'Controleer je mailbox en spammap. Als dit adres kan worden geregistreerd, ontvang je een bevestigingsmail. Open de link om je KweekKompas-account te bevestigen. Heb je al een account? Log in of kies Wachtwoord vergeten.' });
-    }
+    if (typeof body.password !== 'string' || !body.password || body.password.length > 1024) throw new HttpError(400, 'Vul een wachtwoord in.');
     const result = await client().auth.signInWithPassword({ email: body.email, password: body.password });
     try { checkAuth(result.error); } catch (error) { if (result.error?.code === 'invalid_credentials') error.status = 401; throw error; }
     if (!result.data.session) throw new HttpError(401, 'Inloggen mislukt.');
+    if (result.data.user?.banned_until && Date.parse(result.data.user.banned_until) > Date.now()) throw new HttpError(401, 'Dit account is niet actief.');
     return reply(200, account(result.data), [...cookies(result.data.session), recoveryCookie(null)]);
 });

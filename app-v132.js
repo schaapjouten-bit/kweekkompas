@@ -1,3 +1,4 @@
+const gardenStorage = globalThis.KweekScope?.storage || globalThis.localStorage;
 // --- CRITICAL REPAIR SYSTEM V1.3.1 ---
 console.log("🚀 KWEEKKOMPAS REPAIR ENGINE STARTING...");
 
@@ -15,7 +16,7 @@ function normalizeAppTheme(value) {
 
 function getStoredAppTheme() {
     try {
-        return normalizeAppTheme(localStorage.getItem('theme'));
+        return normalizeAppTheme(gardenStorage.getItem('theme'));
     } catch (error) {
         return 'light';
     }
@@ -33,7 +34,7 @@ function applyAppTheme(value) {
 function saveAppTheme(value) {
     const theme = applyAppTheme(value);
     try {
-        localStorage.setItem('theme', theme);
+        gardenStorage.setItem('theme', theme);
     } catch (error) {
         // Rendering still works when local storage is temporarily unavailable.
     }
@@ -140,7 +141,7 @@ function normalizeOnboardingLight(value) {
 
 function readStoredString(key) {
     try {
-        const value = localStorage.getItem(key);
+        const value = gardenStorage.getItem(key);
         return typeof value === 'string' ? value : '';
     } catch (error) {
         return '';
@@ -178,7 +179,7 @@ function readStoredJSON(key, fallback, normalize) {
     let rawValue;
 
     try {
-        rawValue = localStorage.getItem(key);
+        rawValue = gardenStorage.getItem(key);
     } catch (error) {
         unreadableStoredJSONKeys.add(key);
         console.warn(`[KweekKompas] Opgeslagen data voor "${key}" is niet beschikbaar.`);
@@ -260,9 +261,9 @@ function saveUserProfileData(profile, { syncOnboarding = true, source = 'own' } 
     const canonical = JSON.stringify(normalized);
     const legacy = JSON.stringify(buildLegacyProfileMirror(normalized));
 
-    const profileChanged = localStorage.getItem(CANONICAL_PROFILE_STORAGE_KEY) !== canonical;
-    if (profileChanged) localStorage.setItem(CANONICAL_PROFILE_STORAGE_KEY, canonical);
-    if (localStorage.getItem(LEGACY_PROFILE_STORAGE_KEY) !== legacy) localStorage.setItem(LEGACY_PROFILE_STORAGE_KEY, legacy);
+    const profileChanged = gardenStorage.getItem(CANONICAL_PROFILE_STORAGE_KEY) !== canonical;
+    if (profileChanged) gardenStorage.setItem(CANONICAL_PROFILE_STORAGE_KEY, canonical);
+    if (gardenStorage.getItem(LEGACY_PROFILE_STORAGE_KEY) !== legacy) gardenStorage.setItem(LEGACY_PROFILE_STORAGE_KEY, legacy);
 
     if (syncOnboarding) {
         const synchronizedFields = [
@@ -272,7 +273,7 @@ function saveUserProfileData(profile, { syncOnboarding = true, source = 'own' } 
         ];
         for (const [key, value] of synchronizedFields) {
             if (hasMeaningfulProfileValue(value) || readStoredString(key) !== '') {
-                if (localStorage.getItem(key) !== (value || '')) localStorage.setItem(key, value || '');
+                if (gardenStorage.getItem(key) !== (value || '')) gardenStorage.setItem(key, value || '');
             }
         }
     }
@@ -503,7 +504,7 @@ function renderSettingsPanel() {
         panel.querySelectorAll('.settings-content > .settings-page-section').forEach(section => {
             if (section === display) return;
             const key = section.id;
-            const labels = { 'settings-section-profile': 'Tuinprofiel', 'settings-section-display': 'Weergave', 'settings-section-ai': 'AI', 'settings-section-storage': 'Data & opslag', 'settings-section-about': 'Over KweekKompas', 'settings-section-faq': 'Hulp' };
+            const labels = { 'settings-section-profile': 'Tuinprofiel', 'settings-section-display': 'Weergave', 'settings-section-ai': 'AI', 'settings-section-user-ai': 'AI voor gebruikers', 'settings-section-users': 'Gebruikersbeheer', 'settings-section-storage': 'Data & opslag', 'settings-section-about': 'Over KweekKompas', 'settings-section-faq': 'Hulp' };
             const details = document.createElement('details'); details.className = 'settings-collapse';
             details.open = settingsExpandedSections.has(key);
             const summary = document.createElement('summary'); summary.textContent = labels[key] || section.querySelector('h3')?.textContent;
@@ -604,7 +605,7 @@ function applySettingsPanelValues(panel) {
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
 
-    const layout = localStorage.getItem('layout_width') === 'wide' ? 'wide' : 'standard';
+    const layout = gardenStorage.getItem('layout_width') === 'wide' ? 'wide' : 'standard';
     panel.querySelectorAll('[data-layout-choice]').forEach(button => {
         const active = button.dataset.layoutChoice === layout;
         button.classList.toggle('active', active);
@@ -1268,7 +1269,7 @@ function getSettingsHTML() {
                         <button type="button" class="theme-choice" data-theme-choice="playful" aria-pressed="false" onclick="window.setAppTheme('playful')"><span class="theme-choice-swatch theme-choice-swatch-playful" aria-hidden="true"></span><span>Warm</span></button>
                     </div>
                     <div class="settings-layout-control"><div><strong>Werkruimtebreedte</strong></div><div class="settings-layout-buttons" role="group" aria-label="Werkruimtebreedte"><button class="layout-toggle-btn" type="button" data-layout-choice="standard" onclick="window.toggleLayoutWidth('standard')">Standaard</button><button class="layout-toggle-btn" type="button" data-layout-choice="wide" onclick="window.toggleLayoutWidth('wide')">Breed</button></div></div>
-                    <label class="settings-layout-control settings-favorites-option"><input id="seed-favorites-separate" type="checkbox" ${localStorage.getItem(SEED_FAVORITES_SETTING) !== 'false' ? 'checked' : ''}><strong>Favorieten tonen</strong></label>
+                    <label class="settings-layout-control settings-favorites-option"><input id="seed-favorites-separate" type="checkbox" ${gardenStorage.getItem(SEED_FAVORITES_SETTING) !== 'false' ? 'checked' : ''}><strong>Favorieten tonen</strong></label>
                 </section>
 
                 ${window.KweekServices?.settingsHTML() || ''}
@@ -1304,7 +1305,7 @@ function getSettingsHTML() {
                         <summary>Hoe maak en herstel ik een back-up?</summary>
                         <p>Je tuin wordt in de browser op dit apparaat bewaard. Wis je de websitegegevens van KweekKompas, dan kan die lokale tuin verdwijnen. Kies bij Instellingen → Data & opslag een map voor automatische back-ups, of download daar zelf een JSON-back-up. Mapback-ups zijn afhankelijk van je browser; als map kiezen niet beschikbaar is, kun je de JSON-back-up gebruiken. Het bestand kan plantfoto’s bevatten en daardoor groot zijn. Bij herstellen worden de gegevens vervangen die in het bestand staan; andere gegevens blijven bewaard.</p>
                     </details>
-                    ${window.KweekServices?.localHelpHTML?.() || ''}
+                    ${window.KweekScope?.role === 'user' ? '' : window.KweekServices?.localHelpHTML?.() || ''}
                 </section>
 
                 <section class="settings-page-section" id="settings-section-about" aria-labelledby="settings-about-title" tabindex="-1">
@@ -1330,7 +1331,7 @@ window.toggleThemeFromPanel = function(checkbox) {
 window.toggleLayoutWidth = function(type) {
     document.body.classList.remove('layout-standard', 'layout-full', 'layout-wide');
     document.body.classList.add('layout-' + type);
-    localStorage.setItem('layout_width', type);
+    gardenStorage.setItem('layout_width', type);
     renderSettingsPanel(); // Ververs om actieve staat te tonen
 }
 
@@ -1387,7 +1388,7 @@ const mockData = {
 };
 
 // --- INDEXED DB WRAPPER ---
-const DB_NAME = 'MoestuinDB';
+const DB_NAME = globalThis.KweekScope?.database('MoestuinDB') || 'MoestuinDB';
 const STORE_NAME = 'seeds';
 let db = null;
 let seeds = [];
@@ -1595,7 +1596,7 @@ function normalizeExternalImageResult(item) {
     return { ...item, imageUrl, sourceLink, title, description, photographer, alt };
 }
 
-function buildImageSearchCard(item, { isSelected = false, isFeatured = false, isPendingRemoval = false, onFeature, onToggle } = {}) {
+function buildImageSearchCard(item, { isSelected = false, isFeatured = false, isPendingRemoval = false, onFeature, onToggle, onPreview } = {}) {
     const normalized = normalizeExternalImageResult(item);
     if (!normalized) return null;
 
@@ -1604,11 +1605,18 @@ function buildImageSearchCard(item, { isSelected = false, isFeatured = false, is
     const accessibleText = [normalized.title, normalized.description, normalized.photographer].filter(Boolean).join(' — ');
     if (accessibleText) card.setAttribute('aria-label', accessibleText);
 
+    const media = document.createElement('div');
+    media.className = 'unified-gallery-media';
+
     const image = document.createElement('img');
     image.src = normalized.imageUrl;
     image.alt = normalized.alt;
     image.loading = 'lazy';
-    card.appendChild(image);
+    media.appendChild(image);
+    if (onPreview) {
+        const preview = document.createElement('button'); preview.type = 'button'; preview.className = 'photo-preview-button'; preview.textContent = '⤢'; preview.title = 'Vergroot foto'; preview.setAttribute('aria-label', 'Bekijk foto vergroot');
+        preview.addEventListener('click', event => { event.stopPropagation(); onPreview(normalized); }); media.appendChild(preview);
+    }
 
     const selectButton = document.createElement('button');
     selectButton.type = 'button';
@@ -1620,14 +1628,15 @@ function buildImageSearchCard(item, { isSelected = false, isFeatured = false, is
     });
     if (isPendingRemoval) {
         card.classList.add('pending-removal');
-        card.appendChild(selectButton);
+        media.appendChild(selectButton);
+        card.appendChild(media);
         return card;
     }
 
     const selectedCheck = document.createElement('div');
     selectedCheck.className = 'selected-check';
     selectedCheck.textContent = '\u2713';
-    card.appendChild(selectedCheck);
+    media.appendChild(selectedCheck);
 
     const featuredStar = document.createElement('div');
     featuredStar.className = 'featured-star';
@@ -1637,12 +1646,12 @@ function buildImageSearchCard(item, { isSelected = false, isFeatured = false, is
         event.stopPropagation();
         onFeature?.(normalized);
     });
-    card.appendChild(featuredStar);
+    media.appendChild(featuredStar);
 
     const featuredLabel = document.createElement('div');
     featuredLabel.className = 'featured-label';
     featuredLabel.textContent = 'Hoofdfoto';
-    card.appendChild(featuredLabel);
+    media.appendChild(featuredLabel);
 
     const overlay = document.createElement('div');
     overlay.className = 'card-overlay';
@@ -1656,17 +1665,23 @@ function buildImageSearchCard(item, { isSelected = false, isFeatured = false, is
     });
     overlay.append(featureButton);
     if (!isSelected) overlay.append(selectButton);
-    card.appendChild(overlay);
+    media.appendChild(overlay);
+    card.appendChild(media);
 
-    if (normalized.sourceLink) {
-        const sourceLink = document.createElement('a');
-        sourceLink.className = 'image-source-link';
-        sourceLink.href = normalized.sourceLink;
-        sourceLink.target = '_blank';
-        sourceLink.rel = 'noopener noreferrer';
-        sourceLink.textContent = normalized.photographer ? `Foto: ${normalized.photographer}` : 'Bron';
-        sourceLink.addEventListener('click', event => event.stopPropagation());
-        card.appendChild(sourceLink);
+    if (normalized.photographer && normalized.source) {
+        const credit = document.createElement('div');
+        credit.className = 'image-source-link';
+        appendPhotoCredit(credit, { ...normalized, license: '' });
+        card.appendChild(credit);
+    } else if (normalized.sourceLink) {
+        const link = document.createElement('a');
+        link.className = 'image-source-link';
+        link.href = normalized.sourceLink;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = normalized.photographer ? `Foto: ${normalized.photographer}` : 'Bron';
+        link.addEventListener('click', event => event.stopPropagation());
+        card.appendChild(link);
     }
 
     card.addEventListener('click', event => {
@@ -1674,6 +1689,21 @@ function buildImageSearchCard(item, { isSelected = false, isFeatured = false, is
         onToggle?.(normalized);
     });
     return card;
+}
+
+function appendPhotoCredit(container, item) {
+    if (!item || !item.photographer || !item.source) return;
+    const credit = document.createElement('span'); credit.className = 'photo-credit';
+    credit.append(document.createTextNode('Foto: '));
+    const author = safeHttpUrl(item.sourceLink);
+    if (author) { const a = document.createElement('a'); a.href = author; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = item.photographer; a.addEventListener('click', event => event.stopPropagation()); credit.append(a); }
+    else credit.append(document.createTextNode(item.photographer));
+    credit.append(document.createTextNode(' · '));
+    const original = safeHttpUrl(item.originalLink);
+    if (original) { const a = document.createElement('a'); a.href = original; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = item.source; a.addEventListener('click', event => event.stopPropagation()); credit.append(a); }
+    else credit.append(document.createTextNode(item.source));
+    if (item.license) { credit.append(document.createTextNode(' · ')); const url = safeHttpUrl(item.licenseUrl); if (url) { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = item.license; a.addEventListener('click', event => event.stopPropagation()); credit.append(a); } else credit.append(document.createTextNode(item.license)); }
+    container.append(credit);
 }
 
 function setSafeText(element, value, fallback = '') {
@@ -2000,6 +2030,7 @@ function buildWishlistCard(item, handlers = {}) {
     });
 
     card.append(openButton, actions, deleteButton);
+    if (item.imageCredit && item.imageCredit.url === imageUrl) appendPhotoCredit(card, item.imageCredit);
     card.addEventListener('click', () => handlers.onOpen?.(item.id));
     return card;
 }
@@ -2056,7 +2087,7 @@ function buildAISuggestionRow(action, handlers = {}) {
 }
 
 
-document.addEventListener('DOMContentLoaded', async () => {
+async function startKweekApp() {
     let databaseAvailable = false;
     try {
         await initDB();
@@ -2106,7 +2137,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const onboardingLight = onboardingProfile.light;
         updateProfileUI();
 
-        localStorage.setItem('onboarding_done', 'true');
+        gardenStorage.setItem('onboarding_done', 'true');
         const starters = [
             {
                 id: Date.now() + 1,
@@ -2336,7 +2367,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (dailyProgress.date !== todayStr) {
         dailyProgress = { date: todayStr, count: 0 };
         if (!unreadableStoredJSONKeys.has('daily_progress')) {
-            localStorage.setItem('daily_progress', JSON.stringify(dailyProgress));
+            gardenStorage.setItem('daily_progress', JSON.stringify(dailyProgress));
             globalThis.KweekCloudStatus?.changed();
         }
     }
@@ -2346,11 +2377,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnReset) {
         btnReset.onclick = async () => {
             if (confirm("Weet je het zeker? Al je zaden en instellingen worden gewist.")) {
-                localStorage.clear();
+                gardenStorage.clear();
                 // Sluit de connectie eerst, anders kan de DB niet verwijderd worden
                 if (db) db.close();
 
-                const req = indexedDB.deleteDatabase('MoestuinDB');
+                const req = indexedDB.deleteDatabase(DB_NAME);
                 req.onsuccess = () => {
                     location.reload();
                 };
@@ -2381,13 +2412,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function incrementDailyProgress() {
         dailyProgress.count++;
-        localStorage.setItem('daily_progress', JSON.stringify(dailyProgress));
+        gardenStorage.setItem('daily_progress', JSON.stringify(dailyProgress));
         globalThis.KweekCloudStatus?.changed();
         updateProgressUI();
     }
 
     const saveReminders = () => {
-        localStorage.setItem('moestuin_reminders', JSON.stringify(reminders));
+        gardenStorage.setItem('moestuin_reminders', JSON.stringify(reminders));
         globalThis.KweekCloudStatus?.changed();
     };
 
@@ -2527,7 +2558,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let activeCategory = 'Alles';
     let activeSeedGroup = '';
     let activeSeedSummary = 'all';
-    let showSeparateSeedFavorites = localStorage.getItem(SEED_FAVORITES_SETTING) !== 'false';
+    let showSeparateSeedFavorites = gardenStorage.getItem(SEED_FAVORITES_SETTING) !== 'false';
     let seedFavoritesCollapsed = false;
     let newestSeedsFirst = false;
     let activePlantStatus = null;
@@ -2552,6 +2583,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!image || !img) return;
         img.src = image.url || image;
         img.alt = `${image.alt || image.caption || 'Plantfoto'} (${currentLightboxIdx + 1} van ${currentLightboxImages.length})`;
+        const credit = document.getElementById('lightbox-credit'); if (credit) { credit.replaceChildren(); appendPhotoCredit(credit, image); }
         const hasMultiple = currentLightboxImages.length > 1;
         document.getElementById('lightbox-prev')?.classList.toggle('hidden', !hasMultiple);
         document.getElementById('lightbox-next')?.classList.toggle('hidden', !hasMultiple);
@@ -2658,7 +2690,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 activeCategory = 'Alles';
                 activeSeedGroup = '';
                 activeMonthFilter = null;
-                localStorage.removeItem('activeMonthFilter');
+                gardenStorage.removeItem('activeMonthFilter');
                 if (window.clearMonthFilter) window.clearMonthFilter(); // Ensure banner is hidden
                 filterChips.forEach(c => {
                     const v = c.dataset.filter;
@@ -2683,7 +2715,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     ];
     let removedSeedGroups = [];
     try {
-        const removed = JSON.parse(localStorage.getItem('removedSeedGroups') || '[]');
+        const removed = JSON.parse(gardenStorage.getItem('removedSeedGroups') || '[]');
         if (Array.isArray(removed)) removedSeedGroups = removed.filter(id => typeof id === 'string');
     } catch (error) { /* Use all built-in groups. */ }
     for (let index = seedGroups.length - 1; index >= 0; index--) {
@@ -2691,7 +2723,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     let customSeedGroups = [];
     try {
-        const savedGroups = JSON.parse(localStorage.getItem('customSeedGroups') || '[]');
+        const savedGroups = JSON.parse(gardenStorage.getItem('customSeedGroups') || '[]');
         if (Array.isArray(savedGroups)) customSeedGroups = savedGroups.filter(name => typeof name === 'string' && name.trim());
     } catch (error) { /* Start with the built-in groups. */ }
     for (const name of customSeedGroups) seedGroups.push({ id: `custom:${name}`, label: name });
@@ -2720,7 +2752,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         customSeedGroups.push(label);
-        localStorage.setItem('customSeedGroups', JSON.stringify(customSeedGroups));
+        gardenStorage.setItem('customSeedGroups', JSON.stringify(customSeedGroups));
         const group = { id: `custom:${label}`, label };
         seedGroups.push(group);
         addSeedGroupChip(group);
@@ -2763,10 +2795,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         return;
                     }
                     customSeedGroups = customSeedGroups.filter(name => name !== group.label);
-                    localStorage.setItem('customSeedGroups', JSON.stringify(customSeedGroups));
+                    gardenStorage.setItem('customSeedGroups', JSON.stringify(customSeedGroups));
                     if (!group.id.startsWith('custom:')) {
                         removedSeedGroups.push(group.id);
-                        localStorage.setItem('removedSeedGroups', JSON.stringify(removedSeedGroups));
+                        gardenStorage.setItem('removedSeedGroups', JSON.stringify(removedSeedGroups));
                     }
                     const index = seedGroups.indexOf(group);
                     seedGroups.splice(index, 1);
@@ -3069,8 +3101,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             errorState.className = 'ai-error-state';
             errorState.className = 'ai-error';
             errorState.appendChild(document.createTextNode('Fout: '));
-            errorState.appendChild(document.createTextNode(err?.message || 'Onbekende fout'));
-            if (err?.code !== 'INVALID_API_RESPONSE') {
+            errorState.appendChild(document.createTextNode(window.KweekScope?.role === 'user' ? (/AI-maandbudget is op/.test(err?.message || '') ? err.message : 'AI is tijdelijk niet beschikbaar. Probeer het later opnieuw.') : err?.message || 'Onbekende fout'));
+            if (window.KweekScope?.role !== 'user' && err?.code !== 'INVALID_API_RESPONSE') {
                 errorState.appendChild(document.createElement('br'));
                 const hint = document.createElement('small');
                 hint.textContent = 'Controleer je keuze bij Instellingen → AI.';
@@ -3129,7 +3161,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyAppTheme(getStoredAppTheme());
 
     // Layout Width Init
-    const storedLayout = localStorage.getItem('layout_width') || 'standard';
+    const storedLayout = gardenStorage.getItem('layout_width') || 'standard';
     document.body.classList.add('layout-' + storedLayout);
 
     // Collapsible state is now handled within the toggle initialization below
@@ -3242,28 +3274,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const detailPlantNavigation = document.getElementById('detail-plant-navigation');
     const btnDetailPlantPrev = document.getElementById('btn-detail-plant-prev');
     const btnDetailPlantNext = document.getElementById('btn-detail-plant-next');
-    const btnQuickPhoto = document.getElementById('btn-quick-photo-search');
-    if (inputNaam && btnQuickPhoto) {
-        btnQuickPhoto.onclick = () => {
-            const naam = inputNaam.value.trim();
-            const pexelsInput = document.getElementById('pexels-search-input');
-            const pexelsBtn = document.getElementById('btn-search-pexels-unified');
-            if (pexelsInput && pexelsBtn) {
-                pexelsInput.value = naam;
-                pexelsBtn.click();
-            }
-        };
-
-        // NEW: Handle Enter key in name field - Search photos & fill info instead of submitting form!
+    const btnPhotoSearchSubmit = document.getElementById('photo-search-submit');
+    if (inputNaam && btnPhotoSearchSubmit) {
         inputNaam.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
-                e.preventDefault(); // Stop form submit
-                btnQuickPhoto.click(); // Trigger photo search
-
-                // ALSO trigger AI info fill automatically if empty
-                if (window._autoFillSeedInfo) {
-                    window._autoFillSeedInfo(false);
-                }
+                e.preventDefault();
+                btnPhotoSearchSubmit.click();
             }
         });
     }
@@ -3419,6 +3435,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const newSeed = {
             id: editingId ?? Date.now().toString(),
             naam: naam,
+            scientificName: document.getElementById('scientific-name')?.value.trim() || '',
             code: document.getElementById('code')?.value.trim() || '',
             type: inputType?.value || 'Overig',
             standplaats: inputStandplaats?.value || 'Zon',
@@ -3654,6 +3671,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             image.setAttribute('loading', 'lazy');
             image.addEventListener('error', () => appendPlaceholder(imageBox), { once: true });
             imageBox.appendChild(image);
+            const creditImage = seed.images?.find(item => item?.url === imageUrl);
+            if (creditImage) appendPhotoCredit(imageBox, creditImage);
         } else {
             imageBox.className = 'card-img seed-card-media';
             appendPlaceholder(imageBox);
@@ -3752,6 +3771,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             name: seed.naam,
             link: '',
             image: img,
+            imageCredit: seed.images?.find(image => image?.url === img) || null,
             note: '',
             type: 'seed',
             bought: false
@@ -4038,6 +4058,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 header.replaceChildren(placeholder);
             }, { once: true });
             header.appendChild(image);
+            const creditImage = seed.images?.find(item => item?.url === safeFeaturedImg);
+            if (creditImage) appendPhotoCredit(header, creditImage);
         } else {
             header.classList.add('detail-without-photo');
             const placeholder = make('div', 'detail-photo-placeholder');
@@ -4292,6 +4314,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 carousel.appendChild(carouselItem);
             });
             gallerySection.appendChild(carousel);
+            const galleryCredits = make('div', 'photo-gallery-credits');
+            safeImages.forEach(image => appendPhotoCredit(galleryCredits, image));
+            gallerySection.appendChild(galleryCredits);
 
             const plantCard = make('button', 'detail-gallery-plant-card');
             plantCard.type = 'button';
@@ -4347,6 +4372,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         pendingImageRemovals.clear();
         editingId = seed.id;
         inputNaam.value = seed.naam;
+        document.getElementById('scientific-name').value = seed.scientificName || seed.wetenschappelijkeNaam || seed.scientific_name || seed.latinName || '';
+        document.getElementById('photo-search-query').value = seed.naam || '';
+        delete document.getElementById('photo-search-query').dataset.manual;
         inputNaam.dataset.featuredUrl = seed.featuredImageUrl || '';
         if (inputType) {
             inputType.value = seed.type;
@@ -4537,7 +4565,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             btnList?.classList.add('active');
             filterChips.forEach(chip => chip.classList.toggle('active', chip.dataset.filter === activeCategory));
 
-            const activeMonth = localStorage.getItem('activeMonthFilter');
+            const activeMonth = gardenStorage.getItem('activeMonthFilter');
             if (activeMonth) {
                 applyMonthFilter(activeMonth);
             } else {
@@ -4588,7 +4616,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return readStoredJSON('kweek_nutrition_products', [], normalizeStoredArray);
     }
     function saveNutrition(products) {
-        localStorage.setItem('kweek_nutrition_products', JSON.stringify(products));
+        gardenStorage.setItem('kweek_nutrition_products', JSON.stringify(products));
         globalThis.KweekCloudStatus?.changed();
     }
     function renderNutrition() {
@@ -4741,7 +4769,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnList) btnList.onclick = () => {
         activeSeedSummary = 'all';
         activePlantStatus = null;
-        localStorage.removeItem('activeMonthFilter');
+        gardenStorage.removeItem('activeMonthFilter');
         activeMonthFilter = null;
         activeCategory = 'Alles'; // RESET CATEGORY TOO
         activeSeedGroup = '';
@@ -4790,7 +4818,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (view === 'list') {
                 activeSeedSummary = 'all';
                 activePlantStatus = null;
-                localStorage.removeItem('activeMonthFilter');
+                gardenStorage.removeItem('activeMonthFilter');
                 activeMonthFilter = null;
                 activeCategory = 'Alles';
                 activeSeedGroup = '';
@@ -4834,11 +4862,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         function openNotesStorage() {
             if (!storagePromise) {
                 storagePromise = new Promise((resolve, reject) => {
-                    const request = indexedDB.open('kweek-garden-notes', 1);
+                    const request = indexedDB.open(globalThis.KweekScope?.database('kweek-garden-notes') || 'kweek-garden-notes', 1);
                     request.onupgradeneeded = () => {
                         const store = request.result.createObjectStore('notes', { keyPath: 'id' });
                         try {
-                            const previous = JSON.parse(localStorage.getItem('kweek_garden_notes') ?? '[]');
+                            const previous = JSON.parse(gardenStorage.getItem('kweek_garden_notes') ?? '[]');
                             for (const note of previous) store.put(note);
                         } catch {
                             request.transaction.abort();
@@ -5061,7 +5089,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (view === 'list') {
                 activeSeedSummary = 'all';
                 activePlantStatus = null;
-                localStorage.removeItem('activeMonthFilter');
+                gardenStorage.removeItem('activeMonthFilter');
                 activeMonthFilter = null;
                 activeCategory = 'Alles';
                 activeSeedGroup = '';
@@ -5229,21 +5257,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnSubmitForm.textContent = 'Zaadje Opslaan';
         document.getElementById('btn-form-delete')?.classList.add('hidden');
         document.getElementById('pexels-mini-search')?.classList.add('hidden');
+        const photoQuery = document.getElementById('photo-search-query');
+        if (photoQuery) delete photoQuery.dataset.manual;
+        const photoStatus = document.getElementById('photo-search-status');
+        if (photoStatus) photoStatus.textContent = '';
         switchView('add');
         seedDraftActive = true; restoreSeedDraft().catch(draftError);
     };
     if (btnAddZadenTop) btnAddZadenTop.onclick = openAddForm;
     window.openAddForm = openAddForm;
-    const btnQuickPhotoSearch = document.getElementById('btn-quick-photo-search');
+    const btnQuickPhotoSearch = document.getElementById('photo-search-submit');
     const unifiedGallery = document.getElementById('unified-image-gallery');
+    const photoQueryInput = document.getElementById('photo-search-query');
+    inputNaam.addEventListener('input', () => { if (!photoQueryInput.dataset.manual) photoQueryInput.value = inputNaam.value; });
+    photoQueryInput.addEventListener('input', () => { photoQueryInput.dataset.manual = 'true'; });
+    photoQueryInput.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); btnQuickPhotoSearch.click(); } });
+    ['photo-search-source', 'photo-search-filter'].forEach(id => document.getElementById(id).addEventListener('change', () => { if (photoSearchQuery) btnQuickPhotoSearch.click(); }));
     if (btnQuickPhotoSearch) {
         btnQuickPhotoSearch.onclick = async () => {
-            const query = inputNaam.value.trim();
+            const query = photoQueryInput.value.trim() || inputNaam.value.trim() || document.getElementById('scientific-name')?.value.trim() || '';
             if (!query) {
                 showToast("Vul eerst een naam in om foto's te zoeken! ✌️");
                 return;
             }
 
+            const statusEl = document.getElementById('photo-search-status');
+            if (statusEl) statusEl.textContent = '';
             photoSearchResults = [];
             photoSearchQuery = '';
             photoSearchPage = 0;
@@ -5252,7 +5291,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderUnifiedGallery();
 
             btnQuickPhotoSearch.disabled = true;
-            btnQuickPhotoSearch.textContent = "⏳ Bezig met zoeken...";
+            btnQuickPhotoSearch.textContent = "⏳ Zoeken…";
 
             try {
                 const { photos, totalPages } = await searchPlantImage(query);
@@ -5263,7 +5302,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     photoSearchResults = photos.map(r => r && typeof r === 'object' ? ({
                         ...r,
                         url: r.url,
-                        source: 'web',
+                        source: r.source || 'web',
                         id: r.id || Math.random().toString(36).substr(2, 9)
                     }) : null).filter(Boolean);
                 } else {
@@ -5272,11 +5311,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 renderUnifiedGallery();
             } catch (err) {
-                console.error("Pexels Search Error:", err);
-                showToast("Foto-informatie niet bereikbaar.");
+                console.error("Photo Search Error:", err);
+                if (statusEl) statusEl.textContent = err.message || 'Fotozoeken is tijdelijk niet beschikbaar.';
             } finally {
                 btnQuickPhotoSearch.disabled = false;
-                btnQuickPhotoSearch.textContent = "🔍 Zoek foto's op naam";
+                btnQuickPhotoSearch.textContent = "Zoek foto's";
             }
         };
     }
@@ -5382,19 +5421,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                 isSelected,
                 isFeatured: item.imageUrl === focusSource,
                 isPendingRemoval,
-                onFeature: selectedItem => {
-                    if (!pendingImages.some(pending => safeWishlistImageUrl(pending.url) === selectedItem.imageUrl)) pendingImages.push(selectedItem);
+                onPreview: selectedItem => openLightbox(displayedItems, displayedItems.findIndex(image => image.imageUrl === selectedItem.imageUrl)),
+                onFeature: async selectedItem => {
+                    if (!pendingImages.some(pending => safeWishlistImageUrl(pending.url) === selectedItem.imageUrl)) {
+                        try { await recordPhotoSelection(selectedItem); } catch (error) { showToast(error.message); return; }
+                        if (!pendingImages.some(pending => safeWishlistImageUrl(pending.url) === selectedItem.imageUrl)) pendingImages.push(selectedItem);
+                    }
+                    pendingImageRemovals.delete(selectedItem.imageUrl);
                     inputNaam.dataset.featuredUrl = selectedItem.imageUrl;
                     renderUnifiedGallery();
                 },
-                onToggle: selectedItem => {
+                onToggle: async selectedItem => {
                     if (savingSeed) return;
                     if (isPendingRemoval) {
                         pendingImageRemovals.delete(selectedItem.imageUrl);
                     } else if (isSelected) {
                         pendingImageRemovals.add(selectedItem.imageUrl);
                     } else {
-                        pendingImages.push(selectedItem);
+                        try { await recordPhotoSelection(selectedItem); } catch (error) { showToast(error.message); return; }
+                        if (!pendingImages.some(pending => safeWishlistImageUrl(pending.url) === selectedItem.imageUrl)) pendingImages.push(selectedItem);
                         if (!safeWishlistImageUrl(inputNaam.dataset.featuredUrl)) inputNaam.dataset.featuredUrl = selectedItem.imageUrl;
                     }
                     renderUnifiedGallery(selectedItem.imageUrl);
@@ -5509,7 +5554,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const newItems = photos.map(r => r && typeof r === 'object' ? ({
                         ...r,
                         url: r.url,
-                        source: 'web',
+                        source: r.source || 'web',
                         id: r.id || Math.random().toString(36).substr(2, 9)
                     }) : null).filter(Boolean);
                     // Add new unique items to the result set
@@ -5603,7 +5648,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const textSpan = toggleBtn.querySelector(".toggle-text");
 
         // Ensure initial state matches localStorage
-        const shouldBeExpanded = localStorage.getItem("expanded_extra-section") === "true";
+        const shouldBeExpanded = gardenStorage.getItem("expanded_extra-section") === "true";
         if (shouldBeExpanded) {
             extraSection.style.display = "block";
             extraSection.classList.remove("collapsed");
@@ -5625,13 +5670,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 extraSection.classList.remove("collapsed");
                 if (chevron) chevron.textContent = "▾";
                 if (textSpan) textSpan.textContent = "Notities & kenmerken";
-                localStorage.setItem("expanded_extra-section", "true");
+                gardenStorage.setItem("expanded_extra-section", "true");
             } else {
                 extraSection.style.display = "none";
                 extraSection.classList.add("collapsed");
                 if (chevron) chevron.textContent = "▸";
                 if (textSpan) textSpan.textContent = "Notities & kenmerken (optioneel)";
-                localStorage.setItem("expanded_extra-section", "false");
+                gardenStorage.setItem("expanded_extra-section", "false");
             }
         });
     }
@@ -5668,7 +5713,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         activeSeedSummary = 'all';
         activePlantStatus = status; activeCategory = 'Alles'; activeMonthFilter = null;
         activeSeedGroup = '';
-        localStorage.removeItem('activeMonthFilter'); searchInput.value = '';
+        gardenStorage.removeItem('activeMonthFilter'); searchInput.value = '';
         filterChips.forEach(chip => chip.classList.toggle('active', chip.dataset.filter === 'Alles'));
         switchView('list');
     }
@@ -6084,6 +6129,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 favorite.append(star);
                 favorite.addEventListener('click', () => toggleQuickFavorite(s, { openDetail: false }));
                 row.append(open, favorite); panel.append(row);
+                const creditImage = s.images?.find(item => item?.url === imageUrl);
+                if (creditImage) appendPhotoCredit(row, creditImage);
             });
             if (!plants.length) {
                 const empty = document.createElement('p'); empty.className = 'empty-state';
@@ -6286,7 +6333,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (event.target.id !== 'seed-favorites-separate') return;
         showSeparateSeedFavorites = event.target.checked;
         seedFavoritesCollapsed = false;
-        localStorage.setItem(SEED_FAVORITES_SETTING, String(showSeparateSeedFavorites));
+        gardenStorage.setItem(SEED_FAVORITES_SETTING, String(showSeparateSeedFavorites));
         applyFilters();
     });
     const latestSeedsButton = document.getElementById('btn-latest-seeds');
@@ -6302,7 +6349,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         activeCategory = 'Alles';
         activeSeedGroup = '';
         activeMonthFilter = null;
-        localStorage.removeItem('activeMonthFilter');
+        gardenStorage.removeItem('activeMonthFilter');
         if (searchInput) searchInput.value = '';
 
         // Reset filter chip UI
@@ -6606,7 +6653,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderCalendar();
         };
         if (openSeedsButton) openSeedsButton.onclick = () => {
-            localStorage.setItem('activeMonthFilter', calMonthNames[plannerSelectedMonth]);
+            gardenStorage.setItem('activeMonthFilter', calMonthNames[plannerSelectedMonth]);
             switchView('list');
         };
 
@@ -6693,7 +6740,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Concepts stay on this device and never enter the garden/cloud payload.
     let seedDraftActive = false, wishDraftActive = false, restoringDraft = false, draftTurn = 0, wishDraftTurn = 0;
-    const seedDraftFields = ['naam', 'code', 'type', 'standplaats', 'water', 'status', 'sownAt', 'beschrijving', 'voeding', 'ervaringen', 'purchaseYear', 'shopLink'];
+    const seedDraftFields = ['naam', 'scientific-name', 'code', 'type', 'standplaats', 'water', 'status', 'sownAt', 'beschrijving', 'voeding', 'ervaringen', 'purchaseYear', 'shopLink'];
     const wishDraftFields = ['edit-wish-name', 'edit-wish-type', 'edit-wish-link', 'edit-wish-img-url', 'edit-wish-note'];
     const seedDraftKey = () => 'seed:' + (editingId ?? 'new');
     const wishDraftKey = () => 'wish:' + editingWishId;
@@ -7156,10 +7203,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             dailyProgress: readStoredJSON('daily_progress', {}, normalizeStoredObject),
             theme: typeof getStoredAppTheme === 'function'
                 ? getStoredAppTheme()
-                : (localStorage.getItem('theme') === 'dark' || localStorage.getItem('theme') === 'playful'
-                    ? localStorage.getItem('theme')
+                : (gardenStorage.getItem('theme') === 'dark' || gardenStorage.getItem('theme') === 'playful'
+                    ? gardenStorage.getItem('theme')
                     : 'light'),
-            onboardingDone: localStorage.getItem('onboarding_done') || 'false',
+            onboardingDone: gardenStorage.getItem('onboarding_done') || 'false',
             uiState: {}
         };
     }
@@ -7189,23 +7236,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function captureLocalStorageSnapshot() {
         const snapshot = {};
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key !== null) snapshot[key] = localStorage.getItem(key);
+        for (let i = 0; i < gardenStorage.length; i++) {
+            const key = gardenStorage.key(i);
+            if (key !== null) snapshot[key] = gardenStorage.getItem(key);
         }
         return snapshot;
     }
 
     function restoreLocalStorageSnapshot(snapshot, keys = null) {
         const currentKeys = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
+        for (let i = 0; i < gardenStorage.length; i++) {
+            const key = gardenStorage.key(i);
             if (key !== null) currentKeys.push(key);
         }
         for (const key of currentKeys) {
-            if ((!keys || keys.has(key)) && !Object.prototype.hasOwnProperty.call(snapshot, key)) localStorage.removeItem(key);
+            if ((!keys || keys.has(key)) && !Object.prototype.hasOwnProperty.call(snapshot, key)) gardenStorage.removeItem(key);
         }
-        for (const [key, value] of Object.entries(snapshot)) if (!keys || keys.has(key)) localStorage.setItem(key, value);
+        for (const [key, value] of Object.entries(snapshot)) if (!keys || keys.has(key)) gardenStorage.setItem(key, value);
     }
 
     function buildRestoreStorageWrites(backup) {
@@ -7233,15 +7280,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     function applyRestoreToLocalStorage(backup) {
         const storageKeysToReplace = new Set(buildRestoreStorageWrites(backup).map(([key]) => key));
         const currentKeys = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
+        for (let i = 0; i < gardenStorage.length; i++) {
+            const key = gardenStorage.key(i);
             if (key !== null && (storageKeysToReplace.has(key) ||
                 (hasProvidedDataset(backup, 'uiState') && isRestoredUIStateKey(key)))) {
                 currentKeys.push(key);
             }
         }
-        for (const key of currentKeys) localStorage.removeItem(key);
-        for (const [key, value] of buildRestoreStorageWrites(backup)) localStorage.setItem(key, String(value));
+        for (const key of currentKeys) gardenStorage.removeItem(key);
+        for (const [key, value] of buildRestoreStorageWrites(backup)) gardenStorage.setItem(key, String(value));
     }
 
     async function captureRestoreSafetyBackup(backup) {
@@ -7268,7 +7315,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // A cancelled automatic restore must not roll back account,
                 // queue or import guards changed while IndexedDB was pending.
                 const rollbackKeys = managed ? new Set(buildRestoreStorageWrites(backup)
-                    .filter(([key, value]) => localStorage.getItem(key) === String(value)).map(([key]) => key)) : null;
+                    .filter(([key, value]) => gardenStorage.getItem(key) === String(value)).map(([key]) => key)) : null;
                 restoreLocalStorageSnapshot(safetyBackup.storage, rollbackKeys);
                 if (seedsReplaced || (!managed && safetyBackup.seeds)) {
                     await replaceAllSeedsAtomic(safetyBackup.seeds);
@@ -7289,6 +7336,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return selected;
         },
         restoreCloud: async (payload, options = {}) => {
+            if (globalThis.KweekScope?.localLeading) throw new Error('Je lokale tuin is leidend. Maak eerst bewust een nieuwe cloudkopie voordat je een cloudtuin terughaalt.');
             const selected = window.KweekLocalData.validateCloud(payload);
             if (selected.userProfile) selected.userProfile = { ...selected.userProfile, units: loadUserProfile().units };
             await restoreBackupData(normalizeImportedBackup(selected), options);
@@ -7296,9 +7344,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         },
         capture: async () => {
             const payload = buildBackupPayload(await getAllSeeds());
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && isBackupUIStateKey(key)) payload.uiState[key] = localStorage.getItem(key);
+            for (let i = 0; i < gardenStorage.length; i++) {
+                const key = gardenStorage.key(i);
+                if (key && isBackupUIStateKey(key)) payload.uiState[key] = gardenStorage.getItem(key);
             }
             return payload;
         },
@@ -7322,8 +7370,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const fullBackup = buildBackupPayload(data);
 
             // Collect dynamic UI states and preferences
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
+            for (let i = 0; i < gardenStorage.length; i++) {
+                const key = gardenStorage.key(i);
                 if (key.startsWith('dashboard_nu_doen_expanded_') ||
                     key.startsWith('garden_group_') ||
                     [
@@ -7334,7 +7382,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         'onboarding_type',
                         'onboarding_level'
                     ].includes(key)) {
-                    fullBackup.uiState[key] = localStorage.getItem(key);
+                    fullBackup.uiState[key] = gardenStorage.getItem(key);
                 }
             }
 
@@ -7368,9 +7416,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (confirm("WEET JE HET ZEKER? Dit verwijdert alle zaden en instellingen. Dit kan niet ongedaan worden.")) {
             try { await window.KweekServices?.removeSafetyBackup(); }
             catch (error) { showToast(error.message); return; }
-            localStorage.clear();
+            gardenStorage.clear();
             if (db) { db.close(); db = null; }
-            const request = indexedDB.deleteDatabase("MoestuinDB");
+            const request = indexedDB.deleteDatabase(DB_NAME);
             request.onsuccess = () => {
                 showToast("App gereset. Herstarten...");
                 setTimeout(() => location.reload(), 1500);
@@ -7601,7 +7649,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     function saveWish() {
-        localStorage.setItem('moestuin_wishlist', JSON.stringify(wishlist));
+        gardenStorage.setItem('moestuin_wishlist', JSON.stringify(wishlist));
         globalThis.KweekCloudStatus?.changed();
         renderWishlist();
     }
@@ -7805,7 +7853,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const targetId = String(editingWishId);
             wishlist = wishlist.filter(item => String(item.id) !== targetId);
 
-            localStorage.setItem('moestuin_wishlist', JSON.stringify(wishlist));
+            gardenStorage.setItem('moestuin_wishlist', JSON.stringify(wishlist));
             globalThis.KweekCloudStatus?.changed();
             renderWishlist();
             closeWishModal();
@@ -8576,7 +8624,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const errorCard = document.createElement('div');
             errorCard.className = 'ai-advies-card ai-error';
             errorCard.setAttribute('role', 'alert');
-            errorCard.textContent = err.message || 'AI is tijdelijk niet beschikbaar. Controleer Instellingen → AI.';
+            errorCard.textContent = window.KweekScope?.role === 'user' ? (/AI-maandbudget is op/.test(err.message || '') ? err.message : 'AI is tijdelijk niet beschikbaar. Probeer het later opnieuw.') : err.message || 'AI is tijdelijk niet beschikbaar. Controleer Instellingen → AI.';
             window.KweekServices?.appendOllamaHelp(errorCard, err);
             output.appendChild(errorCard);
         } finally {
@@ -8667,7 +8715,7 @@ window.revealInList = function (seedId) {
     // 1. Ensure any month filters are cleared so the item is definitely visible
     if (window.clearMonthFilter) window.clearMonthFilter();
     window._resetAllFilters();
-    localStorage.removeItem('nu_doen_show_all'); // Small reset if needed
+    gardenStorage.removeItem('nu_doen_show_all'); // Small reset if needed
 
     // 2. Refresh the list filters
     applyFilters();
@@ -8699,7 +8747,7 @@ window.scrollToGardenItem = function (seedId) {
 
 window.clearMonthFilter = function () {
     activeMonthFilter = null;
-    localStorage.removeItem('activeMonthFilter');
+    gardenStorage.removeItem('activeMonthFilter');
     const container = document.getElementById('seeds-context-banner');
     if (container) {
         container.replaceChildren();
@@ -8906,10 +8954,17 @@ window._addSuggestionToTodo = async (name, btn) => {
 window.applyMonthFilter = applyMonthFilter;
 
     // --- STARTUP LOGIC ---
-    const doneOnb = localStorage.getItem('onboarding_done');
+    const doneOnb = gardenStorage.getItem('onboarding_done');
     const hasProfile = hasStoredUserProfile();
     if (!databaseAvailable) {
         showToast("Lokale opslag is tijdelijk niet beschikbaar. Je gegevens zijn niet geladen.");
+    }
+
+    if (globalThis.KweekScope?.role === 'user') {
+        const intro = document.querySelector('#onboarding-step-1 .onboarding-intro');
+        if (intro) intro.textContent = 'Je tuingegevens worden lokaal in deze browser opgeslagen. Online synchronisatie staat uit; je kunt op elk moment zelf een back-up maken via Instellingen.';
+        const note = document.querySelector('#onboarding-step-1 .onboarding-storage-note span:last-child');
+        if (note) note.textContent = 'Jij houdt de controle over je gegevens. Maak af en toe een back-up om je tuin veilig te bewaren.';
     }
 
     if (shouldStartOnboarding(doneOnb, hasProfile, seeds.length, databaseAvailable)) {
@@ -8928,52 +8983,30 @@ window.applyMonthFilter = applyMonthFilter;
             switchView('home');
         }
     }
-});
-
-
-
-// --- IMAGE SEARCH INTEGRATION (Unsplash) ---
-async function searchPlantImage(query, page = 1) {
-    const ACCESS_KEY = 'SKRS2cE9UySRiAEXZ6wW2__-Tsl-BelT7Y7ryi1IwUs';
-
-    // Simple NL -> EN mapping for common garden plants to boost Unsplash results
-    const translations = {
-        'tomaat': 'tomato', 'paprika': 'bell pepper', 'peper': 'chili pepper', 'pepers': 'hot peppers',
-        'komkommer': 'cucumber', 'courgette': 'zucchini', 'sla': 'lettuce', 'rucola': 'arugula',
-        'wortel': 'carrot', 'prei': 'leek', 'ui': 'onion', 'knoflook': 'garlic', 'spinazie': 'spinach',
-        'aardappel': 'potato', 'aardbei': 'strawberry', 'framboos': 'raspberry', 'bes': 'berry',
-        'erwt': 'pea', 'peul': 'snow pea', 'boon': 'bean', 'pompoen': 'pumpkin', 'biet': 'beetroot', 'radijs': 'radish',
-        'tijm': 'thyme', 'basilicum': 'basil', 'peterselie': 'parsley', 'bieslook': 'chive', 'rozemarijn': 'rosemary',
-        'munt': 'mint', 'salie': 'sage', 'dille': 'dill', 'koriander': 'cilantro', 'oregano': 'oregano', 'kervel': 'chervil',
-        'appel': 'apple', 'peer': 'pear', 'kers': 'cherry', 'pruim': 'plum', 'perzik': 'peach', 'kiwibes': 'kiwi berry',
-        'broccoli': 'broccoli', 'bloemkool': 'cauliflower', 'boerenkool': 'kale', 'paksoi': 'bok choy', 'pastinaak': 'parsnip',
-        'zonnebloem': 'sunflower', 'tulp': 'tulip', 'roos': 'rose', 'lavendel': 'lavender', 'papaver': 'poppy', 'goudsbloem': 'calendula',
-        'madeliefje': 'daisy', 'moestuin': 'vegetable garden', 'tuin': 'garden'
-    };
-
-    const words = query.trim().replace(/\s+/g, ' ').split(' ');
-    const first = words.shift();
-    const translated = translations[first.toLowerCase()] || first;
-    const searchQuery = [translated, ...words, ...(words.length ? [] : ['plant'])].join(' ');
-    const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(searchQuery)}&client_id=${ACCESS_KEY}&per_page=30&page=${page}`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Unsplash API fout (${response.status})`);
-    const data = await response.json();
-    if (!Array.isArray(data?.results)) throw new Error('Unsplash gaf geen geldige fotoresultaten.');
-    return {
-        totalPages: Number(data.total_pages) || 0,
-        photos: data.results.map(r => ({
-            url: r.urls?.regular || r.urls?.small,
-            source: 'web',
-            id: r.id,
-            title: r.alt_description || r.description || '',
-            description: r.description || '',
-            photographer: r.user?.name || '',
-            sourceLink: r.user?.links?.html || ''
-        })).filter(r => r.url)
-    };
 }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startKweekApp, { once: true });
+else void startKweekApp();
 
+
+
+// --- IMAGE SEARCH INTEGRATION ---
+async function searchPlantImage(query, page = 1) {
+    const source = document.getElementById('photo-search-source')?.value || 'both';
+    const filter = document.getElementById('photo-search-filter')?.value || 'all';
+    const name = document.getElementById('naam')?.value.trim() || '';
+    const scientific = query.trim().toLowerCase() === name.toLowerCase() ? document.getElementById('scientific-name')?.value.trim() || '' : '';
+    const response = await fetch('/api/photo-search', { method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query,scientific,source,filter,page}) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Fotozoeken is tijdelijk niet beschikbaar.');
+    const status = document.getElementById('photo-search-status');
+    if (status) status.textContent = data.unavailable?.length ? 'Niet beschikbaar: ' + data.unavailable.join(', ') + '. Resultaten van de andere bron worden getoond.' : '';
+    return data;
+}
+async function recordPhotoSelection(item) {
+    if (!item.unsplashId) return;
+    const response = await fetch('/api/photo-search', { method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'select',id:item.unsplashId}) });
+    if (!response.ok) throw new Error('De foto kan nu niet worden toegevoegd. Probeer opnieuw.');
+}
 
 // --- SETTINGS PANEL HELPERS ---
 

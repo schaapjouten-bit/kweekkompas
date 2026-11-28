@@ -8,7 +8,7 @@ const { handler: seed } = require('../netlify/functions/_shared/seed-info');
 const { handler: config } = require('../netlify/functions/_shared/ai-config');
 const event = (method, body, cookie = '', origin = 'http://localhost:4173') => ({ httpMethod: method, headers: { host: 'localhost:4173', origin, cookie }, body: JSON.stringify(body) });
 test('backend: login, sessievernieuwing, accountisolatie, syncconflict en beide AI-hulpen', async () => {
-    const fixture = await startFixtures(); configureFixtures(fixture);
+    const fixture = await startFixtures({ admins: ['a'] }); configureFixtures(fixture);
     process.env.GEMINI_API_KEY = 'test-gemini-secret';
     const originalFetch = global.fetch;
     const originalLocalAPI = globalThis.KweekLocalAPI;

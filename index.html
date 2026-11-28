@@ -447,8 +447,9 @@
             <h3 class="form-section-header">🏷️ Naam & Basis</h3>
             <div class="form-group" style="margin-bottom: 20px;">
               <input type="text" id="naam" required placeholder="Bijv. Tomaat Moneymaker">
+              <label class="photo-scientific-label" for="scientific-name">Wetenschappelijke naam (optioneel)</label>
+              <input type="text" id="scientific-name" maxlength="120" placeholder="Bijv. Solanum lycopersicum">
               <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                  <button type="button" id="btn-quick-photo-search" class="btn-helper-link" style="margin-top: 6px;">🔍 Zoek foto's op naam</button>
                   <button type="button" id="btn-auto-fill-info" class="btn-helper-link" style="margin-top: 6px; color: var(--primary-color);">✨ Vul info aan met AI</button>
                   <button type="button" id="btn-reset-ai-fields" class="btn-helper-link" style="margin-top: 6px; font-size: 11px; opacity: 0.6;" title="Opnieuw ophalen">🔄 Opnieuw</button>
                 <div id="ai-source-status" class="ai-source-status hidden"></div>
@@ -465,6 +466,13 @@
             
             <div id="photo-search-results-section" class="photo-hub" style="margin-top: 10px;">
               <!-- Photo Hub Controls -->
+              <div class="photo-search-controls">
+                <label>Zoek foto's<input id="photo-search-query" maxlength="120" placeholder="Plantnaam of zoekterm"></label>
+                <label>Bron<select id="photo-search-source"><option value="both">Beide bronnen</option><option value="unsplash">Unsplash</option><option value="commons">Wikimedia Commons</option></select></label>
+                <label>Onderwerp<select id="photo-search-filter"><option value="all">Alle</option><option value="plant">Plant</option><option value="flower">Bloem</option><option value="leaf">Blad</option><option value="fruit">Vrucht</option><option value="seeds">Zaden</option></select></label>
+                <button id="photo-search-submit" type="button" class="btn-secondary">Zoek foto's</button>
+              </div>
+              <p id="photo-search-status" class="service-note" role="status" aria-live="polite"></p>
               <div id="unified-image-gallery" class="unified-image-gallery">
                 <!-- Combined search results and selected photos -->
               </div>
@@ -740,6 +748,7 @@
     <button type="button" id="lightbox-close" class="lightbox-btn lightbox-close" aria-label="Sluit foto">&times;</button>
     <button type="button" id="lightbox-prev" class="lightbox-btn lightbox-prev" aria-label="Vorige foto">&#10094;</button>
     <img id="lightbox-img" class="lightbox-img" src="" alt="Vergrote foto" loading="lazy">
+    <div id="lightbox-credit" class="lightbox-credit"></div>
     <button type="button" id="lightbox-next" class="lightbox-btn lightbox-next" aria-label="Volgende foto">&#10095;</button>
   </div>
 
@@ -1122,16 +1131,8 @@
     </div>
   </div>
 
-  <script src="cloud-data.js?v=2"></script>
-  <script src="photo-storage.js?v=3"></script>
-  <script src="auto-sync.js?v=3"></script>
-  <script src="local-backup.js?v=2"></script>
-  <script src="local-drafts.js?v=1"></script>
-  <script src="plant-lifecycle.js?v=1"></script>
-  <script src="ai-contract.js?v=4"></script>
-  <script src="browser-ollama.js?v=1"></script>
-  <script src="services.js?v=25"></script>
-  <script src="app-v132.js?v=85" charset="utf-8"></script>
+  <script src="account-storage.js?v=1"></script>
+  <script type="module" src="account-bootstrap.js?v=1"></script>
 
 </body>
 </html>

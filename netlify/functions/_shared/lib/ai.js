@@ -1,10 +1,12 @@
 const { env, HttpError, readBody } = require('./http');
-const { configured, authenticate } = require('./supabase');
+const { configured, authenticate, readCookies } = require('./supabase');
 const { getGeminiModels } = require('./gemini-models');
 const { generateGemini } = require('./gemini');
 const { generateOpenAI } = require('./openai');
 const { ollamaBase } = require('./ollama');
 const geminiFreeAPI = require('./gemini-free');
+const central = require('./central-ai');
+const budget = require('./ai-budget');
 const contract = require('../../../../ai-contract');
 const providers = ['gemini', 'gemini-free', 'ollama', 'openai-compatible', 'chatgpt', 'openai'];
 function safeRead(fn, fallback) {
@@ -27,6 +29,13 @@ function providerConfig() {
 }
 async function authorizeAI(event) {
     const provider = readBody(event).ai?.provider;
+    const cookies = readCookies(event);
+    if (cookies.kk_access || cookies.kk_refresh) {
+        const session = await authenticate(event);
+        if (session.user.app_metadata?.kweek_role !== 'admin') return session;
+        if (provider === 'gemini-free') return geminiFreeAPI.authorize(event);
+        return session;
+    }
     if (provider === 'gemini-free') return geminiFreeAPI.authorize(event);
     if (env('KWEEK_LOCAL_DEV') === 'true' && globalThis.KweekGeminiPersonal && provider === 'gemini') return { cookies: [] };
     if (env('KWEEK_LOCAL_DEV') === 'true' && globalThis.KweekOpenAIPersonal && provider === 'openai') return { cookies: [] };
@@ -40,6 +49,27 @@ async function authorizeAI(event) {
     return { cookies: [] };
 }
 async function callAI(body, system, prompt, session, { timeoutMs = 45_000 } = {}) {
+    if (session?.user && session.user.app_metadata?.kweek_role !== 'admin') {
+        const apiKey = await central.readKey();
+        if (!apiKey) throw new HttpError(503, 'AI is tijdelijk niet beschikbaar.');
+        const requestId = body.requestId;
+        if (typeof requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) throw new HttpError(400, 'De AI-aanvraag is ongeldig. Probeer opnieuw.');
+        const args = { p_user: session.user.id, p_request: requestId };
+        const reservation = await budget.action('reserve', args);
+        if (reservation.result === 'limit') throw new HttpError(429, 'Je AI-maandbudget is op. Volgende maand kun je weer aanvragen doen.');
+        if (reservation.result === 'duplicate') throw new HttpError(409, 'Deze AI-aanvraag is al verwerkt of wordt nog verwerkt.');
+        if (reservation.result !== 'reserved') throw new HttpError(503, 'AI-gebruik kan momenteel niet worden gecontroleerd.');
+        let result;
+        try { result = await generateGemini({ apiKey, model: central.MODEL, system, prompt, timeoutMs, includeUsage: true }); }
+        catch (error) {
+            await budget.action(error.providerUsage ? 'success' : error.providerRejected ? 'reject' : 'unknown', error.providerUsage ? { ...args, p_input: error.providerUsage.inputTokens, p_output: error.providerUsage.outputTokens } : args);
+            if (error.status === 429) throw new HttpError(429, 'AI is tijdelijk beperkt. Probeer later opnieuw.');
+            if (error.status === 504) throw new HttpError(504, 'AI reageert te langzaam. Probeer opnieuw.');
+            throw new HttpError(502, 'AI is tijdelijk niet beschikbaar. Probeer later opnieuw.');
+        }
+        await budget.action('success', { ...args, p_input: result.inputTokens, p_output: result.outputTokens });
+        return contract.parse(result.text);
+    }
     const provider = body.ai?.provider || (env('KWEEK_LOCAL_DEV') === 'true' ? 'ollama' : 'gemini');
     if (!providers.includes(provider)) throw new HttpError(400, 'Kies een geldige AI-provider.');
     const config = providerConfig()[provider];

@@ -35,6 +35,9 @@ test('auth en handmatige sync: accounts, conflicten, vernieuwde cookies en ontbr
         const cookies = login.multiValueHeaders['Set-Cookie'];
         assert.ok(cookies.every(value => /HttpOnly; SameSite=Strict/.test(value)));
         const cookie = cookies.map(value => value.split(';')[0]).join('; ');
+        assert.equal(JSON.parse(login.body).user.role, 'user');
+        assert.equal((await auth(event('POST', { action: 'invite', email: 'new@example.test' }))).statusCode, 403);
+        assert.equal((await auth(event('POST', { action: 'invite', email: 'new@example.test' }, cookie))).statusCode, 403);
         const payload = { backupVersion: 1, seeds: [{ id: 'test', naam: 'Afzonderlijke testplant' }] };
         assert.equal((await sync(event('POST', { payload, revision: 0, expectedUserId: fixture.ids.a }))).statusCode, 401);
         assert.equal((await sync(event('POST', { payload, revision: 0, expectedUserId: fixture.ids.b }, cookie))).statusCode, 409);
